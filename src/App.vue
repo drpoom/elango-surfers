@@ -3,7 +3,7 @@
     <div id="ui">
       <div id="score">Score: {{ score }}</div>
       <div id="highscore">High Score: {{ highScore }}</div>
-      <div id="instructions">A/D or ←/→ to move | W or ↑ to Jump | Space to Restart</div>
+      <div id="instructions">A/D or ←/→ to move | W or ↑ to Jump | Space to Restart<br>📱 Swipe ←/→ to move | Swipe ↑ to jump</div>
     </div>
     <div id="game-canvas"></div>
     <div v-if="gameOver" id="game-over">
@@ -32,6 +32,11 @@ const gravity = 0.015;
 const laneWidth = 3;
 let gameSpeed = 0.25;
 let lastSpawnTime = 0;
+
+// Touch/swipe controls
+let touchStartX = 0;
+let touchStartY = 0;
+const minSwipeDistance = 50;
 
 onMounted(() => {
   const saved = localStorage.getItem('elangoSurfersHighScore');
@@ -210,6 +215,49 @@ const animate = () => {
   renderer.render(scene, camera);
 };
 
+const handleSwipe = (direction) => {
+  if (gameOver.value) return;
+  
+  if (direction === 'left') {
+    if (currentLane > 0) currentLane--;
+  } else if (direction === 'right') {
+    if (currentLane < 2) currentLane++;
+  } else if (direction === 'up' && !isJumping) {
+    isJumping = true;
+    jumpVelocity = jumpStrength;
+  }
+};
+
+const handleTouchStart = (e) => {
+  touchStartX = e.touches[0].clientX;
+  touchStartY = e.touches[0].clientY;
+};
+
+const handleTouchEnd = (e) => {
+  const touchEndX = e.changedTouches[0].clientX;
+  const touchEndY = e.changedTouches[0].clientY;
+  
+  const diffX = touchEndX - touchStartX;
+  const diffY = touchEndY - touchStartY;
+  
+  // Determine if horizontal or vertical swipe
+  if (Math.abs(diffX) > Math.abs(diffY)) {
+    // Horizontal swipe
+    if (Math.abs(diffX) > minSwipeDistance) {
+      if (diffX > 0) {
+        handleSwipe('right');
+      } else {
+        handleSwipe('left');
+      }
+    }
+  } else {
+    // Vertical swipe
+    if (Math.abs(diffY) > minSwipeDistance && diffY < 0) {
+      handleSwipe('up');
+    }
+  }
+};
+
 const handleKeyDown = (e) => {
   // Restart on Space or Enter when game over
   if (gameOver.value && (e.key === ' ' || e.key === 'Enter')) {
@@ -254,6 +302,8 @@ const restartGame = () => {
 onMounted(() => {
   initGame();
   window.addEventListener('keydown', handleKeyDown);
+  window.addEventListener('touchstart', handleTouchStart, { passive: true });
+  window.addEventListener('touchend', handleTouchEnd, { passive: true });
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
@@ -263,6 +313,8 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyDown);
+  window.removeEventListener('touchstart', handleTouchStart);
+  window.removeEventListener('touchend', handleTouchEnd);
 });
 </script>
 
