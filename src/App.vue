@@ -3,13 +3,13 @@
     <div id="ui">
       <div id="score">Score: {{ score }}</div>
       <div id="highscore">High Score: {{ highScore }}</div>
-      <div id="instructions">A/D or ←/→ to move | W or ↑ to Jump</div>
+      <div id="instructions">A/D or ←/→ to move | W or ↑ to Jump | Space to Restart</div>
     </div>
     <div id="game-canvas"></div>
     <div v-if="gameOver" id="game-over">
       <h1>GAME OVER</h1>
       <p>Your Score: {{ score }}</p>
-      <button @click="restartGame">Play Again</button>
+      <p>Press SPACE or click to restart</p>
     </div>
   </div>
 </template>
@@ -110,19 +110,20 @@ const spawnObstacle = () => {
   const fruitGroup = new THREE.Group();
   const colors = [0xff0000, 0xffa500, 0x8b0000, 0xff69b4];
   const fruitColor = colors[Math.floor(Math.random() * colors.length)];
-  const fruitGeo = new THREE.SphereGeometry(0.4, 16, 16);
+  // Wider obstacle - sphere radius 1.2 (3x original)
+  const fruitGeo = new THREE.SphereGeometry(1.2, 16, 16);
   const fruitMat = new THREE.MeshPhongMaterial({ color: fruitColor });
   const fruit = new THREE.Mesh(fruitGeo, fruitMat);
   fruit.castShadow = true;
   fruitGroup.add(fruit);
   
-  const stemGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.3);
+  const stemGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.5);
   const stemMat = new THREE.MeshPhongMaterial({ color: 0x228b22 });
   const stem = new THREE.Mesh(stemGeo, stemMat);
-  stem.position.y = 0.5;
+  stem.position.y = 1.0;
   fruitGroup.add(stem);
   
-  fruitGroup.position.set(laneX, 0.4, -50);
+  fruitGroup.position.set(laneX, 0.6, -50);
   scene.add(fruitGroup);
   obstacles.push({ mesh: fruitGroup, lane });
 };
@@ -143,8 +144,9 @@ const spawnCoin = () => {
 };
 
 const animate = () => {
-  if (gameOver.value) return;
   requestAnimationFrame(animate);
+
+  if (gameOver.value) return;
 
   const delta = clock.getDelta();
   const time = clock.getElapsedTime();
@@ -162,7 +164,8 @@ const animate = () => {
     obs.mesh.rotation.y += 0.05;
 
     const dist = player.position.distanceTo(obs.mesh.position);
-    if (dist < 1.0 && player.position.y < 0.8) {
+    // Collision detection - obstacle radius is 1.2, so use 1.5 for collision threshold
+    if (dist < 1.5 && player.position.y < 1.0) {
       gameOver.value = true;
       saveHighScore();
     }
@@ -208,6 +211,12 @@ const animate = () => {
 };
 
 const handleKeyDown = (e) => {
+  // Restart on Space or Enter when game over
+  if (gameOver.value && (e.key === ' ' || e.key === 'Enter')) {
+    restartGame();
+    return;
+  }
+  
   if (gameOver.value) return;
   
   if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
