@@ -17,6 +17,9 @@
 <script setup>
 import { onMounted, ref, onUnmounted } from 'vue';
 import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 const score = ref(0);
 const highScore = ref(0);
@@ -38,6 +41,13 @@ let touchStartX = 0;
 let touchStartY = 0;
 const minSwipeDistance = 50;
 
+// Environment elements
+let clouds = [];
+let trees = [];
+let buildings = [];
+let composer;
+let groundTexture;
+
 onMounted(() => {
   const saved = localStorage.getItem('elangoSurfersHighScore');
   if (saved) highScore.value = parseInt(saved, 10);
@@ -52,7 +62,10 @@ const saveHighScore = () => {
 
 const initGame = () => {
   scene = new THREE.Scene();
+  
+  // Colorful cartoon sky with gradient fog
   scene.background = new THREE.Color(0x87ceeb);
+  scene.fog = new THREE.Fog(0x87ceeb, 20, 80);
 
   camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.set(0, 6, 12);
@@ -61,44 +74,77 @@ const initGame = () => {
   renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   document.getElementById('game-canvas').appendChild(renderer.domElement);
 
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+  // Post-processing for bloom effect
+  composer = new EffectComposer(renderer);
+  const renderPass = new RenderPass(scene, camera);
+  composer.addPass(renderPass);
+  
+  const bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    0.4,  // strength
+    0.5,  // radius
+    0.85  // threshold
+  );
+  composer.addPass(bloomPass);
+
+  // Enhanced cartoon lighting
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
   scene.add(ambientLight);
-  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-  directionalLight.position.set(5, 10, 5);
+  
+  const directionalLight = new THREE.DirectionalLight(0xffd700, 1.0);
+  directionalLight.position.set(10, 15, 10);
   directionalLight.castShadow = true;
+  directionalLight.shadow.mapSize.width = 2048;
+  directionalLight.shadow.mapSize.height = 2048;
+  directionalLight.shadow.camera.near = 0.5;
+  directionalLight.shadow.camera.far = 50;
+  directionalLight.shadow.camera.left = -20;
+  directionalLight.shadow.camera.right = 20;
+  directionalLight.shadow.camera.top = 20;
+  directionalLight.shadow.camera.bottom = -20;
   scene.add(directionalLight);
+  
+  // Hemisphere light for colorful sky/ground contrast
+  const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x8bc34a, 0.4);
+  scene.add(hemiLight);
 
-  const groundGeo = new THREE.PlaneGeometry(15, 1000);
-  const groundMat = new THREE.MeshPhongMaterial({ color: 0x4a4a4a });
-  const ground = new THREE.Mesh(groundGeo, groundMat);
-  ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
-  scene.add(ground);
-
-  for (let i = -1; i <= 1; i++) {
-    const lineGeo = new THREE.PlaneGeometry(0.1, 1000);
-    const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, opacity: 0.3, transparent: true });
-    const line = new THREE.Mesh(lineGeo, lineMat);
-    line.rotation.x = -Math.PI / 2;
-    line.position.set(i * laneWidth, 0.01, 0);
-    scene.add(line);
-  }
+  // Create textured ground with cartoon style
+  createGround();
+  
+  // Add lane markers
+  createLaneMarkers();
+  
+  // Add decorative environment
+  createClouds();
+  createBackgroundElements();
 
   const playerGroup = new THREE.Group();
-  const bodyGeo = new THREE.BoxGeometry(0.8, 1, 0.5);
-  const bodyMat = new THREE.MeshPhongMaterial({ color: 0xff6b35 });
+  const bodyGeo = new THREE.CapsuleGeometry(0.4, 0.8, 8, 8);
+  const bodyMat = new THREE.MeshToonMaterial({ color: 0xff6b35 });
   const body = new THREE.Mesh(bodyGeo, bodyMat);
   body.castShadow = true;
   playerGroup.add(body);
   
-  const headGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-  const headMat = new THREE.MeshPhongMaterial({ color: 0xffd93d });
+  const headGeo = new THREE.SphereGeometry(0.35, 16, 16);
+  const headMat = new THREE.MeshToonMaterial({ color: 0xffd93d });
   const head = new THREE.Mesh(headGeo, headMat);
-  head.position.y = 0.75;
+  head.position.y = 0.6;
   head.castShadow = true;
   playerGroup.add(head);
+  
+  // Add cute eyes
+  const eyeGeo = new THREE.SphereGeometry(0.08, 8, 8);
+  const eyeMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+  const leftEye = new THREE.Mesh(eyeGeo, eyeMat);
+  leftEye.position.set(-0.12, 0.65, 0.28);
+  playerGroup.add(leftEye);
+  const rightEye = new THREE.Mesh(eyeGeo, eyeMat);
+  rightEye.position.set(0.12, 0.65, 0.28);
+  playerGroup.add(rightEye);
   
   player = playerGroup;
   player.position.set(0, 0.5, 0);
@@ -106,6 +152,158 @@ const initGame = () => {
 
   clock = new THREE.Clock();
   animate();
+};
+
+const createGround = () => {
+  // Create striped cartoon road texture
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+  
+  // Base asphalt color
+  ctx.fillStyle = '#3a3a3a';
+  ctx.fillRect(0, 0, 512, 512);
+  
+  // Add noise/texture
+  for (let i = 0; i < 500; i++) {
+    ctx.fillStyle = `rgba(255,255,255,${Math.random() * 0.1})`;
+    ctx.fillRect(Math.random() * 512, Math.random() * 512, 2, 2);
+  }
+  
+  groundTexture = new THREE.CanvasTexture(canvas);
+  groundTexture.wrapS = THREE.RepeatWrapping;
+  groundTexture.wrapT = THREE.RepeatWrapping;
+  groundTexture.repeat.set(1, 10);
+  
+  const groundGeo = new THREE.PlaneGeometry(15, 200);
+  const groundMat = new THREE.MeshToonMaterial({ 
+    map: groundTexture,
+    color: 0x555555
+  });
+  const ground = new THREE.Mesh(groundGeo, groundMat);
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.z = -50;
+  ground.receiveShadow = true;
+  scene.add(ground);
+  
+  // Add colorful grass borders
+  const grassGeo = new THREE.PlaneGeometry(30, 200);
+  const grassMat = new THREE.MeshToonMaterial({ color: 0x8bc34a });
+  const grass = new THREE.Mesh(grassGeo, grassMat);
+  grass.rotation.x = -Math.PI / 2;
+  grass.position.z = -50;
+  grass.position.y = -0.1;
+  grass.receiveShadow = true;
+  scene.add(grass);
+};
+
+const createLaneMarkers = () => {
+  const colors = [0xffffff, 0xffd700, 0xffffff];
+  for (let i = -1; i <= 1; i++) {
+    const lineGeo = new THREE.PlaneGeometry(0.15, 200);
+    const lineMat = new THREE.MeshBasicMaterial({ 
+      color: colors[i + 1], 
+      opacity: 0.6, 
+      transparent: true 
+    });
+    const line = new THREE.Mesh(lineGeo, lineMat);
+    line.rotation.x = -Math.PI / 2;
+    line.position.set(i * laneWidth, 0.02, -50);
+    scene.add(line);
+  }
+};
+
+const createClouds = () => {
+  const cloudGeo = new THREE.SphereGeometry(1, 8, 8);
+  const cloudMat = new THREE.MeshToonMaterial({ 
+    color: 0xffffff, 
+    transparent: true, 
+    opacity: 0.9 
+  });
+  
+  for (let i = 0; i < 15; i++) {
+    const cloud = new THREE.Group();
+    const puffCount = 3 + Math.floor(Math.random() * 3);
+    
+    for (let j = 0; j < puffCount; j++) {
+      const puff = new THREE.Mesh(cloudGeo, cloudMat);
+      puff.position.set(
+        (Math.random() - 0.5) * 3,
+        (Math.random() - 0.5) * 0.5,
+        (Math.random() - 0.5) * 2
+      );
+      puff.scale.setScalar(0.8 + Math.random() * 0.6);
+      cloud.add(puff);
+    }
+    
+    cloud.position.set(
+      (Math.random() - 0.5) * 40,
+      8 + Math.random() * 4,
+      -Math.random() * 60
+    );
+    cloud.castShadow = true;
+    scene.add(cloud);
+    clouds.push(cloud);
+  }
+};
+
+const createBackgroundElements = () => {
+  // Create stylized low-poly trees
+  const trunkGeo = new THREE.CylinderGeometry(0.2, 0.3, 2, 6);
+  const trunkMat = new THREE.MeshToonMaterial({ color: 0x8b4513 });
+  const leavesGeo = new THREE.ConeGeometry(1.5, 3, 6);
+  const leavesColors = [0x228b22, 0x32cd32, 0x8fbc8f, 0x90ee90];
+  
+  for (let i = 0; i < 20; i++) {
+    const tree = new THREE.Group();
+    
+    const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+    trunk.position.y = 1;
+    trunk.castShadow = true;
+    tree.add(trunk);
+    
+    const leavesMat = new THREE.MeshToonMaterial({ 
+      color: leavesColors[Math.floor(Math.random() * leavesColors.length)] 
+    });
+    const leaves = new THREE.Mesh(leavesGeo, leavesMat);
+    leaves.position.y = 3;
+    leaves.castShadow = true;
+    tree.add(leaves);
+    
+    const side = Math.random() > 0.5 ? 1 : -1;
+    tree.position.set(
+      side * (8 + Math.random() * 10),
+      0,
+      -Math.random() * 80
+    );
+    tree.scale.setScalar(0.8 + Math.random() * 0.4);
+    scene.add(tree);
+    trees.push(tree);
+  }
+  
+  // Add colorful cartoon buildings in distance
+  const buildingColors = [0xffb6c1, 0x87ceeb, 0x98fb98, 0xffd700, 0xdda0dd];
+  for (let i = 0; i < 12; i++) {
+    const height = 5 + Math.random() * 10;
+    const width = 3 + Math.random() * 4;
+    const buildingGeo = new THREE.BoxGeometry(width, height, width);
+    const buildingMat = new THREE.MeshToonMaterial({ 
+      color: buildingColors[Math.floor(Math.random() * buildingColors.length)] 
+    });
+    const building = new THREE.Mesh(buildingGeo, buildingMat);
+    
+    const side = Math.random() > 0.5 ? 1 : -1;
+    building.position.set(
+      side * (15 + Math.random() * 10),
+      height / 2,
+      -30 - Math.random() * 50
+    );
+    building.castShadow = true;
+    building.receiveShadow = true;
+    scene.add(building);
+    buildings.push(building);
+  }
 };
 
 const spawnObstacle = () => {
@@ -116,17 +314,25 @@ const spawnObstacle = () => {
   const colors = [0xff0000, 0xffa500, 0x8b0000, 0xff69b4];
   const fruitColor = colors[Math.floor(Math.random() * colors.length)];
   // Wider obstacle - sphere radius 1.2 (3x original)
-  const fruitGeo = new THREE.SphereGeometry(1.2, 16, 16);
-  const fruitMat = new THREE.MeshPhongMaterial({ color: fruitColor });
+  const fruitGeo = new THREE.SphereGeometry(1.2, 24, 24);
+  const fruitMat = new THREE.MeshToonMaterial({ color: fruitColor });
   const fruit = new THREE.Mesh(fruitGeo, fruitMat);
   fruit.castShadow = true;
   fruitGroup.add(fruit);
   
-  const stemGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.5);
-  const stemMat = new THREE.MeshPhongMaterial({ color: 0x228b22 });
+  const stemGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.5, 8);
+  const stemMat = new THREE.MeshToonMaterial({ color: 0x228b22 });
   const stem = new THREE.Mesh(stemGeo, stemMat);
   stem.position.y = 1.0;
   fruitGroup.add(stem);
+  
+  // Add leaf
+  const leafGeo = new THREE.SphereGeometry(0.3, 8, 8);
+  const leafMat = new THREE.MeshToonMaterial({ color: 0x32cd32 });
+  const leaf = new THREE.Mesh(leafGeo, leafMat);
+  leaf.position.set(0.2, 1.2, 0);
+  leaf.scale.set(1, 0.3, 1);
+  fruitGroup.add(leaf);
   
   fruitGroup.position.set(laneX, 0.6, -50);
   scene.add(fruitGroup);
@@ -137,10 +343,13 @@ const spawnCoin = () => {
   const lane = Math.floor(Math.random() * 3);
   const laneX = (lane - 1) * laneWidth;
   
-  const coinGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.1, 16);
-  const coinMat = new THREE.MeshPhongMaterial({ color: 0xffd700, metalness: 0.8, roughness: 0.2 });
+  const coinGeo = new THREE.TorusGeometry(0.3, 0.1, 8, 16);
+  const coinMat = new THREE.MeshToonMaterial({ 
+    color: 0xffd700,
+    emissive: 0xffaa00,
+    emissiveIntensity: 0.3
+  });
   const coin = new THREE.Mesh(coinGeo, coinMat);
-  coin.rotation.x = Math.PI / 2;
   coin.castShadow = true;
   coin.position.set(laneX, 1, -50);
   
@@ -199,6 +408,35 @@ const animate = () => {
     }
   });
 
+  // Animate clouds drifting
+  clouds.forEach((cloud, i) => {
+    cloud.position.z += 0.02;
+    if (cloud.position.z > 10) {
+      cloud.position.z = -60 - Math.random() * 20;
+      cloud.position.x = (Math.random() - 0.5) * 40;
+    }
+  });
+  
+  // Animate trees moving
+  trees.forEach((tree) => {
+    tree.position.z += gameSpeed;
+    if (tree.position.z > 10) {
+      const side = tree.position.x > 0 ? 1 : -1;
+      tree.position.z = -Math.random() * 80;
+      tree.position.x = side * (8 + Math.random() * 10);
+    }
+  });
+  
+  // Animate buildings moving
+  buildings.forEach((building) => {
+    building.position.z += gameSpeed;
+    if (building.position.z > 20) {
+      const side = building.position.x > 0 ? 1 : -1;
+      building.position.z = -30 - Math.random() * 50;
+      building.position.x = side * (15 + Math.random() * 10);
+    }
+  });
+
   if (isJumping) {
     player.position.y += jumpVelocity;
     jumpVelocity -= gravity;
@@ -208,11 +446,21 @@ const animate = () => {
       jumpVelocity = 0;
     }
   }
+  
+  // Add subtle player bobbing animation
+  if (!isJumping) {
+    player.position.y = 0.5 + Math.sin(time * 10) * 0.05;
+  }
 
   const targetX = (currentLane - 1) * laneWidth;
   player.position.x = THREE.MathUtils.lerp(player.position.x, targetX, 0.15);
+  
+  // Add slight tilt when moving
+  const tiltAmount = (player.position.x - targetX) * 0.1;
+  player.rotation.z = tiltAmount;
+  player.rotation.x = Math.sin(time * 10) * 0.05;
 
-  renderer.render(scene, camera);
+  composer.render();
 };
 
 const handleSwipe = (direction) => {
@@ -315,6 +563,7 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyDown);
   window.removeEventListener('touchstart', handleTouchStart);
   window.removeEventListener('touchend', handleTouchEnd);
+  if (composer) composer.dispose();
 });
 </script>
 
