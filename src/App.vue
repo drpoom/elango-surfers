@@ -1,6 +1,7 @@
 <template>
   <div id="game-container">
     <div id="ui">
+      <div id="version">v1.2.0 Tier 2</div>
       <div id="score">Score: {{ score }}</div>
       <div id="highscore">High Score: {{ highScore }}</div>
       <div id="mute-btn" @click="toggleMute">🔊</div>
@@ -25,14 +26,30 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 // Audio system
 let audioCtx = null;
 let isMuted = false;
+let audioInitialized = false;
 
 const initAudio = () => {
-  if (audioCtx) return;
+  if (audioInitialized) return;
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  audioInitialized = true;
+  // Resume context if suspended (browser autoplay policy)
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
 };
 
 const playSound = (type) => {
-  if (isMuted || !audioCtx) return;
+  if (isMuted) return;
+  
+  // Initialize audio on first sound if not already done
+  if (!audioCtx) {
+    initAudio();
+  }
+  
+  if (!audioCtx || audioCtx.state === 'suspended') {
+    if (audioCtx) audioCtx.resume();
+    return;
+  }
   
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
@@ -83,10 +100,16 @@ const playSound = (type) => {
 
 const toggleMute = () => {
   isMuted = !isMuted;
-  if (audioCtx && isMuted) {
-    audioCtx.suspend();
-  } else if (audioCtx && !isMuted) {
-    audioCtx.resume();
+  const muteBtn = document.getElementById('mute-btn');
+  if (muteBtn) {
+    muteBtn.textContent = isMuted ? '🔇' : '🔊';
+  }
+  if (audioCtx) {
+    if (isMuted) {
+      audioCtx.suspend();
+    } else {
+      audioCtx.resume();
+    }
   }
 };
 
@@ -695,8 +718,18 @@ onMounted(() => {
   window.addEventListener('touchend', handleTouchEnd, { passive: true });
   window.addEventListener('click', () => {
     if (gameOver.value) restartGame();
-    else initAudio();
+    initAudio();
   });
+  
+  // Also initialize audio on any keypress
+  window.addEventListener('keydown', () => {
+    initAudio();
+  }, { once: true });
+  
+  // Initialize audio on touch
+  window.addEventListener('touchstart', () => {
+    initAudio();
+  }, { once: true, passive: true });
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
@@ -727,6 +760,12 @@ onUnmounted(() => {
   color: white;
   z-index: 10;
   pointer-events: none;
+}
+#version {
+  font-size: 0.75rem;
+  opacity: 0.7;
+  margin-bottom: 5px;
+  font-family: monospace;
 }
 #score {
   font-size: 2rem;
