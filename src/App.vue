@@ -1003,23 +1003,42 @@ const animate = () => {
   coins.forEach((coin, index) => {
     if (coin.collected) return;
     
-    coin.mesh.position.z += gameSpeed;
-    coin.mesh.rotation.y += 0.1;
-
     const dist = player.position.distanceTo(coin.mesh.position);
-    // Magnet effect - only if coin is ahead of or alongside player
-    if (magnetRange > 0 && dist < magnetRange && coin.mesh.position.z <= player.position.z + 2) {
-      // Check if there's an obstacle blocking the path (between coin and player)
+    
+    // Magnet effect - strong pull to player position
+    if (magnetRange > 0 && dist < magnetRange) {
+      // Check if there's an obstacle blocking the path (obstacle must be between coin and player)
       const hasObstacle = obstacles.some(obs => {
-        const obsDist = obs.mesh.position.distanceTo(coin.mesh.position);
-        return obsDist < 2 && obs.mesh.position.z > coin.mesh.position.z && obs.mesh.position.z < player.position.z;
+        // Obstacle must be roughly in the same lane and between coin and player
+        const inSameLane = Math.abs(obs.mesh.position.x - coin.mesh.position.x) < 2;
+        const betweenCoinAndPlayer = (
+          (obs.mesh.position.z > coin.mesh.position.z && obs.mesh.position.z < player.position.z) ||
+          (obs.mesh.position.z < coin.mesh.position.z && obs.mesh.position.z > player.position.z)
+        );
+        const closeToLine = obs.mesh.position.distanceTo(
+          new THREE.Vector3(coin.mesh.position.x, 0, coin.mesh.position.z).lerp(
+            new THREE.Vector3(player.position.x, 0, player.position.z),
+            0.5
+          )
+        ) < 1.5;
+        return inSameLane && betweenCoinAndPlayer && closeToLine;
       });
       
       if (!hasObstacle) {
-        // Strong magnet pull - coins fly quickly to player
-        const pullStrength = 0.3;
-        coin.mesh.position.lerp(player.position.clone().add(new THREE.Vector3(0, 0.5, -2)), pullStrength);
+        // Strong magnet - coins fly directly to player (not just lerp, but override movement)
+        const direction = new THREE.Vector3().subVectors(player.position, coin.mesh.position).normalize();
+        const pullSpeed = 0.8; // Much faster than gameSpeed
+        coin.mesh.position.add(direction.multiplyScalar(pullSpeed));
+        coin.mesh.rotation.y += 0.2;
+      } else {
+        // Blocked by obstacle - continue normal movement
+        coin.mesh.position.z += gameSpeed;
+        coin.mesh.rotation.y += 0.1;
       }
+    } else {
+      // No magnet - normal movement
+      coin.mesh.position.z += gameSpeed;
+      coin.mesh.rotation.y += 0.1;
     }
     
     if (dist < 1.2) {
