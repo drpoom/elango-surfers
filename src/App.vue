@@ -358,9 +358,9 @@ const initGame = () => {
   
   const bloomPass = new UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
-    0.4,  // strength
-    0.5,  // radius
-    0.85  // threshold
+    0.35,  // strength (reduced for performance)
+    0.4,   // radius
+    0.85   // threshold
   );
   composer.addPass(bloomPass);
 
@@ -1081,11 +1081,13 @@ const handleSwipe = (direction) => {
 };
 
 const handleTouchStart = (e) => {
+  e.preventDefault();
   touchStartX = e.touches[0].clientX;
   touchStartY = e.touches[0].clientY;
 };
 
 const handleTouchEnd = (e) => {
+  e.preventDefault();
   const touchEndX = e.changedTouches[0].clientX;
   const touchEndY = e.changedTouches[0].clientY;
   
@@ -1169,6 +1171,11 @@ const handleJump = () => {
 };
 
 const handleKeyDown = (e) => {
+  // Prevent default for game controls to stop page scrolling
+  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space', ' '].includes(e.key)) {
+    e.preventDefault();
+  }
+  
   // Restart on Space or Enter when game over
   if (gameOver.value && (e.key === ' ' || e.key === 'Enter')) {
     restartGame();
@@ -1202,6 +1209,7 @@ const restartGame = () => {
   magnetRange = 0;
   isInvincible = false;
   activePowerup = null;
+  dayCycleTime = 0;
   
   // Update stats
   if (score.value > gameStats.maxScore) gameStats.maxScore = score.value;
@@ -1223,11 +1231,19 @@ const restartGame = () => {
   floatingTexts.forEach(t => scene.remove(t));
   floatingTexts = [];
   
+  // Clear achievement notifications
+  achievements.value = [];
+  
   player.position.set(0, 0.5, 0);
   
   // Remove shield aura if exists
   const shield = player.getObjectByName('shield-aura');
   if (shield) player.remove(shield);
+  
+  // Remove stars if present
+  const stars = scene.getObjectByName('stars');
+  if (stars) scene.remove(stars);
+  scene.userData.starsCreated = false;
   
   lastSpawnTime = 0;
   clock.start();
@@ -1239,8 +1255,8 @@ onMounted(() => {
   if (saved) highScore.value = parseInt(saved, 10);
   initGame();
   window.addEventListener('keydown', handleKeyDown);
-  window.addEventListener('touchstart', handleTouchStart, { passive: true });
-  window.addEventListener('touchend', handleTouchEnd, { passive: true });
+  window.addEventListener('touchstart', handleTouchStart, { passive: false });
+  window.addEventListener('touchend', handleTouchEnd, { passive: false });
   window.addEventListener('click', () => {
     if (gameOver.value) restartGame();
     initAudio();
