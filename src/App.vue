@@ -1406,7 +1406,9 @@ onMounted(() => {
   window.addEventListener('keydown', handleKeyDown);
   window.addEventListener('touchstart', handleTouchStart, { passive: false });
   window.addEventListener('touchend', handleTouchEnd, { passive: false });
-  window.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+  window.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+  }, { passive: false, capture: true });
   window.addEventListener('click', (e) => {
     // Check if click is on settings panel or buttons - if so, don't restart
     if (e.target.closest('#settings-panel') || e.target.closest('#settings-btn') || e.target.closest('#mute-btn')) {
@@ -1443,6 +1445,7 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyDown);
   window.removeEventListener('touchstart', handleTouchStart);
   window.removeEventListener('touchend', handleTouchEnd);
+  window.removeEventListener('touchmove', handleTouchEnd, { capture: true });
   if (composer) composer.dispose();
   stopBGM();
 });
@@ -1458,6 +1461,14 @@ onUnmounted(() => {
   touch-action: none; /* Prevent zoom/scroll on mobile */
   user-select: none; /* Prevent text selection */
   -webkit-touch-callout: none; /* Prevent iOS callout menu */
+  overscroll-behavior: none; /* Prevent pull-to-refresh */
+  -webkit-overflow-scrolling: none; /* Disable iOS momentum scroll */
+}
+
+#game-container * {
+  touch-action: none;
+  -webkit-touch-callout: none;
+  user-select: none;
 }
 #ui {
   position: absolute;
