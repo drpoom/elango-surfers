@@ -67,6 +67,9 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 let audioCtx = null;
 let isMuted = false;
 let audioInitialized = false;
+let bgmOscillators = [];
+let bgmGain = null;
+let isBGMPlaying = false;
 
 const initAudio = () => {
   if (audioInitialized) return;
@@ -76,6 +79,8 @@ const initAudio = () => {
   if (audioCtx.state === 'suspended') {
     audioCtx.resume();
   }
+  // Start BGM
+  startBGM();
 };
 
 const playSound = (type, pitchMod = 1) => {
@@ -179,6 +184,88 @@ const toggleMute = () => {
     } else {
       audioCtx.resume();
     }
+  }
+};
+
+// Action BGM - upbeat electronic loop
+const startBGM = () => {
+  if (!audioCtx || isBGMPlaying) return;
+  
+  isBGMPlaying = true;
+  bgmGain = audioCtx.createGain();
+  bgmGain.gain.value = 0.12; // Low volume background
+  bgmGain.connect(audioCtx.destination);
+  
+  // Bass line (pulsing synth)
+  const bassFreqs = [110, 110, 110, 110, 130, 130, 110, 98]; // A2, C3, G2
+  const bassInterval = 0.25; // 240 BPM feel
+  
+  bassFreqs.forEach((freq, i) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.value = freq;
+    
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 400;
+    
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(bgmGain);
+    
+    const startTime = audioCtx.currentTime + (i * bassInterval);
+    gain.gain.setValueAtTime(0.5, startTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, startTime + bassInterval - 0.05);
+    
+    osc.start(startTime);
+    osc.stop(startTime + bassInterval);
+    bgmOscillators.push(osc);
+  });
+  
+  // Hi-hat pattern
+  const hatInterval = 0.125;
+  for (let i = 0; i < 16; i++) {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'square';
+    osc.frequency.value = 800 + (i % 4) * 100;
+    
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.value = 2000;
+    
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(bgmGain);
+    
+    const startTime = audioCtx.currentTime + (i * hatInterval);
+    const vol = (i % 4 === 0) ? 0.15 : 0.08;
+    gain.gain.setValueAtTime(vol, startTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.05);
+    
+    osc.start(startTime);
+    osc.stop(startTime + 0.1);
+    bgmOscillators.push(osc);
+  }
+  
+  // Loop every 4 seconds
+  setTimeout(() => {
+    if (isBGMPlaying && !isMuted) {
+      startBGM();
+    }
+  }, 4000);
+};
+
+const stopBGM = () => {
+  isBGMPlaying = false;
+  bgmOscillators.forEach(osc => {
+    try { osc.stop(); } catch(e) {}
+  });
+  bgmOscillators = [];
+  if (bgmGain) {
+    bgmGain.disconnect();
+    bgmGain = null;
   }
 };
 
@@ -1094,6 +1181,7 @@ const handleTouchStart = (e) => {
   e.preventDefault();
   touchStartX = e.touches[0].clientX;
   touchStartY = e.touches[0].clientY;
+  initAudio(); // Start audio on first touch
 };
 
 const handleTouchEnd = (e) => {
@@ -1185,6 +1273,9 @@ const handleKeyDown = (e) => {
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space', ' '].includes(e.key)) {
     e.preventDefault();
   }
+  
+  // Initialize audio on first keypress
+  initAudio();
   
   // Restart on Space or Enter when game over
   if (gameOver.value && (e.key === ' ' || e.key === 'Enter')) {
@@ -1300,6 +1391,7 @@ onUnmounted(() => {
   window.removeEventListener('touchstart', handleTouchStart);
   window.removeEventListener('touchend', handleTouchEnd);
   if (composer) composer.dispose();
+  stopBGM();
 });
 </script>
 
