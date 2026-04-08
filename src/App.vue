@@ -3,7 +3,7 @@
     <div id="ui">
       <div id="score">Score: {{ score }}</div>
       <div id="highscore">High Score: {{ highScore }}</div>
-      <div id="instructions">A/D or ←/→ to move | W or ↑ to Jump | Space to Restart<br>📱 Swipe ←/→ to move | Swipe ↑ to jump</div>
+      <div id="instructions">A/D or ←/→ to move | W or ↑ to Jump | Space to Restart<br>📱 Swipe ←/→ to move | Swipe ↑ to jump<br>⚡ Speed increases over time!</div>
     </div>
     <div id="game-canvas"></div>
     <div v-if="gameOver" id="game-over">
@@ -35,6 +35,8 @@ const gravity = 0.015;
 const laneWidth = 3;
 let gameSpeed = 0.25;
 let lastSpawnTime = 0;
+let spawnInterval = 1.2; // Dynamic spawn interval
+let gameDuration = 0; // Track playtime for difficulty scaling
 
 // Touch/swipe controls
 let touchStartX = 0;
@@ -365,11 +367,22 @@ const animate = () => {
   const delta = clock.getDelta();
   const time = clock.getElapsedTime();
   
-  score.value += Math.floor(delta * 50);
+  gameDuration += delta;
+  
+  // Progressive difficulty scaling
+  // Speed increases every 30 seconds, caps at 2x base speed
+  const difficultyMultiplier = Math.min(1 + (gameDuration / 30), 2);
+  const targetSpeed = 0.25 * difficultyMultiplier;
+  gameSpeed = THREE.MathUtils.lerp(gameSpeed, targetSpeed, 0.01);
+  
+  // Spawn interval decreases over time (more obstacles)
+  spawnInterval = Math.max(0.6, 1.2 - (gameDuration / 60));
+  
+  score.value += Math.floor(delta * 50 * difficultyMultiplier);
 
-  if (time - lastSpawnTime > 1.2) {
+  if (time - lastSpawnTime > spawnInterval) {
     if (Math.random() < 0.7) spawnObstacle();
-    if (Math.random() < 0.5) spawnCoin();
+    if (Math.random() < 0.5 + (gameDuration / 120)) spawnCoin(); // More coins over time
     lastSpawnTime = time;
   }
 
@@ -534,6 +547,8 @@ const restartGame = () => {
   isJumping = false;
   jumpVelocity = 0;
   gameSpeed = 0.25;
+  spawnInterval = 1.2;
+  gameDuration = 0;
   
   obstacles.forEach(obs => scene.remove(obs.mesh));
   obstacles = [];
