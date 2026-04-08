@@ -3,6 +3,7 @@
     <div id="ui">
       <div id="score">Score: {{ score }}</div>
       <div id="highscore">High Score: {{ highScore }}</div>
+      <div id="mute-btn" @click="toggleMute">🔊</div>
       <div id="instructions">A/D or ←/→ to move | W or ↑ to Jump | Space to Restart<br>📱 Swipe ←/→ to move | Swipe ↑ to jump<br>⚡ Speed increases over time!</div>
     </div>
     <div id="game-canvas"></div>
@@ -21,12 +22,81 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
+// Audio system
+let audioCtx = null;
+let isMuted = false;
+
+const initAudio = () => {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+};
+
+const playSound = (type) => {
+  if (isMuted || !audioCtx) return;
+  
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  
+  const now = audioCtx.currentTime;
+  
+  switch (type) {
+    case 'jump':
+      osc.frequency.setValueAtTime(300, now);
+      osc.frequency.exponentialRampToValueAtTime(600, now + 0.1);
+      gain.gain.setValueAtTime(0.3, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+      osc.start(now);
+      osc.stop(now + 0.1);
+      break;
+    case 'coin':
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1200, now);
+      osc.frequency.setValueAtTime(1600, now + 0.1);
+      gain.gain.setValueAtTime(0.3, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+      osc.start(now);
+      osc.stop(now + 0.2);
+      break;
+    case 'crash':
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(150, now);
+      osc.frequency.exponentialRampToValueAtTime(50, now + 0.3);
+      gain.gain.setValueAtTime(0.4, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+      osc.start(now);
+      osc.stop(now + 0.3);
+      break;
+    case 'start':
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(440, now);
+      osc.frequency.setValueAtTime(554, now + 0.1);
+      osc.frequency.setValueAtTime(659, now + 0.2);
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.linearRampToValueAtTime(0, now + 0.4);
+      osc.start(now);
+      osc.stop(now + 0.4);
+      break;
+  }
+};
+
+const toggleMute = () => {
+  isMuted = !isMuted;
+  if (audioCtx && isMuted) {
+    audioCtx.suspend();
+  } else if (audioCtx && !isMuted) {
+    audioCtx.resume();
+  }
+};
+
 const score = ref(0);
 const highScore = ref(0);
 const gameOver = ref(false);
 let scene, camera, renderer, player, clock;
 let obstacles = [];
 let coins = [];
+let particles = [];
 let currentLane = 1;
 let isJumping = false;
 let jumpVelocity = 0;
@@ -35,8 +105,10 @@ const gravity = 0.015;
 const laneWidth = 3;
 let gameSpeed = 0.25;
 let lastSpawnTime = 0;
-let spawnInterval = 1.2; // Dynamic spawn interval
-let gameDuration = 0; // Track playtime for difficulty scaling
+let spawnInterval = 1.2;
+let gameDuration = 0;
+let comboCount = 0;
+let lastCoinTime = 0;
 
 // Touch/swipe controls
 let touchStartX = 0;
@@ -359,6 +431,24 @@ const spawnCoin = () => {
   coins.push({ mesh: coin, lane, collected: false });
 };
 
+const createParticleEffect = (position, color, count = 10) => {
+  const particleGeo = new THREE.SphereGeometry(0.1, 4, 4);
+  const particleMat = new THREE.MeshBasicMaterial({ color });
+  
+  for (let i = 0; i < count; i++) {
+    const particle = new THREE.Mesh(particleGeo, particleMat);
+    particle.position.copy(position);
+    particle.velocity = new THREE.Vector3(
+      (Math.random() - 0.5) * 0.3,
+      (Math.random() - 0.5) * 0.3 + 0.2,
+      (Math.random() - 0.5) * 0.3
+    );
+    particle.life = 1.0;
+    scene.add(particle);
+    particles.push(particle);
+  }
+};
+
 const animate = () => {
   requestAnimationFrame(animate);
 
@@ -395,6 +485,9 @@ const animate = () => {
     if (dist < 1.5 && player.position.y < 1.0) {
       gameOver.value = true;
       saveHighScore();
+      playSound('crash');
+      createParticleEffect(player.position, 0xff0000, 30);
+      comboCount = 0;
     }
 
     if (obs.mesh.position.z > 15) {
@@ -412,7 +505,15 @@ const animate = () => {
     const dist = player.position.distanceTo(coin.mesh.position);
     if (dist < 1.2) {
       coin.collected = true;
-      score.value += 100;
+      comboCount++;
+      const now = Date.now();
+      const comboBonus = comboCount > 1 && (now - lastCoinTime) < 1000 ? comboCount * 10 : 0;
+      score.value += 100 + comboBonus;
+      lastCoinTime = now;
+      
+      createParticleEffect(coin.mesh.position, 0xffd700, 15);
+      playSound('coin');
+      
       scene.remove(coin.mesh);
       coins.splice(index, 1);
     } else if (coin.mesh.position.z > 15) {
@@ -449,6 +550,19 @@ const animate = () => {
       building.position.x = side * (15 + Math.random() * 10);
     }
   });
+  
+  // Animate particles
+  particles.forEach((particle, index) => {
+    particle.position.add(particle.velocity);
+    particle.velocity.y -= 0.01;
+    particle.life -= 0.02;
+    particle.scale.setScalar(particle.life);
+    
+    if (particle.life <= 0) {
+      scene.remove(particle);
+      particles.splice(index, 1);
+    }
+  });
 
   if (isJumping) {
     player.position.y += jumpVelocity;
@@ -483,9 +597,8 @@ const handleSwipe = (direction) => {
     if (currentLane > 0) currentLane--;
   } else if (direction === 'right') {
     if (currentLane < 2) currentLane++;
-  } else if (direction === 'up' && !isJumping) {
-    isJumping = true;
-    jumpVelocity = jumpStrength;
+  } else if (direction === 'up') {
+    handleJump();
   }
 };
 
@@ -519,6 +632,13 @@ const handleTouchEnd = (e) => {
   }
 };
 
+const handleJump = () => {
+  if (isJumping) return;
+  isJumping = true;
+  jumpVelocity = jumpStrength;
+  playSound('jump');
+};
+
 const handleKeyDown = (e) => {
   // Restart on Space or Enter when game over
   if (gameOver.value && (e.key === ' ' || e.key === 'Enter')) {
@@ -535,8 +655,7 @@ const handleKeyDown = (e) => {
   }
   
   if ((e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') && !isJumping) {
-    isJumping = true;
-    jumpVelocity = jumpStrength;
+    handleJump();
   }
 };
 
@@ -549,6 +668,7 @@ const restartGame = () => {
   gameSpeed = 0.25;
   spawnInterval = 1.2;
   gameDuration = 0;
+  comboCount = 0;
   
   obstacles.forEach(obs => scene.remove(obs.mesh));
   obstacles = [];
@@ -556,17 +676,27 @@ const restartGame = () => {
   coins.forEach(coin => scene.remove(coin.mesh));
   coins = [];
   
+  particles.forEach(p => scene.remove(p));
+  particles = [];
+  
   player.position.set(0, 0.5, 0);
   
   lastSpawnTime = 0;
   clock.start();
+  playSound('start');
 };
 
 onMounted(() => {
+  const saved = localStorage.getItem('elangoSurfersHighScore');
+  if (saved) highScore.value = parseInt(saved, 10);
   initGame();
   window.addEventListener('keydown', handleKeyDown);
   window.addEventListener('touchstart', handleTouchStart, { passive: true });
   window.addEventListener('touchend', handleTouchEnd, { passive: true });
+  window.addEventListener('click', () => {
+    if (gameOver.value) restartGame();
+    else initAudio();
+  });
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
