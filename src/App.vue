@@ -917,9 +917,19 @@ const animate = () => {
     coin.mesh.rotation.y += 0.1;
 
     const dist = player.position.distanceTo(coin.mesh.position);
-    // Magnet effect
-    if (magnetRange > 0 && dist < magnetRange) {
-      coin.mesh.position.lerp(player.position, 0.1);
+    // Magnet effect - only if coin is ahead of or alongside player
+    if (magnetRange > 0 && dist < magnetRange && coin.mesh.position.z <= player.position.z + 2) {
+      // Check if there's an obstacle blocking the path (between coin and player)
+      const hasObstacle = obstacles.some(obs => {
+        const obsDist = obs.mesh.position.distanceTo(coin.mesh.position);
+        return obsDist < 2 && obs.mesh.position.z > coin.mesh.position.z && obs.mesh.position.z < player.position.z;
+      });
+      
+      if (!hasObstacle) {
+        // Strong magnet pull - coins fly quickly to player
+        const pullStrength = 0.3;
+        coin.mesh.position.lerp(player.position.clone().add(new THREE.Vector3(0, 0.5, -2)), pullStrength);
+      }
     }
     
     if (dist < 1.2) {
