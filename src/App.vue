@@ -1386,6 +1386,7 @@ onMounted(() => {
   window.addEventListener('keydown', handleKeyDown);
   window.addEventListener('touchstart', handleTouchStart, { passive: false });
   window.addEventListener('touchend', handleTouchEnd, { passive: false });
+  window.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
   window.addEventListener('click', () => {
     if (gameOver.value) restartGame();
     initAudio();
@@ -1430,6 +1431,9 @@ onUnmounted(() => {
   height: 100vh;
   overflow: hidden;
   font-family: Arial, sans-serif;
+  touch-action: none; /* Prevent zoom/scroll on mobile */
+  user-select: none; /* Prevent text selection */
+  -webkit-touch-callout: none; /* Prevent iOS callout menu */
 }
 #ui {
   position: absolute;
