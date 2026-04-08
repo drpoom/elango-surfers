@@ -80,10 +80,12 @@ const initAudio = () => {
   audioInitialized = true;
   // Resume context if suspended (browser autoplay policy)
   if (audioCtx.state === 'suspended') {
-    audioCtx.resume();
+    audioCtx.resume().then(() => {
+      startBGM();
+    }).catch(err => console.log('Audio resume failed:', err));
+  } else {
+    startBGM();
   }
-  // Start BGM
-  startBGM();
 };
 
 const playSound = (type, pitchMod = 1) => {
@@ -200,14 +202,14 @@ const startBGM = () => {
   
   isBGMPlaying = true;
   bgmGain = audioCtx.createGain();
-  bgmGain.gain.value = 0.25; // Increased volume
+  bgmGain.gain.value = 0.3; // Increased volume
   bgmGain.connect(audioCtx.destination);
   
-  const now = audioCtx.currentTime + 0.1; // Small delay to ensure context is ready
+  const now = audioCtx.currentTime + 0.05;
   
-  // Bass line (pulsing synth) - 4-note loop
-  const bassFreqs = [110, 110, 130, 98]; // A2, A2, C3, G2
-  const bassInterval = 0.5; // 120 BPM
+  // Bass line - simple 2-note loop for reliability
+  const bassFreqs = [110, 130]; // A2, C3
+  const bassInterval = 0.5;
   
   bassFreqs.forEach((freq, i) => {
     const osc = audioCtx.createOscillator();
@@ -217,14 +219,14 @@ const startBGM = () => {
     
     const filter = audioCtx.createBiquadFilter();
     filter.type = 'lowpass';
-    filter.frequency.value = 500;
+    filter.frequency.value = 600;
     
     osc.connect(filter);
     filter.connect(gain);
     gain.connect(bgmGain);
     
     const startTime = now + (i * bassInterval);
-    gain.gain.setValueAtTime(0.6, startTime);
+    gain.gain.setValueAtTime(0.7, startTime);
     gain.gain.exponentialRampToValueAtTime(0.01, startTime + bassInterval - 0.1);
     
     osc.start(startTime);
@@ -232,38 +234,38 @@ const startBGM = () => {
     bgmOscillators.push(osc);
   });
   
-  // Hi-hat pattern - 8 notes
+  // Hi-hat - simple pattern
   const hatInterval = 0.25;
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 4; i++) {
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     osc.type = 'square';
-    osc.frequency.value = 1000;
+    osc.frequency.value = 1200;
     
     const filter = audioCtx.createBiquadFilter();
     filter.type = 'highpass';
-    filter.frequency.value = 3000;
+    filter.frequency.value = 4000;
     
     osc.connect(filter);
     filter.connect(gain);
     gain.connect(bgmGain);
     
     const startTime = now + (i * hatInterval);
-    const vol = (i % 2 === 0) ? 0.2 : 0.12;
+    const vol = (i % 2 === 0) ? 0.25 : 0.15;
     gain.gain.setValueAtTime(vol, startTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.1);
+    gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.08);
     
     osc.start(startTime);
-    osc.stop(startTime + 0.15);
+    osc.stop(startTime + 0.1);
     bgmOscillators.push(osc);
   }
   
-  // Loop every 2 seconds
+  // Loop every 1 second
   setTimeout(() => {
-    if (isBGMPlaying && !isMuted) {
+    if (isBGMPlaying && !isMuted && audioCtx && audioCtx.state === 'running') {
       startBGM();
     }
-  }, 2000);
+  }, 1000);
 };
 
 const stopBGM = () => {
@@ -1217,6 +1219,12 @@ const handleTouchEnd = (e) => {
   const touchEndX = e.changedTouches[0].clientX;
   const touchEndY = e.changedTouches[0].clientY;
   
+  // If game over, any tap restarts
+  if (gameOver.value) {
+    restartGame();
+    return;
+  }
+  
   const diffX = touchEndX - touchStartX;
   const diffY = touchEndY - touchStartY;
   
@@ -1305,8 +1313,8 @@ const handleKeyDown = (e) => {
   // Initialize audio on first keypress
   initAudio();
   
-  // Restart on Space or Enter when game over
-  if (gameOver.value && (e.key === ' ' || e.key === 'Enter')) {
+  // Restart on Space, Enter, or any key when game over
+  if (gameOver.value) {
     restartGame();
     return;
   }
@@ -1387,7 +1395,11 @@ onMounted(() => {
   window.addEventListener('touchstart', handleTouchStart, { passive: false });
   window.addEventListener('touchend', handleTouchEnd, { passive: false });
   window.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
-  window.addEventListener('click', () => {
+  window.addEventListener('click', (e) => {
+    // Check if click is on settings panel or buttons - if so, don't restart
+    if (e.target.closest('#settings-panel') || e.target.closest('#settings-btn') || e.target.closest('#mute-btn')) {
+      return;
+    }
     if (gameOver.value) restartGame();
     initAudio();
   });
