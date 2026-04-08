@@ -186,22 +186,28 @@ const toggleMute = () => {
       audioCtx.suspend();
     } else {
       audioCtx.resume();
+      // Restart BGM if it stopped
+      if (!isBGMPlaying) {
+        startBGM();
+      }
     }
   }
 };
 
 // Action BGM - upbeat electronic loop
 const startBGM = () => {
-  if (!audioCtx || isBGMPlaying) return;
+  if (!audioCtx || isBGMPlaying || isMuted) return;
   
   isBGMPlaying = true;
   bgmGain = audioCtx.createGain();
-  bgmGain.gain.value = 0.12; // Low volume background
+  bgmGain.gain.value = 0.25; // Increased volume
   bgmGain.connect(audioCtx.destination);
   
-  // Bass line (pulsing synth)
-  const bassFreqs = [110, 110, 110, 110, 130, 130, 110, 98]; // A2, C3, G2
-  const bassInterval = 0.25; // 240 BPM feel
+  const now = audioCtx.currentTime + 0.1; // Small delay to ensure context is ready
+  
+  // Bass line (pulsing synth) - 4-note loop
+  const bassFreqs = [110, 110, 130, 98]; // A2, A2, C3, G2
+  const bassInterval = 0.5; // 120 BPM
   
   bassFreqs.forEach((freq, i) => {
     const osc = audioCtx.createOscillator();
@@ -211,53 +217,53 @@ const startBGM = () => {
     
     const filter = audioCtx.createBiquadFilter();
     filter.type = 'lowpass';
-    filter.frequency.value = 400;
+    filter.frequency.value = 500;
     
     osc.connect(filter);
     filter.connect(gain);
     gain.connect(bgmGain);
     
-    const startTime = audioCtx.currentTime + (i * bassInterval);
-    gain.gain.setValueAtTime(0.5, startTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, startTime + bassInterval - 0.05);
+    const startTime = now + (i * bassInterval);
+    gain.gain.setValueAtTime(0.6, startTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, startTime + bassInterval - 0.1);
     
     osc.start(startTime);
     osc.stop(startTime + bassInterval);
     bgmOscillators.push(osc);
   });
   
-  // Hi-hat pattern
-  const hatInterval = 0.125;
-  for (let i = 0; i < 16; i++) {
+  // Hi-hat pattern - 8 notes
+  const hatInterval = 0.25;
+  for (let i = 0; i < 8; i++) {
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     osc.type = 'square';
-    osc.frequency.value = 800 + (i % 4) * 100;
+    osc.frequency.value = 1000;
     
     const filter = audioCtx.createBiquadFilter();
     filter.type = 'highpass';
-    filter.frequency.value = 2000;
+    filter.frequency.value = 3000;
     
     osc.connect(filter);
     filter.connect(gain);
     gain.connect(bgmGain);
     
-    const startTime = audioCtx.currentTime + (i * hatInterval);
-    const vol = (i % 4 === 0) ? 0.15 : 0.08;
+    const startTime = now + (i * hatInterval);
+    const vol = (i % 2 === 0) ? 0.2 : 0.12;
     gain.gain.setValueAtTime(vol, startTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.1);
     
     osc.start(startTime);
-    osc.stop(startTime + 0.1);
+    osc.stop(startTime + 0.15);
     bgmOscillators.push(osc);
   }
   
-  // Loop every 4 seconds
+  // Loop every 2 seconds
   setTimeout(() => {
     if (isBGMPlaying && !isMuted) {
       startBGM();
     }
-  }, 4000);
+  }, 2000);
 };
 
 const stopBGM = () => {
