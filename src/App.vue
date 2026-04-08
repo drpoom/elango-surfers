@@ -64,7 +64,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v1.3.7 Restart';
+const VERSION = 'v1.3.9 Touch Fix';
 
 // Audio system
 let audioCtx = null;
