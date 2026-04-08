@@ -1,7 +1,7 @@
 <template>
   <div id="game-container">
     <div id="ui">
-      <div id="version">v1.3.0 Tier 3</div>
+      <div id="version">{{ VERSION }}</div>
       <div id="score">Score: {{ score }}</div>
       <div id="highscore">High Score: {{ highScore }}</div>
       <div id="combo" v-if="comboCount > 1">🔥 Combo x{{ comboCount }}</div>
@@ -62,6 +62,9 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+// Version - Update this for each release
+const VERSION = 'v1.3.3 BGM';
 
 // Audio system
 let audioCtx = null;
