@@ -67,7 +67,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v2.3.0 Voice Fly';
+const VERSION = 'v2.3.1 UFO + Button Fix';
 
 // Audio system
 let audioCtx = null;
@@ -1063,47 +1063,55 @@ const spawnFloatingObstacle = () => {
   const lane = Math.floor(Math.random() * 3);
   const laneX = (lane - 1) * laneWidth;
   
-  const barGroup = new THREE.Group();
+  const ufoGroup = new THREE.Group();
   
-  // Main horizontal bar
-  const barGeo = new THREE.BoxGeometry(2.5, 0.4, 0.4);
-  const barMat = new THREE.MeshToonMaterial({ color: 0xff4444, emissive: 0x881111, emissiveIntensity: 0.3 });
-  const bar = new THREE.Mesh(barGeo, barMat);
-  bar.castShadow = true;
-  barGroup.add(bar);
+  // UFO dome (top)
+  const domeGeo = new THREE.SphereGeometry(0.5, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2);
+  const domeMat = new THREE.MeshToonMaterial({ color: 0x88ff88, emissive: 0x22aa22, emissiveIntensity: 0.3 });
+  const dome = new THREE.Mesh(domeGeo, domeMat);
+  dome.position.y = 0.1;
+  dome.castShadow = true;
+  ufoGroup.add(dome);
   
-  // Warning stripes
-  const stripeGeo = new THREE.BoxGeometry(0.3, 0.42, 0.42);
-  const stripeMat = new THREE.MeshToonMaterial({ color: 0xffcc00 });
-  for (let x = -0.9; x <= 0.9; x += 0.6) {
-    const stripe = new THREE.Mesh(stripeGeo, stripeMat);
-    stripe.position.x = x;
-    barGroup.add(stripe);
+  // UFO saucer body (flattened disc)
+  const saucerGeo = new THREE.CylinderGeometry(1.0, 1.2, 0.3, 24);
+  const saucerMat = new THREE.MeshToonMaterial({ color: 0xcccccc, emissive: 0x444444, emissiveIntensity: 0.2 });
+  const saucer = new THREE.Mesh(saucerGeo, saucerMat);
+  saucer.castShadow = true;
+  ufoGroup.add(saucer);
+  
+  // UFO bottom ring (glowing)
+  const ringGeo = new THREE.TorusGeometry(0.9, 0.08, 8, 24);
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = -0.15;
+  ring.name = 'ufo-ring';
+  ufoGroup.add(ring);
+  
+  // UFO lights around the rim
+  const lightGeo = new THREE.SphereGeometry(0.08, 6, 6);
+  const lightColors = [0xff0000, 0xffff00, 0x00ff00, 0x0088ff, 0xff00ff];
+  for (let i = 0; i < 5; i++) {
+    const lightMat = new THREE.MeshBasicMaterial({ color: lightColors[i] });
+    const ufoLight = new THREE.Mesh(lightGeo, lightMat);
+    const angle = (i / 5) * Math.PI * 2;
+    ufoLight.position.set(Math.cos(angle) * 1.1, -0.05, Math.sin(angle) * 1.1);
+    ufoLight.name = 'ufo-light-' + i;
+    ufoGroup.add(ufoLight);
   }
   
-  // Support posts on each end
-  const postGeo = new THREE.CylinderGeometry(0.1, 0.1, 1.5, 8);
-  const postMat = new THREE.MeshToonMaterial({ color: 0x888888 });
-  const leftPost = new THREE.Mesh(postGeo, postMat);
-  leftPost.position.set(-1.2, -0.55, 0);
-  leftPost.castShadow = true;
-  barGroup.add(leftPost);
-  const rightPost = new THREE.Mesh(postGeo, postMat);
-  rightPost.position.set(1.2, -0.55, 0);
-  rightPost.castShadow = true;
-  barGroup.add(rightPost);
+  // Tractor beam (cone below)
+  const beamGeo = new THREE.ConeGeometry(1.2, 1.5, 16, 1, true);
+  const beamMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.15, side: THREE.DoubleSide });
+  const beam = new THREE.Mesh(beamGeo, beamMat);
+  beam.position.y = -1.0;
+  beam.rotation.x = Math.PI; // Point downward
+  ufoGroup.add(beam);
   
-  // Blinking warning light on top
-  const lightGeo = new THREE.SphereGeometry(0.15, 8, 8);
-  const lightMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-  const warningLight = new THREE.Mesh(lightGeo, lightMat);
-  warningLight.position.set(0, 0.35, 0);
-  warningLight.name = 'warning-light';
-  barGroup.add(warningLight);
-  
-  barGroup.position.set(laneX, 1.8, -50);
-  scene.add(barGroup);
-  obstacles.push({ mesh: barGroup, lane, type: 'floating' });
+  ufoGroup.position.set(laneX, 2.2, -50);
+  scene.add(ufoGroup);
+  obstacles.push({ mesh: ufoGroup, lane, type: 'floating' });
 };
 
 const spawnCoin = () => {
@@ -1273,7 +1281,8 @@ const animate = () => {
 
   obstacles.forEach((obs, index) => {
     obs.mesh.position.z += gameSpeed;
-    obs.mesh.rotation.y += 0.05;
+    // Spin UFOs faster, ground obstacles slow spin
+    obs.mesh.rotation.y += obs.type === 'floating' ? 0.08 : 0.05;
 
     const dist = player.position.distanceTo(obs.mesh.position);
     const isFloating = obs.type === 'floating';
@@ -1672,6 +1681,8 @@ const handleSwipe = (direction) => {
 };
 
 const handleTouchStart = (e) => {
+  // Don't intercept touches on UI buttons
+  if (e.target.closest('#mute-btn, #tilt-btn, #mic-btn, #settings-btn, #settings-panel')) return;
   e.preventDefault();
   touchStartX = e.touches[0].clientX;
   touchStartY = e.touches[0].clientY;
@@ -1679,6 +1690,7 @@ const handleTouchStart = (e) => {
 };
 
 const handleTouchEnd = (e) => {
+  if (e.target.closest('#mute-btn, #tilt-btn, #mic-btn, #settings-btn, #settings-panel')) return;
   e.preventDefault();
   const touchEndX = e.changedTouches[0].clientX;
   const touchEndY = e.changedTouches[0].clientY;
@@ -1925,6 +1937,7 @@ onMounted(() => {
   window.addEventListener('touchstart', handleTouchStart, { passive: false });
   window.addEventListener('touchend', handleTouchEnd, { passive: false });
   window.addEventListener('touchmove', (e) => {
+    if (e.target.closest('#mute-btn, #tilt-btn, #mic-btn, #settings-btn, #settings-panel')) return;
     e.preventDefault();
   }, { passive: false, capture: true });
   window.addEventListener('click', (e) => {
