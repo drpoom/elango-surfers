@@ -64,7 +64,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v2.0.2 Powerup Fix';
+const VERSION = 'v2.0.3 Facing Fix';
 
 // Audio system
 let audioCtx = null;
@@ -651,6 +651,8 @@ const initGame = () => {
   
   player = playerGroup;
   player.position.set(0, 0.5, 0);
+  // Rotate entire character 180° so they face AWAY from camera (running forward)
+  player.rotation.y = Math.PI;
   scene.add(player);
 
   clock = new THREE.Clock();
@@ -737,18 +739,8 @@ const createGround = () => {
 };
 
 const createLaneMarkers = () => {
-  // Lane markers are now in the road texture (dashed center + solid sides)
-  // But add subtle reflective markers on the ground
-  for (let i = -1; i <= 1; i++) {
-    if (i === 0) continue; // Skip center (already has dashes in texture)
-    for (let z = 0; z > -80; z -= 4) {
-      const markerGeo = new THREE.BoxGeometry(0.08, 0.02, 0.5);
-      const markerMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4 });
-      const marker = new THREE.Mesh(markerGeo, markerMat);
-      marker.position.set(i * laneWidth, 0.02, z);
-      scene.add(marker);
-    }
-  }
+  // Lane markers are now in the road texture only
+  // No extra 3D lane markers needed
 };
 
 const updateDayNightCycle = (delta) => {
@@ -1204,7 +1196,7 @@ const animate = () => {
     const dist = player.position.distanceTo(coin.mesh.position);
     
     // Magnet effect - strong pull to player position
-    if (magnetRange > 0 && dist < magnetRange) {
+    if (magnetRange > 0 && activePowerup === 'magnet' && dist < magnetRange) {
       // Check if there's an obstacle blocking the path (obstacle must be between coin and player)
       const hasObstacle = obstacles.some(obs => {
         // Obstacle must be roughly in the same lane and between coin and player
@@ -1437,15 +1429,16 @@ const animate = () => {
     if (rightLeg) rightLeg.rotation.x = 0.5;
   }
   
-  // Head faces movement direction (same sign as body turn)
+  // Head faces movement direction
+  // Since player is rotated 180°, we negate the head rotation
   if (headGroup) {
-    const targetHeadRotY = THREE.MathUtils.clamp(moveDir * 0.5, -0.6, 0.6);
+    const targetHeadRotY = THREE.MathUtils.clamp(moveDir * -0.5, -0.6, 0.6);
     headGroup.rotation.y = THREE.MathUtils.lerp(headGroup.rotation.y, targetHeadRotY, 0.1);
   }
   
   // Eyes look in movement direction
   if (leftPupil && rightPupil) {
-    const lookX = THREE.MathUtils.clamp(moveDir * 0.05, -0.04, 0.04);
+    const lookX = THREE.MathUtils.clamp(moveDir * -0.05, -0.04, 0.04);
     leftPupil.position.x = -0.12 + lookX;
     rightPupil.position.x = 0.12 + lookX;
   }
@@ -1458,10 +1451,9 @@ const animate = () => {
   player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, tiltAmount, 0.1);
   player.rotation.x = 0;
   
-  // Body faces forward with slight turn (POSITIVE Y = looking left from camera, character faces away from camera = default)
-  // Negative bodyTurn so character leans INTO the direction they're moving
+  // Body faces forward (base rotation = PI) with slight turn into movement
   const bodyTurn = THREE.MathUtils.clamp(moveDir * 0.15, -0.3, 0.3);
-  player.rotation.y = THREE.MathUtils.lerp(player.rotation.y, bodyTurn, 0.08);
+  player.rotation.y = THREE.MathUtils.lerp(player.rotation.y, Math.PI + bodyTurn, 0.08);
 
   // Power-up timer
   if (activePowerup) {
