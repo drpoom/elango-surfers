@@ -6,10 +6,12 @@
       <div id="highscore">High Score: {{ highScore }}</div>
       <div id="combo" v-if="comboCount > 1">🔥 Combo x{{ comboCount }}</div>
       <div id="powerup-indicator" v-if="activePowerup">{{ powerupIcon }} {{ powerupName }} ({{ powerupTimeLeft }}s)</div>
+      <div id="fly-indicator" v-if="micEnabledRef">🎤✈️</div>
       <div id="mute-btn" @click="toggleMute">🔊</div>
       <div id="tilt-btn" @click="toggleTilt">{{ tiltEnabledRef ? '📱' : '📱🔴' }}</div>
+      <div id="mic-btn" @click="toggleMic">{{ micEnabledRef ? '🎤' : '🎤🔴' }}</div>
       <div id="settings-btn" @click="toggleSettings">⚙️</div>
-      <div id="instructions">A/D ←/→ Move | W/↑ Jump | S/↓ Slide | Space Restart<br>📱 Swipe ←/→ | ↑ Jump | ↓ Slide | Tilt phone to control<br>⚡ Speed increases over time!</div>
+      <div id="instructions">A/D ←/→ Move | W/↑ Jump | S/↓ Slide | Space Restart<br>📱 Swipe | Tilt | 🎤 Blow to fly!<br>⚡ Speed increases over time!</div>
     </div>
     <div id="game-canvas"></div>
     <div v-if="gameOver" id="game-over">
@@ -65,7 +67,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v2.2.1 Tilt Fix + Compact UI';
+const VERSION = 'v2.3.0 Voice Fly';
 
 // Audio system
 let audioCtx = null;
@@ -381,6 +383,7 @@ const highScore = ref(0);
 const gameOver = ref(false);
 const showSettings = ref(false);
 const tiltEnabledRef = ref(true);
+const micEnabledRef = ref(false);
 const achievements = ref([]);
 const unlockedSkins = ref([0]);
 const currentSkin = ref(0);
@@ -415,6 +418,19 @@ let slideTimer = 0;
 const slideDuration = 0.6;
 const gravity = 0.015;
 const laneWidth = 3;
+
+// Voice/fly controls
+let micStream = null;
+let micAnalyser = null;
+let micDataArray = null;
+let micEnabled = false;
+let isFlying = false;
+let flyVelocity = 0;
+const FLY_LIFT = 0.02; // Upward force when blowing
+const FLY_GRAVITY = 0.008; // Gravity when not blowing (gentler than jump gravity)
+const FLY_MAX_HEIGHT = 4.0; // Max fly height
+const MIC_THRESHOLD = 30; // Volume level to trigger fly (0-128)
+const MIC_PEAK_THRESHOLD = 60; // Spike to start flying
 let gameSpeed = 0.25;
 let lastSpawnTime = 0;
 let spawnInterval = 1.2;
@@ -439,6 +455,49 @@ const toggleTilt = () => {
   tiltEnabled = !tiltEnabled;
   tiltEnabledRef.value = tiltEnabled;
   tiltInitialBeta = null; // Re-calibrate when re-enabling
+};
+
+// Voice/fly - mic input
+const initMic = async () => {
+  if (micStream) return; // Already initialized
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const source = audioCtx.createMediaStreamSource(micStream);
+    micAnalyser = audioCtx.createAnalyser();
+    micAnalyser.fftSize = 256;
+    source.connect(micAnalyser);
+    micDataArray = new Uint8Array(micAnalyser.frequencyBinCount);
+    micEnabled = true;
+    micEnabledRef.value = true;
+  } catch (e) {
+    console.log('Mic not available:', e);
+  }
+};
+
+const toggleMic = async () => {
+  if (micEnabled) {
+    // Disable mic
+    if (micStream) {
+      micStream.getTracks().forEach(t => t.stop());
+      micStream = null;
+    }
+    micAnalyser = null;
+    micDataArray = null;
+    micEnabled = false;
+    micEnabledRef.value = false;
+    isFlying = false;
+  } else {
+    await initMic();
+  }
+};
+
+const getMicVolume = () => {
+  if (!micAnalyser || !micDataArray) return 0;
+  micAnalyser.getByteFrequencyData(micDataArray);
+  let sum = 0;
+  for (let i = 0; i < micDataArray.length; i++) sum += micDataArray[i];
+  return sum / micDataArray.length;
 };
 
 // Environment elements
@@ -1218,8 +1277,10 @@ const animate = () => {
 
     const dist = player.position.distanceTo(obs.mesh.position);
     const isFloating = obs.type === 'floating';
-    const hitGroundObs = !isFloating && player.position.y < 1.0;
+    const hitGroundObs = !isFloating && player.position.y < 1.0 && !isFlying;
     const hitFloatingObs = isFloating && !isSliding;
+    // Flying above ground level avoids ground obstacles
+    // Flying characters still hit floating obstacles unless sliding
     if (dist < 1.5 && (hitGroundObs || hitFloatingObs)) {
       if (isInvincible) {
         // Shield blocks the hit
@@ -1456,7 +1517,39 @@ const animate = () => {
     }
   });
 
-  if (isJumping) {
+  // Voice/fly - mic input
+  const micVolume = getMicVolume();
+  if (micEnabled && micVolume > MIC_PEAK_THRESHOLD && !isJumping && !isFlying && !isSliding && !gameOver.value) {
+    // Volume spike → start flying
+    isFlying = true;
+    flyVelocity = 0.15;
+  }
+  
+  if (isFlying) {
+    if (micEnabled && micVolume > MIC_THRESHOLD) {
+      // Still blowing → keep flying (apply lift)
+      flyVelocity += FLY_LIFT;
+      if (flyVelocity > 0.15) flyVelocity = 0.15; // Cap upward speed
+    } else {
+      // Volume dropped → fall
+      flyVelocity -= FLY_GRAVITY;
+    }
+    
+    player.position.y += flyVelocity;
+    
+    // Cap max height
+    if (player.position.y > FLY_MAX_HEIGHT) {
+      player.position.y = FLY_MAX_HEIGHT;
+      flyVelocity = 0;
+    }
+    
+    // Landed
+    if (player.position.y <= 0.5) {
+      player.position.y = 0.5;
+      isFlying = false;
+      flyVelocity = 0;
+    }
+  } else if (isJumping) {
     player.position.y += jumpVelocity;
     jumpVelocity -= gravity;
     if (player.position.y <= 0.5) {
@@ -1501,6 +1594,13 @@ const animate = () => {
     if (rightLeg) rightLeg.rotation.x = -1.0;
     player.position.y = 0.3;
     player.scale.y = 0.5;
+  } else if (isFlying) {
+    // Fly pose - arms spread out like wings
+    if (leftArm) leftArm.rotation.z = -1.5; // Arms out sideways
+    if (rightArm) rightArm.rotation.z = 1.5;
+    if (leftLeg) leftLeg.rotation.x = 0.3;
+    if (rightLeg) rightLeg.rotation.x = 0.3;
+    player.scale.y = 1.0;
   } else if (!isJumping) {
     const runSpeed = 8 + gameSpeed * 10;
     const swing = Math.sin(time * runSpeed) * 0.6;
@@ -1674,14 +1774,14 @@ const deactivatePowerup = () => {
 };
 
 const handleJump = () => {
-  if (isJumping || isSliding) return;
+  if (isJumping || isSliding || isFlying) return;
   isJumping = true;
   jumpVelocity = jumpStrength;
   playSound('jump');
 };
 
 const handleSlide = () => {
-  if (isJumping || isSliding) return;
+  if (isJumping || isSliding || isFlying) return;
   isSliding = true;
   slideTimer = slideDuration;
   playSound('jump');
@@ -1764,6 +1864,8 @@ const restartGame = () => {
   jumpVelocity = 0;
   isSliding = false;
   slideTimer = 0;
+  isFlying = false;
+  flyVelocity = 0;
   tiltInitialBeta = null; // Re-calibrate tilt on restart
   gameSpeed = 0.25;
   spawnInterval = 1.2;
@@ -1827,7 +1929,7 @@ onMounted(() => {
   }, { passive: false, capture: true });
   window.addEventListener('click', (e) => {
     // Check if click is on settings panel or buttons - if so, don't restart
-    if (e.target.closest('#settings-panel') || e.target.closest('#settings-btn') || e.target.closest('#mute-btn') || e.target.closest('#tilt-btn')) {
+    if (e.target.closest('#settings-panel') || e.target.closest('#settings-btn') || e.target.closest('#mute-btn') || e.target.closest('#tilt-btn') || e.target.closest('#mic-btn')) {
       return;
     }
     if (gameOver.value) restartGame();
@@ -1880,6 +1982,10 @@ onUnmounted(() => {
   window.removeEventListener('touchend', handleTouchEnd);
   window.removeEventListener('touchmove', handleTouchEnd, { capture: true });
   window.removeEventListener('deviceorientation', handleDeviceOrientation);
+  if (micStream) {
+    micStream.getTracks().forEach(t => t.stop());
+    micStream = null;
+  }
   if (composer) composer.dispose();
   stopBGM();
 });
@@ -2015,6 +2121,23 @@ button {
   justify-content: center;
   transition: transform 0.2s;
 }
+#mic-btn {
+  position: absolute;
+  top: 10px;
+  right: 170px;
+  font-size: 1.3rem;
+  cursor: pointer;
+  z-index: 10;
+  pointer-events: auto;
+  background: rgba(0,0,0,0.5);
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s;
+}
 #settings-panel {
   position: absolute;
   top: 50%;
@@ -2095,6 +2218,13 @@ button {
   color: #00bfff;
   font-weight: bold;
   text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+}
+#fly-indicator {
+  font-size: 0.85rem;
+  color: #ff69b4;
+  font-weight: bold;
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+  animation: pulse 1s ease-in-out infinite;
 }
 @keyframes pulse {
   0%, 100% { transform: scale(1); }
