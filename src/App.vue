@@ -1110,7 +1110,16 @@ const createFloatingText = (text, position) => {
 const animate = () => {
   requestAnimationFrame(animate);
 
-  if (gameOver.value) return;
+  if (gameOver.value) {
+    // Still update powerup timer even when game over
+    if (activePowerup) {
+      powerupTimeLeft.value = Math.max(0, Math.ceil((powerupEndTime - Date.now()) / 1000));
+      if (powerupTimeLeft.value <= 0) {
+        deactivatePowerup();
+      }
+    }
+    return;
+  }
 
   const delta = clock.getDelta();
   const time = clock.getElapsedTime();
@@ -1553,6 +1562,8 @@ const activatePowerup = (type) => {
 };
 
 const deactivatePowerup = () => {
+  const prevPowerup = activePowerup;
+  
   if (activePowerup === 'shield') {
     isInvincible = false;
     const shield = player.getObjectByName('shield-aura');
@@ -1565,6 +1576,12 @@ const deactivatePowerup = () => {
   
   activePowerup = null;
   powerupTimeLeft.value = 0;
+  
+  // Visual feedback that powerup expired
+  if (prevPowerup) {
+    const icon = prevPowerup === 'shield' ? '🛡️' : prevPowerup === 'speed' ? '⚡' : '🧲';
+    createFloatingText(icon + ' expired!', player.position.clone().add(new THREE.Vector3(0, 2, 0)));
+  }
 };
 
 const handleJump = () => {
