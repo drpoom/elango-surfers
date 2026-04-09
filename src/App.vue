@@ -8,7 +8,7 @@
       <div id="powerup-indicator" v-if="activePowerup">{{ powerupIcon }} {{ powerupName }} ({{ powerupTimeLeft }}s)</div>
       <div id="mute-btn" @click="toggleMute">🔊</div>
       <div id="settings-btn" @click="toggleSettings">⚙️</div>
-      <div id="instructions">A/D ←/→ Move | W/↑ Jump | S/↓ Slide | Space Restart<br>📱 Swipe ←/→ Move | ↑ Jump | ↓ Slide<br>⚡ Speed increases over time!</div>
+      <div id="instructions">A/D ←/→ Move | W/↑ Jump | S/↓ Slide | Space Restart<br>📱 Swipe ←/→ | ↑ Jump | ↓ Slide | Tilt phone to control<br>⚡ Speed increases over time!</div>
     </div>
     <div id="game-canvas"></div>
     <div v-if="gameOver" id="game-over">
@@ -64,7 +64,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v2.1.0 Slide Mechanic';
+const VERSION = 'v2.2.0 Tilt Controls';
 
 // Audio system
 let audioCtx = null;
@@ -424,6 +424,14 @@ let lastCoinTime = 0;
 let touchStartX = 0;
 let touchStartY = 0;
 const minSwipeDistance = 50;
+
+// Tilt/gyro controls
+let tiltEnabled = false;
+let tiltInitialBeta = null; // Calibrate on enable
+const TILT_THRESHOLD = 20; // degrees tilt to trigger action
+const TILT_LR_THRESHOLD = 15; // degrees for left/right
+let lastTiltLaneChange = 0;
+const TILT_LANE_COOLDOWN = 300; // ms between lane changes from tilt
 
 // Environment elements
 let clouds = [];
@@ -1671,6 +1679,44 @@ const handleSlide = () => {
   playSound('jump');
 };
 
+const handleDeviceOrientation = (e) => {
+  if (!tiltEnabled || gameOver.value) return;
+  
+  const beta = e.beta;  // Front-back tilt (-180 to 180)
+  const gamma = e.gamma; // Left-right tilt (-90 to 90)
+  
+  if (beta === null || gamma === null) return;
+  
+  // Calibrate on first reading
+  if (tiltInitialBeta === null) {
+    tiltInitialBeta = beta;
+    return;
+  }
+  
+  const tiltForward = beta - tiltInitialBeta; // Negative = tilted forward (up)
+  const tiltSideways = gamma; // Negative = left, Positive = right
+  
+  // Tilt forward (phone tilted away from you) = jump
+  if (tiltForward < -TILT_THRESHOLD && !isJumping && !isSliding) {
+    handleJump();
+  }
+  
+  // Tilt backward (phone tilted toward you) = slide
+  if (tiltForward > TILT_THRESHOLD && !isJumping && !isSliding) {
+    handleSlide();
+  }
+  
+  // Tilt left/right = lane change
+  const now = Date.now();
+  if (now - lastTiltLaneChange > TILT_LANE_COOLDOWN) {
+    if (tiltSideways < -TILT_LR_THRESHOLD) {
+      if (currentLane > 0) { currentLane--; lastTiltLaneChange = now; }
+    } else if (tiltSideways > TILT_LR_THRESHOLD) {
+      if (currentLane < 2) { currentLane++; lastTiltLaneChange = now; }
+    }
+  }
+};
+
 const handleKeyDown = (e) => {
   // Prevent default for game controls to stop page scrolling
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space', ' '].includes(e.key)) {
@@ -1710,6 +1756,7 @@ const restartGame = () => {
   jumpVelocity = 0;
   isSliding = false;
   slideTimer = 0;
+  tiltInitialBeta = null; // Re-calibrate tilt on restart
   gameSpeed = 0.25;
   spawnInterval = 1.2;
   gameDuration = 0;
@@ -1800,6 +1847,26 @@ onMounted(() => {
       toggleSettings();
     }
   });
+  
+  // Tilt/gyro controls (mobile)
+  if (window.DeviceOrientationEvent) {
+    // iOS 13+ requires permission
+    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+      // Will request on first touch
+      window.addEventListener('touchstart', () => {
+        DeviceOrientationEvent.requestPermission().then(state => {
+          if (state === 'granted') {
+            window.addEventListener('deviceorientation', handleDeviceOrientation);
+            tiltEnabled = true;
+          }
+        }).catch(() => {});
+      }, { once: true });
+    } else {
+      // Android / older iOS
+      window.addEventListener('deviceorientation', handleDeviceOrientation);
+      tiltEnabled = true;
+    }
+  }
 });
 
 onUnmounted(() => {
@@ -1807,6 +1874,7 @@ onUnmounted(() => {
   window.removeEventListener('touchstart', handleTouchStart);
   window.removeEventListener('touchend', handleTouchEnd);
   window.removeEventListener('touchmove', handleTouchEnd, { capture: true });
+  window.removeEventListener('deviceorientation', handleDeviceOrientation);
   if (composer) composer.dispose();
   stopBGM();
 });
