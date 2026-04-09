@@ -7,6 +7,7 @@
       <div id="combo" v-if="comboCount > 1">🔥 Combo x{{ comboCount }}</div>
       <div id="powerup-indicator" v-if="activePowerup">{{ powerupIcon }} {{ powerupName }} ({{ powerupTimeLeft }}s)</div>
       <div id="mute-btn" @click="toggleMute">🔊</div>
+      <div id="tilt-btn" @click="toggleTilt">{{ tiltEnabledRef ? '📱' : '📱🔴' }}</div>
       <div id="settings-btn" @click="toggleSettings">⚙️</div>
       <div id="instructions">A/D ←/→ Move | W/↑ Jump | S/↓ Slide | Space Restart<br>📱 Swipe ←/→ | ↑ Jump | ↓ Slide | Tilt phone to control<br>⚡ Speed increases over time!</div>
     </div>
@@ -64,7 +65,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v2.2.0 Tilt Controls';
+const VERSION = 'v2.2.1 Tilt Fix + Compact UI';
 
 // Audio system
 let audioCtx = null;
@@ -379,6 +380,7 @@ const score = ref(0);
 const highScore = ref(0);
 const gameOver = ref(false);
 const showSettings = ref(false);
+const tiltEnabledRef = ref(true);
 const achievements = ref([]);
 const unlockedSkins = ref([0]);
 const currentSkin = ref(0);
@@ -426,12 +428,18 @@ let touchStartY = 0;
 const minSwipeDistance = 50;
 
 // Tilt/gyro controls
-let tiltEnabled = false;
+let tiltEnabled = true;
 let tiltInitialBeta = null; // Calibrate on enable
 const TILT_THRESHOLD = 20; // degrees tilt to trigger action
 const TILT_LR_THRESHOLD = 15; // degrees for left/right
 let lastTiltLaneChange = 0;
 const TILT_LANE_COOLDOWN = 300; // ms between lane changes from tilt
+
+const toggleTilt = () => {
+  tiltEnabled = !tiltEnabled;
+  tiltEnabledRef.value = tiltEnabled;
+  tiltInitialBeta = null; // Re-calibrate when re-enabling
+};
 
 // Environment elements
 let clouds = [];
@@ -1696,13 +1704,13 @@ const handleDeviceOrientation = (e) => {
   const tiltForward = beta - tiltInitialBeta; // Negative = tilted forward (up)
   const tiltSideways = gamma; // Negative = left, Positive = right
   
-  // Tilt forward (phone tilted away from you) = jump
-  if (tiltForward < -TILT_THRESHOLD && !isJumping && !isSliding) {
+  // Tilt phone toward you (beta increases) = jump
+  if (tiltForward > TILT_THRESHOLD && !isJumping && !isSliding) {
     handleJump();
   }
   
-  // Tilt backward (phone tilted toward you) = slide
-  if (tiltForward > TILT_THRESHOLD && !isJumping && !isSliding) {
+  // Tilt phone away from you (beta decreases) = slide
+  if (tiltForward < -TILT_THRESHOLD && !isJumping && !isSliding) {
     handleSlide();
   }
   
@@ -1819,7 +1827,7 @@ onMounted(() => {
   }, { passive: false, capture: true });
   window.addEventListener('click', (e) => {
     // Check if click is on settings panel or buttons - if so, don't restart
-    if (e.target.closest('#settings-panel') || e.target.closest('#settings-btn') || e.target.closest('#mute-btn')) {
+    if (e.target.closest('#settings-panel') || e.target.closest('#settings-btn') || e.target.closest('#mute-btn') || e.target.closest('#tilt-btn')) {
       return;
     }
     if (gameOver.value) restartGame();
@@ -1850,21 +1858,18 @@ onMounted(() => {
   
   // Tilt/gyro controls (mobile)
   if (window.DeviceOrientationEvent) {
-    // iOS 13+ requires permission
     if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-      // Will request on first touch
+      // iOS 13+ - request on first touch
       window.addEventListener('touchstart', () => {
         DeviceOrientationEvent.requestPermission().then(state => {
           if (state === 'granted') {
             window.addEventListener('deviceorientation', handleDeviceOrientation);
-            tiltEnabled = true;
           }
         }).catch(() => {});
       }, { once: true });
     } else {
       // Android / older iOS
       window.addEventListener('deviceorientation', handleDeviceOrientation);
-      tiltEnabled = true;
     }
   }
 });
@@ -1901,32 +1906,33 @@ onUnmounted(() => {
 }
 #ui {
   position: absolute;
-  top: 20px;
-  left: 20px;
+  top: 10px;
+  left: 10px;
   color: white;
   z-index: 10;
   pointer-events: none;
 }
 #version {
-  font-size: 0.75rem;
-  opacity: 0.7;
-  margin-bottom: 5px;
+  font-size: 0.6rem;
+  opacity: 0.5;
+  margin-bottom: 2px;
   font-family: monospace;
 }
 #score {
-  font-size: 2rem;
+  font-size: 1.4rem;
   font-weight: bold;
   text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
 }
 #highscore {
-  font-size: 1.2rem;
+  font-size: 0.85rem;
   color: #ffd700;
   text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
 }
 #instructions {
-  font-size: 0.9rem;
-  opacity: 0.9;
-  margin-top: 10px;
+  font-size: 0.65rem;
+  opacity: 0.8;
+  margin-top: 6px;
+  line-height: 1.3;
 }
 #game-canvas {
   width: 100%;
@@ -1957,7 +1963,7 @@ button {
 }
 #settings-btn {
   position: absolute;
-  top: 20px;
+  top: 10px;
   right: 20px;
   font-size: 1.5rem;
   cursor: pointer;
@@ -1974,6 +1980,40 @@ button {
 }
 #settings-btn:hover {
   transform: scale(1.1);
+}
+#mute-btn {
+  position: absolute;
+  top: 10px;
+  right: 70px;
+  font-size: 1.3rem;
+  cursor: pointer;
+  z-index: 10;
+  pointer-events: auto;
+  background: rgba(0,0,0,0.5);
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s;
+}
+#tilt-btn {
+  position: absolute;
+  top: 10px;
+  right: 120px;
+  font-size: 1.3rem;
+  cursor: pointer;
+  z-index: 10;
+  pointer-events: auto;
+  background: rgba(0,0,0,0.5);
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s;
 }
 #settings-panel {
   position: absolute;
@@ -2044,14 +2084,14 @@ button {
   border-left: 3px solid gold;
 }
 #combo {
-  font-size: 1.5rem;
+  font-size: 1rem;
   color: #ff6b35;
   font-weight: bold;
   text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
   animation: pulse 0.5s ease-in-out;
 }
 #powerup-indicator {
-  font-size: 1.2rem;
+  font-size: 0.85rem;
   color: #00bfff;
   font-weight: bold;
   text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
