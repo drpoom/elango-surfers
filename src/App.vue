@@ -1391,6 +1391,11 @@ const animate = () => {
     }
   }
   
+  // === SCROLL ROAD TEXTURE ===
+  if (groundTexture) {
+    groundTexture.offset.y -= gameSpeed * 0.15;
+  }
+  
   // === CHARACTER ANIMATION ===
   const leftArm = player.getObjectByName('left-arm');
   const rightArm = player.getObjectByName('right-arm');
@@ -1423,15 +1428,15 @@ const animate = () => {
     if (rightLeg) rightLeg.rotation.x = 0.5;
   }
   
-  // Head faces movement direction
+  // Head faces movement direction (same sign as body turn)
   if (headGroup) {
-    const targetHeadRotY = THREE.MathUtils.clamp(moveDir * -0.5, -0.6, 0.6);
+    const targetHeadRotY = THREE.MathUtils.clamp(moveDir * 0.5, -0.6, 0.6);
     headGroup.rotation.y = THREE.MathUtils.lerp(headGroup.rotation.y, targetHeadRotY, 0.1);
   }
   
   // Eyes look in movement direction
   if (leftPupil && rightPupil) {
-    const lookX = THREE.MathUtils.clamp(moveDir * -0.05, -0.04, 0.04);
+    const lookX = THREE.MathUtils.clamp(moveDir * 0.05, -0.04, 0.04);
     leftPupil.position.x = -0.12 + lookX;
     rightPupil.position.x = 0.12 + lookX;
   }
@@ -1444,8 +1449,9 @@ const animate = () => {
   player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, tiltAmount, 0.1);
   player.rotation.x = 0;
   
-  // Body faces forward with slight turn
-  const bodyTurn = THREE.MathUtils.clamp(moveDir * -0.15, -0.3, 0.3);
+  // Body faces forward with slight turn (POSITIVE Y = looking left from camera, character faces away from camera = default)
+  // Negative bodyTurn so character leans INTO the direction they're moving
+  const bodyTurn = THREE.MathUtils.clamp(moveDir * 0.15, -0.3, 0.3);
   player.rotation.y = THREE.MathUtils.lerp(player.rotation.y, bodyTurn, 0.08);
 
   // Power-up timer
