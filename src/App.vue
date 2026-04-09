@@ -67,7 +67,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v2.3.1 UFO + Button Fix';
+const VERSION = 'v2.3.2 UFO Collision + Mic Sensitivity';
 
 // Audio system
 let audioCtx = null;
@@ -429,8 +429,8 @@ let flyVelocity = 0;
 const FLY_LIFT = 0.02; // Upward force when blowing
 const FLY_GRAVITY = 0.008; // Gravity when not blowing (gentler than jump gravity)
 const FLY_MAX_HEIGHT = 4.0; // Max fly height
-const MIC_THRESHOLD = 30; // Volume level to trigger fly (0-128)
-const MIC_PEAK_THRESHOLD = 60; // Spike to start flying
+const MIC_THRESHOLD = 10; // Volume level to sustain flying (0-128)
+const MIC_PEAK_THRESHOLD = 25; // Spike to start flying
 let gameSpeed = 0.25;
 let lastSpawnTime = 0;
 let spawnInterval = 1.2;
@@ -1284,13 +1284,19 @@ const animate = () => {
     // Spin UFOs faster, ground obstacles slow spin
     obs.mesh.rotation.y += obs.type === 'floating' ? 0.08 : 0.05;
 
-    const dist = player.position.distanceTo(obs.mesh.position);
+    // Horizontal + Z distance (ignore Y for collision range check)
+    const dx = player.position.x - obs.mesh.position.x;
+    const dz = player.position.z - obs.mesh.position.z;
+    const horizDist = Math.sqrt(dx * dx + dz * dz);
     const isFloating = obs.type === 'floating';
+    
+    // Ground obstacles: hit if player is on ground level and not flying
     const hitGroundObs = !isFloating && player.position.y < 1.0 && !isFlying;
+    // Floating/UFO: hit if player is NOT sliding (must slide under), regardless of y-distance
+    // Standing, jumping, or flying through a UFO all hit unless sliding
     const hitFloatingObs = isFloating && !isSliding;
-    // Flying above ground level avoids ground obstacles
-    // Flying characters still hit floating obstacles unless sliding
-    if (dist < 1.5 && (hitGroundObs || hitFloatingObs)) {
+    // Flying characters still avoid ground obstacles
+    if (horizDist < 1.5 && (hitGroundObs || hitFloatingObs)) {
       if (isInvincible) {
         // Shield blocks the hit
         playSound('shield_hit');
