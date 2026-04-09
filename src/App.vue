@@ -8,7 +8,7 @@
       <div id="powerup-indicator" v-if="activePowerup">{{ powerupIcon }} {{ powerupName }} ({{ powerupTimeLeft }}s)</div>
       <div id="mute-btn" @click="toggleMute">🔊</div>
       <div id="settings-btn" @click="toggleSettings">⚙️</div>
-      <div id="instructions">A/D or ←/→ to move | W or ↑ to Jump | Space to Restart<br>📱 Swipe ←/→ to move | Swipe ↑ to jump<br>⚡ Speed increases over time!</div>
+      <div id="instructions">A/D ←/→ Move | W/↑ Jump | S/↓ Slide | Space Restart<br>📱 Swipe ←/→ Move | ↑ Jump | ↓ Slide<br>⚡ Speed increases over time!</div>
     </div>
     <div id="game-canvas"></div>
     <div v-if="gameOver" id="game-over">
@@ -64,7 +64,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v2.0.3 Facing Fix';
+const VERSION = 'v2.1.0 Slide Mechanic';
 
 // Audio system
 let audioCtx = null;
@@ -408,6 +408,9 @@ let currentLane = 1;
 let isJumping = false;
 let jumpVelocity = 0;
 const jumpStrength = 0.35;
+let isSliding = false;
+let slideTimer = 0;
+const slideDuration = 0.6;
 const gravity = 0.015;
 const laneWidth = 3;
 let gameSpeed = 0.25;
@@ -978,7 +981,54 @@ const spawnObstacle = () => {
   
   fruitGroup.position.set(laneX, 0.6, -50);
   scene.add(fruitGroup);
-  obstacles.push({ mesh: fruitGroup, lane });
+  obstacles.push({ mesh: fruitGroup, lane, type: 'ground' });
+};
+
+const spawnFloatingObstacle = () => {
+  const lane = Math.floor(Math.random() * 3);
+  const laneX = (lane - 1) * laneWidth;
+  
+  const barGroup = new THREE.Group();
+  
+  // Main horizontal bar
+  const barGeo = new THREE.BoxGeometry(2.5, 0.4, 0.4);
+  const barMat = new THREE.MeshToonMaterial({ color: 0xff4444, emissive: 0x881111, emissiveIntensity: 0.3 });
+  const bar = new THREE.Mesh(barGeo, barMat);
+  bar.castShadow = true;
+  barGroup.add(bar);
+  
+  // Warning stripes
+  const stripeGeo = new THREE.BoxGeometry(0.3, 0.42, 0.42);
+  const stripeMat = new THREE.MeshToonMaterial({ color: 0xffcc00 });
+  for (let x = -0.9; x <= 0.9; x += 0.6) {
+    const stripe = new THREE.Mesh(stripeGeo, stripeMat);
+    stripe.position.x = x;
+    barGroup.add(stripe);
+  }
+  
+  // Support posts on each end
+  const postGeo = new THREE.CylinderGeometry(0.1, 0.1, 1.5, 8);
+  const postMat = new THREE.MeshToonMaterial({ color: 0x888888 });
+  const leftPost = new THREE.Mesh(postGeo, postMat);
+  leftPost.position.set(-1.2, -0.55, 0);
+  leftPost.castShadow = true;
+  barGroup.add(leftPost);
+  const rightPost = new THREE.Mesh(postGeo, postMat);
+  rightPost.position.set(1.2, -0.55, 0);
+  rightPost.castShadow = true;
+  barGroup.add(rightPost);
+  
+  // Blinking warning light on top
+  const lightGeo = new THREE.SphereGeometry(0.15, 8, 8);
+  const lightMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+  const warningLight = new THREE.Mesh(lightGeo, lightMat);
+  warningLight.position.set(0, 0.35, 0);
+  warningLight.name = 'warning-light';
+  barGroup.add(warningLight);
+  
+  barGroup.position.set(laneX, 1.8, -50);
+  scene.add(barGroup);
+  obstacles.push({ mesh: barGroup, lane, type: 'floating' });
 };
 
 const spawnCoin = () => {
@@ -1134,7 +1184,13 @@ const animate = () => {
   score.value += Math.floor(delta * 50 * difficultyMultiplier);
 
   if (time - lastSpawnTime > spawnInterval) {
-    if (Math.random() < 0.7) spawnObstacle();
+    if (Math.random() < 0.7) {
+    if (Math.random() < 0.3) {
+      spawnFloatingObstacle();
+    } else {
+      spawnObstacle();
+    }
+  }
     if (Math.random() < 0.5 + (gameDuration / 120)) spawnCoin();
     if (Math.random() < 0.05) spawnPowerup(); // 5% chance per spawn
     lastSpawnTime = time;
@@ -1145,8 +1201,10 @@ const animate = () => {
     obs.mesh.rotation.y += 0.05;
 
     const dist = player.position.distanceTo(obs.mesh.position);
-    // Collision detection - obstacle radius is 1.2, so use 1.5 for collision threshold
-    if (dist < 1.5 && player.position.y < 1.0) {
+    const isFloating = obs.type === 'floating';
+    const hitGroundObs = !isFloating && player.position.y < 1.0;
+    const hitFloatingObs = isFloating && !isSliding;
+    if (dist < 1.5 && (hitGroundObs || hitFloatingObs)) {
       if (isInvincible) {
         // Shield blocks the hit
         playSound('shield_hit');
@@ -1392,6 +1450,15 @@ const animate = () => {
     }
   }
   
+  // Slide timer
+  if (isSliding) {
+    slideTimer -= delta;
+    if (slideTimer <= 0) {
+      isSliding = false;
+      slideTimer = 0;
+    }
+  }
+  
   // === SCROLL ROAD TEXTURE ===
   if (groundTexture) {
     groundTexture.offset.y -= gameSpeed * 0.15;
@@ -1410,7 +1477,15 @@ const animate = () => {
   const moveDir = targetX - player.position.x;
   
   // Running animation - arms and legs swing
-  if (!isJumping) {
+  if (isSliding) {
+    // Slide pose - character ducks low
+    if (leftArm) leftArm.rotation.x = 0.8;
+    if (rightArm) rightArm.rotation.x = 0.8;
+    if (leftLeg) leftLeg.rotation.x = -1.0;
+    if (rightLeg) rightLeg.rotation.x = -1.0;
+    player.position.y = 0.3;
+    player.scale.y = 0.5;
+  } else if (!isJumping) {
     const runSpeed = 8 + gameSpeed * 10;
     const swing = Math.sin(time * runSpeed) * 0.6;
     
@@ -1419,14 +1494,14 @@ const animate = () => {
     if (leftLeg) leftLeg.rotation.x = -swing * 0.8;
     if (rightLeg) rightLeg.rotation.x = swing * 0.8;
     
-    // Subtle body bob
     player.position.y = 0.5 + Math.abs(Math.sin(time * runSpeed)) * 0.05;
+    player.scale.y = 1.0;
   } else {
-    // Jump pose - arms up, legs tucked
     if (leftArm) leftArm.rotation.x = -1.2;
     if (rightArm) rightArm.rotation.x = -1.2;
     if (leftLeg) leftLeg.rotation.x = 0.5;
     if (rightLeg) rightLeg.rotation.x = 0.5;
+    player.scale.y = 1.0;
   }
   
   // Head faces movement direction
@@ -1475,6 +1550,8 @@ const handleSwipe = (direction) => {
     if (currentLane < 2) currentLane++;
   } else if (direction === 'up') {
     handleJump();
+  } else if (direction === 'down') {
+    handleSlide();
   }
 };
 
@@ -1511,8 +1588,12 @@ const handleTouchEnd = (e) => {
     }
   } else {
     // Vertical swipe
-    if (Math.abs(diffY) > minSwipeDistance && diffY < 0) {
-      handleSwipe('up');
+    if (Math.abs(diffY) > minSwipeDistance) {
+      if (diffY < 0) {
+        handleSwipe('up');
+      } else {
+        handleSwipe('down');
+      }
     }
   }
 };
@@ -1577,9 +1658,16 @@ const deactivatePowerup = () => {
 };
 
 const handleJump = () => {
-  if (isJumping) return;
+  if (isJumping || isSliding) return;
   isJumping = true;
   jumpVelocity = jumpStrength;
+  playSound('jump');
+};
+
+const handleSlide = () => {
+  if (isJumping || isSliding) return;
+  isSliding = true;
+  slideTimer = slideDuration;
   playSound('jump');
 };
 
@@ -1609,6 +1697,9 @@ const handleKeyDown = (e) => {
   if ((e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') && !isJumping) {
     handleJump();
   }
+  if ((e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') && !isSliding) {
+    handleSlide();
+  }
 };
 
 const restartGame = () => {
@@ -1617,6 +1708,8 @@ const restartGame = () => {
   currentLane = 1;
   isJumping = false;
   jumpVelocity = 0;
+  isSliding = false;
+  slideTimer = 0;
   gameSpeed = 0.25;
   spawnInterval = 1.2;
   gameDuration = 0;
@@ -1651,6 +1744,7 @@ const restartGame = () => {
   achievements.value = [];
   
   player.position.set(0, 0.5, 0);
+  player.scale.y = 1.0;
   
   // Remove shield aura if exists
   const shield = player.getObjectByName('shield-aura');
