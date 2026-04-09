@@ -67,7 +67,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v2.3.2 UFO Collision + Mic Sensitivity';
+const VERSION = 'v2.3.3 Mic Sensitivity';
 
 // Audio system
 let audioCtx = null;
@@ -429,8 +429,8 @@ let flyVelocity = 0;
 const FLY_LIFT = 0.02; // Upward force when blowing
 const FLY_GRAVITY = 0.008; // Gravity when not blowing (gentler than jump gravity)
 const FLY_MAX_HEIGHT = 4.0; // Max fly height
-const MIC_THRESHOLD = 10; // Volume level to sustain flying (0-128)
-const MIC_PEAK_THRESHOLD = 25; // Spike to start flying
+const MIC_THRESHOLD = 15; // Volume level to sustain flying (0-128)
+const MIC_PEAK_THRESHOLD = 35; // Spike to start flying
 let gameSpeed = 0.25;
 let lastSpawnTime = 0;
 let spawnInterval = 1.2;
