@@ -67,7 +67,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v2.5.4 Procedural Trees + Freeze Fix';
+const VERSION = 'v2.5.5 Pure Procedural';
 
 // Audio system
 let audioCtx = null;
@@ -509,12 +509,6 @@ let groundTexture;
 let skyTextures = {};
 let mountainMesh;
 let textureLoader = new THREE.TextureLoader();
-let torsoTexture;
-let armTexture;
-let coinTexture;
-let shieldTexture;
-let magnetTexture;
-let gameOverTexture;
 
 onMounted(() => {
   const saved = localStorage.getItem('elangoSurfersHighScore');
@@ -572,18 +566,7 @@ const initGame = () => {
     scene.add(mt2);
   });
 
-  // Load character sprite textures
-  const loaderManager = new THREE.LoadingManager();
-  const charLoader = new THREE.TextureLoader(loaderManager);
-  let texturesLoaded = 0;
-  const totalTextures = 8; // 4 char + tree + coin + shield + magnet
-  
-  // Load clothing textures for character
-  charLoader.load('assets/coin.png', (tex) => { coinTexture = tex; texturesLoaded++; });
-  charLoader.load('assets/powerup_shield.png', (tex) => { shieldTexture = tex; texturesLoaded++; });
-  charLoader.load('assets/powerup_magnet.png', (tex) => { magnetTexture = tex; texturesLoaded++; });
-  charLoader.load('assets/character_torso_v2.png', (tex) => { torsoTexture = tex; texturesLoaded++; });
-  charLoader.load('assets/character_arm_v2.png', (tex) => { armTexture = tex; texturesLoaded++; });
+    // No texture loading - all procedural
 
   camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.set(0, 6, 12);
@@ -647,12 +630,7 @@ const initGame = () => {
   
   // Torso - with clothing texture if available
   const torsoGeo = new THREE.CapsuleGeometry(0.35, 0.6, 8, 8);
-  let torsoMat;
-  if (torsoTexture) {
-    torsoMat = new THREE.MeshToonMaterial({ map: torsoTexture, color: 0xffffff });
-  } else {
-    torsoMat = new THREE.MeshToonMaterial({ color: skinColor });
-  }
+  const torsoMat = new THREE.MeshToonMaterial({ color: skinColor });
   const torso = new THREE.Mesh(torsoGeo, torsoMat);
   torso.castShadow = true;
   torso.name = 'torso';
@@ -702,12 +680,7 @@ const initGame = () => {
   
   // Arms
   const armGeo = new THREE.CapsuleGeometry(0.1, 0.4, 4, 4);
-  let armMat;
-  if (armTexture) {
-    armMat = new THREE.MeshToonMaterial({ map: armTexture, color: 0xffffff });
-  } else {
-    armMat = new THREE.MeshToonMaterial({ color: skinColor });
-  }
+  const armMat = new THREE.MeshToonMaterial({ color: skinColor });
   const leftArmPivot = new THREE.Group();
   leftArmPivot.position.set(-0.45, 0.2, 0);
   leftArmPivot.name = 'left-arm';
@@ -795,21 +768,6 @@ const initGame = () => {
   scene.add(player);
   
   // Update torso texture when loaded async
-  const updateTorsoTexture = () => {
-    if (torsoTexture && torso && torso.material) {
-      torso.material.map = torsoTexture;
-      torso.material.color.setHex(0xffffff);
-      torso.material.needsUpdate = true;
-    }
-  };
-  if (!torsoTexture) {
-    const checkTex = setInterval(() => {
-      if (torsoTexture) { updateTorsoTexture(); clearInterval(checkTex); }
-    }, 200);
-  } else {
-    updateTorsoTexture();
-  }
-
   clock = new THREE.Clock();
   animate();
 };
@@ -1234,15 +1192,24 @@ const spawnPowerup = () => {
   
   const powerupGroup = new THREE.Group();
   
-  // Use AI-generated powerup icons as sprites
-  const texMap = type === 'shield' ? shieldTexture : (type === 'speed' ? null : magnetTexture);
-  if (texMap) {
-    const spriteMat = new THREE.SpriteMaterial({ map: texMap, transparent: true, depthWrite: false });
-    const sprite = new THREE.Sprite(spriteMat);
-    sprite.scale.set(1.5, 1.5, 1);
-    powerupGroup.add(sprite);
+  if (type === 'shield') {
+    const orbGeo = new THREE.SphereGeometry(0.5, 16, 16);
+    const orbMat = new THREE.MeshToonMaterial({ 
+      color: 0x00bfff, 
+      emissive: 0x00bfff, 
+      emissiveIntensity: 0.5,
+      transparent: true, 
+      opacity: 0.8 
+    });
+    const orb = new THREE.Mesh(orbGeo, orbMat);
+    powerupGroup.add(orb);
+    
+    const ringGeo = new THREE.TorusGeometry(0.8, 0.05, 8, 16);
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0x00bfff, transparent: true, opacity: 0.6 });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.rotation.x = Math.PI / 2;
+    powerupGroup.add(ring);
   } else if (type === 'speed') {
-    // Speed (lightning bolt) - keep procedural since we don't have a sprite
     const boltGeo = new THREE.ConeGeometry(0.3, 1, 8);
     const boltMat = new THREE.MeshToonMaterial({ 
       color: 0xffd700, 
@@ -1252,6 +1219,23 @@ const spawnPowerup = () => {
     const bolt = new THREE.Mesh(boltGeo, boltMat);
     bolt.rotation.x = Math.PI / 2;
     powerupGroup.add(bolt);
+  } else if (type === 'magnet') {
+    const waveGeo = new THREE.TorusGeometry(0.6, 0.1, 8, 16);
+    const waveMat = new THREE.MeshToonMaterial({ 
+      color: 0x9932cc, 
+      emissive: 0x9932cc, 
+      emissiveIntensity: 0.5,
+      transparent: true, 
+      opacity: 0.7 
+    });
+    const wave = new THREE.Mesh(waveGeo, waveMat);
+    powerupGroup.add(wave);
+    
+    const wave2 = wave.clone();
+    wave2.scale.setScalar(1.3);
+    wave2.material = waveMat.clone();
+    wave2.material.opacity = 0.4;
+    powerupGroup.add(wave2);
   }
   
   powerupGroup.position.set(laneX, 1, -50);
@@ -2125,29 +2109,15 @@ onUnmounted(() => {
 }
 #game-over {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background-image: url('assets/game_over.png');
-  background-size: cover;
-  background-position: center;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0,0,0,0.85);
   color: white;
+  padding: 2rem;
   text-align: center;
+  border-radius: 1rem;
   z-index: 20;
-}
-#game-over h1 {
-  font-size: 3rem;
-  text-shadow: 0 0 20px #ff0000, 0 0 40px #ff0000;
-  margin-bottom: 1rem;
-}
-#game-over p {
-  font-size: 1.5rem;
-  text-shadow: 0 0 10px rgba(0,0,0,0.8);
 }
 button {
   padding: 0.7rem 1.5rem;
