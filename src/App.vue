@@ -67,7 +67,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v2.4.0 AI Graphics';
+const VERSION = 'v2.4.1 Mountain Fix';
 
 // Audio system
 let audioCtx = null;
@@ -545,21 +545,22 @@ const initGame = () => {
   
   // Load mountain texture for parallax
   textureLoader.load('assets/mountains.png', (tex) => {
-    const mtGeo = new THREE.PlaneGeometry(40, 8);
+    const mtGeo = new THREE.PlaneGeometry(60, 12);
     const mtMat = new THREE.MeshBasicMaterial({
       map: tex,
       transparent: true,
-      depthWrite: false
+      depthWrite: false,
+      side: THREE.DoubleSide
     });
     mountainMesh = new THREE.Mesh(mtGeo, mtMat);
-    mountainMesh.position.set(0, 4, -60);
+    mountainMesh.position.set(0, 3, -55);
     mountainMesh.renderOrder = -1;
     scene.add(mountainMesh);
     // Second mountain layer (further back, dimmer)
     const mt2 = new THREE.Mesh(mtGeo.clone(), mtMat.clone());
     mt2.material.opacity = 0.5;
     mt2.material.transparent = true;
-    mt2.position.set(0, 3, -80);
+    mt2.position.set(0, 4, -80);
     mt2.scale.set(1.5, 1.2, 1);
     scene.add(mt2);
   });
