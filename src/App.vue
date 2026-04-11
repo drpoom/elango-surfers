@@ -67,7 +67,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v2.5.2 Polygons Restored';
+const VERSION = 'v2.5.3 Clothing Texture + Grass Fix';
 
 // Audio system
 let audioCtx = null;
@@ -510,6 +510,8 @@ let skyTextures = {};
 let mountainMesh;
 let textureLoader = new THREE.TextureLoader();
 let characterTextures = {};
+let torsoTexture;
+let armTexture;
 let treeTexture;
 let coinTexture;
 let shieldTexture;
@@ -596,6 +598,8 @@ const initGame = () => {
   charLoader.load('assets/coin.png', (tex) => { coinTexture = tex; texturesLoaded++; });
   charLoader.load('assets/powerup_shield.png', (tex) => { shieldTexture = tex; texturesLoaded++; });
   charLoader.load('assets/powerup_magnet.png', (tex) => { magnetTexture = tex; texturesLoaded++; });
+  charLoader.load('assets/character_torso_v2.png', (tex) => { torsoTexture = tex; texturesLoaded++; });
+  charLoader.load('assets/character_arm_v2.png', (tex) => { armTexture = tex; texturesLoaded++; });
 
   camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.set(0, 6, 12);
@@ -657,11 +661,11 @@ const initGame = () => {
   const skinColors = [0xff6b35, 0x4ecdc4, 0xff6b9d, 0xa8e6cf, 0xdced21];
   const skinColor = skinColors[currentSkin.value];
   
-  // Torso - with AI texture if available
+  // Torso - with clothing texture if available
   const torsoGeo = new THREE.CapsuleGeometry(0.35, 0.6, 8, 8);
   let torsoMat;
-  if (characterTextures.run) {
-    torsoMat = new THREE.MeshToonMaterial({ map: characterTextures.run, color: 0xffffff });
+  if (torsoTexture) {
+    torsoMat = new THREE.MeshToonMaterial({ map: torsoTexture, color: 0xffffff });
   } else {
     torsoMat = new THREE.MeshToonMaterial({ color: skinColor });
   }
@@ -714,7 +718,12 @@ const initGame = () => {
   
   // Arms
   const armGeo = new THREE.CapsuleGeometry(0.1, 0.4, 4, 4);
-  const armMat = new THREE.MeshToonMaterial({ color: skinColor });
+  let armMat;
+  if (armTexture) {
+    armMat = new THREE.MeshToonMaterial({ map: armTexture, color: 0xffffff });
+  } else {
+    armMat = new THREE.MeshToonMaterial({ color: skinColor });
+  }
   const leftArmPivot = new THREE.Group();
   leftArmPivot.position.set(-0.45, 0.2, 0);
   leftArmPivot.name = 'left-arm';
@@ -801,19 +810,18 @@ const initGame = () => {
   player.rotation.y = Math.PI;
   scene.add(player);
   
-  // Update torso texture when character textures load
+  // Update torso texture when loaded async
   const updateTorsoTexture = () => {
-    if (characterTextures.run && torso && torso.material) {
-      torso.material.map = characterTextures.run;
+    if (torsoTexture && torso && torso.material) {
+      torso.material.map = torsoTexture;
       torso.material.color.setHex(0xffffff);
       torso.material.needsUpdate = true;
     }
   };
-  if (!characterTextures.run) {
-    // Will load async, update when ready
+  if (!torsoTexture) {
     const checkTex = setInterval(() => {
-      if (characterTextures.run) { updateTorsoTexture(); clearInterval(checkTex); }
-    }, 100);
+      if (torsoTexture) { updateTorsoTexture(); clearInterval(checkTex); }
+    }, 200);
   } else {
     updateTorsoTexture();
   }
@@ -879,7 +887,7 @@ const createGround = () => {
   scene.add(ground);
   
   // Add colorful grass borders
-  const grassGeo = new THREE.PlaneGeometry(30, 200);
+  const grassGeo = new THREE.PlaneGeometry(80, 200);
   const grassMat = new THREE.MeshToonMaterial({ color: 0x8bc34a });
   const grass = new THREE.Mesh(grassGeo, grassMat);
   grass.rotation.x = -Math.PI / 2;
@@ -1048,7 +1056,7 @@ const createBackgroundElements = () => {
       const treeSpriteMat = new THREE.SpriteMaterial({ 
         map: treeTexture, 
         transparent: true,
-        depthWrite: true 
+        depthWrite: false 
       });
       const treeSprite = new THREE.Sprite(treeSpriteMat);
       const s = 3 + Math.random() * 2;
@@ -1256,7 +1264,7 @@ const spawnPowerup = () => {
   // Use AI-generated powerup icons as sprites
   const texMap = type === 'shield' ? shieldTexture : (type === 'speed' ? null : magnetTexture);
   if (texMap) {
-    const spriteMat = new THREE.SpriteMaterial({ map: texMap, transparent: true, depthWrite: true });
+    const spriteMat = new THREE.SpriteMaterial({ map: texMap, transparent: true, depthWrite: false });
     const sprite = new THREE.Sprite(spriteMat);
     sprite.scale.set(1.5, 1.5, 1);
     powerupGroup.add(sprite);
