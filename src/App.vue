@@ -67,7 +67,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v2.5.5 Pure Procedural';
+const VERSION = 'v2.5.6 Buildings + Shield Fix';
 
 // Audio system
 let audioCtx = null;
@@ -1070,7 +1070,7 @@ const createBackgroundElements = () => {
     
     const side = Math.random() > 0.5 ? 1 : -1;
     buildingGroup.position.set(
-      side * (8 + Math.random() * 12),
+      side * (10 + Math.random() * 10),
       height / 2,
       -20 - Math.random() * 60
     );
@@ -1777,6 +1777,10 @@ const handleTouchEnd = (e) => {
 };
 
 const activatePowerup = (type) => {
+  // Deactivate any existing powerup first to prevent duplicates
+  if (activePowerup) {
+    deactivatePowerup();
+  }
   activePowerup = type;
   const now = Date.now();
   
@@ -1787,6 +1791,8 @@ const activatePowerup = (type) => {
     isInvincible = true;
     
     // Add shield aura to player
+    const oldShield = player.getObjectByName('shield-aura');
+    if (oldShield) player.remove(oldShield);
     const shieldGeo = new THREE.SphereGeometry(1.2, 16, 16);
     const shieldMat = new THREE.MeshToonMaterial({ 
       color: 0x00bfff, 
