@@ -67,7 +67,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v2.3.3 Mic Sensitivity';
+const VERSION = 'v2.4.0 AI Graphics';
 
 // Audio system
 let audioCtx = null;
@@ -506,6 +506,9 @@ let trees = [];
 let buildings = [];
 let composer;
 let groundTexture;
+let skyTextures = {};
+let mountainMesh;
+let textureLoader = new THREE.TextureLoader();
 
 onMounted(() => {
   const saved = localStorage.getItem('elangoSurfersHighScore');
@@ -527,6 +530,39 @@ const initGame = () => {
   // Colorful cartoon sky with gradient fog
   scene.background = new THREE.Color(0x87ceeb);
   scene.fog = new THREE.Fog(0x87ceeb, 20, 80);
+
+  // Load AI-generated sky textures
+  const skyUrls = {
+    sunny: 'assets/sky_sunny.png',
+    sunset: 'assets/sky_sunset.png',
+    night: 'assets/sky_night.png'
+  };
+  Object.keys(skyUrls).forEach(key => {
+    textureLoader.load(skyUrls[key], (tex) => {
+      skyTextures[key] = tex;
+    });
+  });
+  
+  // Load mountain texture for parallax
+  textureLoader.load('assets/mountains.png', (tex) => {
+    const mtGeo = new THREE.PlaneGeometry(40, 8);
+    const mtMat = new THREE.MeshBasicMaterial({
+      map: tex,
+      transparent: true,
+      depthWrite: false
+    });
+    mountainMesh = new THREE.Mesh(mtGeo, mtMat);
+    mountainMesh.position.set(0, 4, -60);
+    mountainMesh.renderOrder = -1;
+    scene.add(mountainMesh);
+    // Second mountain layer (further back, dimmer)
+    const mt2 = new THREE.Mesh(mtGeo.clone(), mtMat.clone());
+    mt2.material.opacity = 0.5;
+    mt2.material.transparent = true;
+    mt2.position.set(0, 3, -80);
+    mt2.scale.set(1.5, 1.2, 1);
+    scene.add(mt2);
+  });
 
   camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.set(0, 6, 12);
@@ -855,6 +891,23 @@ const updateDayNightCycle = (delta) => {
   
   scene.background = skyColor;
   scene.fog.color = fogColor;
+  
+  // Update sky texture background based on time of day
+  if (skyTextures.sunny || skyTextures.sunset || skyTextures.night) {
+    let skyTex;
+    if (cycleProgress < 0.2) {
+      skyTex = skyTextures.sunny;
+    } else if (cycleProgress < 0.35) {
+      skyTex = skyTextures.sunset;
+    } else if (cycleProgress < 0.7) {
+      skyTex = skyTextures.night;
+    } else if (cycleProgress < 0.85) {
+      skyTex = skyTextures.sunset;
+    } else {
+      skyTex = skyTextures.sunny;
+    }
+    if (skyTex) scene.background = skyTex;
+  }
   
   // Track night time for achievements
   if (cycleProgress > 0.35 && cycleProgress < 0.65) {
