@@ -67,7 +67,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v2.5.6 Buildings + Shield Fix';
+const VERSION = 'v2.5.7 Shield Cleanup';
 
 // Audio system
 let audioCtx = null;
