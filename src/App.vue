@@ -67,7 +67,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v2.5.1 Sprite Fix';
+const VERSION = 'v2.5.2 Polygons Restored';
 
 // Audio system
 let audioCtx = null;
@@ -510,13 +510,11 @@ let skyTextures = {};
 let mountainMesh;
 let textureLoader = new THREE.TextureLoader();
 let characterTextures = {};
-let playerSprite;
 let treeTexture;
 let coinTexture;
 let shieldTexture;
 let magnetTexture;
 let gameOverTexture;
-let characterState = 'run'; // run, jump, slide, fly
 
 onMounted(() => {
   const saved = localStorage.getItem('elangoSurfersHighScore');
@@ -587,10 +585,8 @@ const initGame = () => {
       characterTextures[state] = tex;
       texturesLoaded++;
       // Set initial sprite texture once run loads
-      if (state === 'run' && playerSprite) {
-        playerSprite.material.map = tex;
-        playerSprite.material.opacity = 1.0;
-        playerSprite.material.needsUpdate = true;
+      if (state === 'run') {
+        // Texture loaded - torso update will happen via setInterval check
       }
     });
   });
@@ -656,31 +652,171 @@ const initGame = () => {
   createClouds();
   createBackgroundElements();
 
-  // === SPRITE CHARACTER ===
+  // === ANIMATED CHARACTER (with AI texture skin) ===
   const playerGroup = new THREE.Group();
+  const skinColors = [0xff6b35, 0x4ecdc4, 0xff6b9d, 0xa8e6cf, 0xdced21];
+  const skinColor = skinColors[currentSkin.value];
   
-  // Create sprite material (starts semi-transparent until texture loads)
-  const spriteMat = new THREE.SpriteMaterial({ 
-    transparent: true,
-    depthTest: true,
-    depthWrite: true,
-    opacity: 0.01, // Nearly invisible until texture loads
-    color: 0xff6b35 // Fallback color matching first skin
-  });
-  playerSprite = new THREE.Sprite(spriteMat);
-  playerSprite.scale.set(2.0, 2.0, 1.0);
-  playerSprite.name = 'character-sprite';
-  playerGroup.add(playerSprite);
-  
-  // Try to load initial texture
+  // Torso - with AI texture if available
+  const torsoGeo = new THREE.CapsuleGeometry(0.35, 0.6, 8, 8);
+  let torsoMat;
   if (characterTextures.run) {
-    playerSprite.material.map = characterTextures.run;
-    playerSprite.material.needsUpdate = true;
+    torsoMat = new THREE.MeshToonMaterial({ map: characterTextures.run, color: 0xffffff });
+  } else {
+    torsoMat = new THREE.MeshToonMaterial({ color: skinColor });
+  }
+  const torso = new THREE.Mesh(torsoGeo, torsoMat);
+  torso.castShadow = true;
+  torso.name = 'torso';
+  playerGroup.add(torso);
+  
+  // Head group (rotates to face direction)
+  const headGroup = new THREE.Group();
+  headGroup.name = 'head-group';
+  headGroup.position.y = 0.7;
+  
+  const headGeo = new THREE.SphereGeometry(0.32, 16, 16);
+  const headMat = new THREE.MeshToonMaterial({ color: 0xffd93d });
+  const head = new THREE.Mesh(headGeo, headMat);
+  head.castShadow = true;
+  headGroup.add(head);
+  
+  // Eyes
+  const eyeWhiteGeo = new THREE.SphereGeometry(0.1, 8, 8);
+  const eyeWhiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const eyePupilGeo = new THREE.SphereGeometry(0.06, 8, 8);
+  const eyePupilMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+  
+  const leftEyeWhite = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat);
+  leftEyeWhite.position.set(-0.12, 0.05, 0.25);
+  headGroup.add(leftEyeWhite);
+  const leftPupil = new THREE.Mesh(eyePupilGeo, eyePupilMat);
+  leftPupil.position.set(-0.12, 0.05, 0.3);
+  leftPupil.name = 'left-pupil';
+  headGroup.add(leftPupil);
+  
+  const rightEyeWhite = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat);
+  rightEyeWhite.position.set(0.12, 0.05, 0.25);
+  headGroup.add(rightEyeWhite);
+  const rightPupil = new THREE.Mesh(eyePupilGeo, eyePupilMat);
+  rightPupil.position.set(0.12, 0.05, 0.3);
+  rightPupil.name = 'right-pupil';
+  headGroup.add(rightPupil);
+  
+  const mouthGeo = new THREE.TorusGeometry(0.08, 0.02, 4, 8, Math.PI);
+  const mouthMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+  const mouth = new THREE.Mesh(mouthGeo, mouthMat);
+  mouth.position.set(0, -0.08, 0.28);
+  mouth.rotation.x = Math.PI;
+  headGroup.add(mouth);
+  
+  playerGroup.add(headGroup);
+  
+  // Arms
+  const armGeo = new THREE.CapsuleGeometry(0.1, 0.4, 4, 4);
+  const armMat = new THREE.MeshToonMaterial({ color: skinColor });
+  const leftArmPivot = new THREE.Group();
+  leftArmPivot.position.set(-0.45, 0.2, 0);
+  leftArmPivot.name = 'left-arm';
+  const leftArm = new THREE.Mesh(armGeo, armMat);
+  leftArm.position.y = -0.25;
+  leftArm.castShadow = true;
+  leftArmPivot.add(leftArm);
+  playerGroup.add(leftArmPivot);
+  
+  const rightArmPivot = new THREE.Group();
+  rightArmPivot.position.set(0.45, 0.2, 0);
+  rightArmPivot.name = 'right-arm';
+  const rightArm = new THREE.Mesh(armGeo, armMat);
+  rightArm.position.y = -0.25;
+  rightArm.castShadow = true;
+  rightArmPivot.add(rightArm);
+  playerGroup.add(rightArmPivot);
+  
+  // Legs
+  const legGeo = new THREE.CapsuleGeometry(0.12, 0.35, 4, 4);
+  const legMat = new THREE.MeshToonMaterial({ color: 0x333333 });
+  const leftLegPivot = new THREE.Group();
+  leftLegPivot.position.set(-0.18, -0.5, 0);
+  leftLegPivot.name = 'left-leg';
+  const leftLeg = new THREE.Mesh(legGeo, legMat);
+  leftLeg.position.y = -0.25;
+  leftLeg.castShadow = true;
+  leftLegPivot.add(leftLeg);
+  playerGroup.add(leftLegPivot);
+  
+  const rightLegPivot = new THREE.Group();
+  rightLegPivot.position.set(0.18, -0.5, 0);
+  rightLegPivot.name = 'right-leg';
+  const rightLeg = new THREE.Mesh(legGeo, legMat);
+  rightLeg.position.y = -0.25;
+  rightLeg.castShadow = true;
+  rightLegPivot.add(rightLeg);
+  playerGroup.add(rightLegPivot);
+  
+  // Shoes
+  const shoeGeo = new THREE.BoxGeometry(0.22, 0.12, 0.35);
+  const shoeMat = new THREE.MeshToonMaterial({ color: 0xff0000 });
+  const leftShoe = new THREE.Mesh(shoeGeo, shoeMat);
+  leftShoe.position.set(0, -0.45, 0.05);
+  leftShoe.castShadow = true;
+  leftLegPivot.add(leftShoe);
+  const rightShoe = new THREE.Mesh(shoeGeo, shoeMat);
+  rightShoe.position.set(0, -0.45, 0.05);
+  rightShoe.castShadow = true;
+  rightLegPivot.add(rightShoe);
+  
+  // Hat
+  if (currentHat.value === 'cap') {
+    const capGeo = new THREE.CylinderGeometry(0.33, 0.33, 0.1, 16);
+    const capMat = new THREE.MeshToonMaterial({ color: 0xff0000 });
+    const cap = new THREE.Mesh(capGeo, capMat);
+    cap.position.y = 0.3;
+    cap.castShadow = true;
+    headGroup.add(cap);
+    const brimGeo = new THREE.CylinderGeometry(0.45, 0.45, 0.05, 16);
+    const brim = new THREE.Mesh(brimGeo, capMat);
+    brim.position.set(0, 0.25, 0.22);
+    brim.rotation.x = 0.2;
+    brim.castShadow = true;
+    headGroup.add(brim);
+  } else if (currentHat.value === 'crown') {
+    const crownGeo = new THREE.CylinderGeometry(0.18, 0.3, 0.3, 6);
+    const crownMat = new THREE.MeshToonMaterial({ color: 0xffd700, emissive: 0xffd700, emissiveIntensity: 0.3 });
+    const crown = new THREE.Mesh(crownGeo, crownMat);
+    crown.position.y = 0.35;
+    crown.castShadow = true;
+    headGroup.add(crown);
+  } else if (currentHat.value === 'helmet') {
+    const helmetGeo = new THREE.SphereGeometry(0.35, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+    const helmetMat = new THREE.MeshToonMaterial({ color: 0x444444, metalness: 0.8, roughness: 0.2 });
+    const helmet = new THREE.Mesh(helmetGeo, helmetMat);
+    helmet.position.y = 0.3;
+    helmet.castShadow = true;
+    headGroup.add(helmet);
   }
   
   player = playerGroup;
   player.position.set(0, 0.5, 0);
+  player.rotation.y = Math.PI;
   scene.add(player);
+  
+  // Update torso texture when character textures load
+  const updateTorsoTexture = () => {
+    if (characterTextures.run && torso && torso.material) {
+      torso.material.map = characterTextures.run;
+      torso.material.color.setHex(0xffffff);
+      torso.material.needsUpdate = true;
+    }
+  };
+  if (!characterTextures.run) {
+    // Will load async, update when ready
+    const checkTex = setInterval(() => {
+      if (characterTextures.run) { updateTorsoTexture(); clearInterval(checkTex); }
+    }, 100);
+  } else {
+    updateTorsoTexture();
+  }
 
   clock = new THREE.Clock();
   animate();
@@ -1096,28 +1232,15 @@ const spawnCoin = () => {
   const lane = Math.floor(Math.random() * 3);
   const laneX = (lane - 1) * laneWidth;
   
-  // Coin (sprite if texture loaded, fallback to torus)
-  let coinObj;
-  if (coinTexture) {
-    const coinSpriteMat = new THREE.SpriteMaterial({ 
-      map: coinTexture, 
-      transparent: true, 
-      depthWrite: true 
-    });
-    coinObj = new THREE.Sprite(coinSpriteMat);
-    coinObj.scale.set(0.8, 0.8, 1);
-    coinObj.position.set(laneX, 1, -50);
-  } else {
-    const coinGeo = new THREE.TorusGeometry(0.3, 0.1, 8, 16);
-    const coinMat = new THREE.MeshToonMaterial({ 
-      color: 0xffd700,
-      emissive: 0xffaa00,
-      emissiveIntensity: 0.3
-    });
-    coinObj = new THREE.Mesh(coinGeo, coinMat);
-    coinObj.castShadow = true;
-    coinObj.position.set(laneX, 1, -50);
-  }
+  const coinGeo = new THREE.TorusGeometry(0.3, 0.1, 8, 16);
+  const coinMat = new THREE.MeshToonMaterial({ 
+    color: 0xffd700,
+    emissive: 0xffaa00,
+    emissiveIntensity: 0.3
+  });
+  const coinObj = new THREE.Mesh(coinGeo, coinMat);
+  coinObj.castShadow = true;
+  coinObj.position.set(laneX, 1, -50);
   
   scene.add(coinObj);
   coins.push({ mesh: coinObj, lane, collected: false });
@@ -1335,11 +1458,6 @@ const animate = () => {
         const pullSpeed = 0.8; // Much faster than gameSpeed
         coin.mesh.position.add(direction.multiplyScalar(pullSpeed));
         coin.mesh.rotation.y += 0.2;
-        // Pulse sprite coins
-        if (coin.mesh.isSprite) {
-          const pulse = 1.0 + Math.sin(Date.now() * 0.005) * 0.15;
-          coin.mesh.scale.set(0.8 * pulse, 0.8 * pulse, 1);
-        }
       } else {
         // Blocked by obstacle - continue normal movement
         coin.mesh.position.z += gameSpeed;
@@ -1349,11 +1467,6 @@ const animate = () => {
       // No magnet - normal movement
       coin.mesh.position.z += gameSpeed;
       coin.mesh.rotation.y += 0.1;
-      // Pulse sprite coins
-      if (coin.mesh.isSprite) {
-        const pulse = 1.0 + Math.sin(Date.now() * 0.008) * 0.1;
-        coin.mesh.scale.set(0.8 * pulse, 0.8 * pulse, 1);
-      }
     }
     
     if (dist < 1.2) {
@@ -1565,44 +1678,67 @@ const animate = () => {
   
   // === CHARACTER ANIMATION ===
   const leftArm = player.getObjectByName('left-arm');
-  // Update character sprite based on state
-  if (isSliding) {
-    characterState = 'slide';
-    player.position.y = 0.3;
-    playerSprite.scale.set(1.5, 1.0, 1.0); // Wider, shorter when sliding
-  } else if (isFlying) {
-    characterState = 'fly';
-    playerSprite.scale.set(2.2, 2.2, 1.0); // Bigger when flying
-  } else if (!isJumping) {
-    characterState = 'run';
-    playerSprite.scale.set(2.0, 2.0, 1.0);
-    player.position.y = 0.5 + Math.abs(Math.sin(time * (8 + gameSpeed * 10))) * 0.05;
-  } else {
-    characterState = 'jump';
-    playerSprite.scale.set(2.0, 2.0, 1.0);
-  }
-  
-  // Swap sprite texture based on state
-  if (characterTextures[characterState] && playerSprite) {
-    if (playerSprite.material.map !== characterTextures[characterState]) {
-      playerSprite.material.map = characterTextures[characterState];
-      playerSprite.material.needsUpdate = true;
-    }
-  }
+  const rightArm = player.getObjectByName('right-arm');
+  const leftLeg = player.getObjectByName('left-leg');
+  const rightLeg = player.getObjectByName('right-leg');
+  const headGroup = player.getObjectByName('head-group');
+  const leftPupil = player.getObjectByName('left-pupil');
+  const rightPupil = player.getObjectByName('right-pupil');
   
   const targetX = (currentLane - 1) * laneWidth;
   const moveDir = targetX - player.position.x;
   
+  // Running animation - arms and legs swing
+  if (isSliding) {
+    // Slide pose - character ducks low
+    if (leftArm) leftArm.rotation.x = 0.8;
+    if (rightArm) rightArm.rotation.x = 0.8;
+    if (leftLeg) leftLeg.rotation.x = -1.0;
+    if (rightLeg) rightLeg.rotation.x = -1.0;
+    player.position.y = 0.3;
+    player.scale.y = 0.5;
+  } else if (isFlying) {
+    // Fly pose - arms spread out like wings
+    if (leftArm) leftArm.rotation.z = -1.5;
+    if (rightArm) rightArm.rotation.z = 1.5;
+    if (leftLeg) leftLeg.rotation.x = 0.3;
+    if (rightLeg) rightLeg.rotation.x = 0.3;
+    player.scale.y = 1.0;
+  } else if (!isJumping) {
+    const runSpeed = 8 + gameSpeed * 10;
+    const swing = Math.sin(time * runSpeed) * 0.6;
+    
+    if (leftArm) leftArm.rotation.x = swing;
+    if (rightArm) rightArm.rotation.x = -swing;
+    if (leftLeg) leftLeg.rotation.x = -swing * 0.8;
+    if (rightLeg) rightLeg.rotation.x = swing * 0.8;
+    
+    player.position.y = 0.5 + Math.abs(Math.sin(time * runSpeed)) * 0.05;
+    player.scale.y = 1.0;
+  } else {
+    if (leftArm) leftArm.rotation.x = -1.2;
+    if (rightArm) rightArm.rotation.x = -1.2;
+    if (leftLeg) leftLeg.rotation.x = 0.5;
+    if (rightLeg) rightLeg.rotation.x = 0.5;
+    player.scale.y = 1.0;
+  }
+  
+  // Head faces movement direction
+  if (headGroup) {
+    const targetHeadRotY = THREE.MathUtils.clamp(moveDir * -0.5, -0.6, 0.6);
+    headGroup.rotation.y = THREE.MathUtils.lerp(headGroup.rotation.y, targetHeadRotY, 0.1);
+  }
+  
   // Smooth lane movement
   player.position.x = THREE.MathUtils.lerp(player.position.x, targetX, 0.15);
   
-  // Slight tilt when moving left/right
+  // Body lean on turn
   player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, moveDir * -0.08, 0.1);
   player.rotation.x = 0;
   
-  // Slight turn into movement direction
+  // Body faces forward (base rotation = PI) with slight turn into movement
   const bodyTurn = THREE.MathUtils.clamp(moveDir * 0.15, -0.3, 0.3);
-  player.rotation.y = THREE.MathUtils.lerp(player.rotation.y, bodyTurn, 0.08);
+  player.rotation.y = THREE.MathUtils.lerp(player.rotation.y, Math.PI + bodyTurn, 0.08);
 
   // Power-up timer
   if (activePowerup) {
