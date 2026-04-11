@@ -67,7 +67,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.0.1 AI Textures';
+const VERSION = 'v3.0.2 Clean Tree Sprites';
 
 // Audio system
 let audioCtx = null;
@@ -998,8 +998,8 @@ const createClouds = () => {
 const createBackgroundElements = () => {
   // Create procedural cartoon trees
   // Load AI tree textures
-  const treeRoundTex = textureLoader.load('assets/tree_round.png');
-  const treePineTex = textureLoader.load('assets/tree_pine.png');
+  const treeRoundTex = textureLoader.load('assets/tree_round_clean.png');
+  const treePineTex = textureLoader.load('assets/tree_pine_clean.png');
   
   for (let i = 0; i < 20; i++) {
     const isPine = Math.random() > 0.5;
