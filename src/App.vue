@@ -67,7 +67,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v2.4.1 Mountain Fix';
+const VERSION = 'v2.4.2 Mountain Depth Fix';
 
 // Audio system
 let audioCtx = null;
@@ -545,7 +545,7 @@ const initGame = () => {
   
   // Load mountain texture for parallax
   textureLoader.load('assets/mountains.png', (tex) => {
-    const mtGeo = new THREE.PlaneGeometry(60, 12);
+    const mtGeo = new THREE.PlaneGeometry(80, 15);
     const mtMat = new THREE.MeshBasicMaterial({
       map: tex,
       transparent: true,
@@ -553,15 +553,16 @@ const initGame = () => {
       side: THREE.DoubleSide
     });
     mountainMesh = new THREE.Mesh(mtGeo, mtMat);
-    mountainMesh.position.set(0, 3, -55);
-    mountainMesh.renderOrder = -1;
+    mountainMesh.position.set(0, 4, -90);
+    mountainMesh.renderOrder = -2;
     scene.add(mountainMesh);
     // Second mountain layer (further back, dimmer)
     const mt2 = new THREE.Mesh(mtGeo.clone(), mtMat.clone());
     mt2.material.opacity = 0.5;
     mt2.material.transparent = true;
-    mt2.position.set(0, 4, -80);
-    mt2.scale.set(1.5, 1.2, 1);
+    mt2.position.set(0, 5, -120);
+    mt2.scale.set(2.0, 1.5, 1);
+    mt2.renderOrder = -3;
     scene.add(mt2);
   });
 
@@ -1073,7 +1074,7 @@ const createBackgroundElements = () => {
     buildingGroup.position.set(
       side * (15 + Math.random() * 10),
       height / 2,
-      -30 - Math.random() * 50
+      -10 - Math.random() * 30
     );
     scene.add(buildingGroup);
     buildings.push(buildingGroup);
@@ -1546,7 +1547,7 @@ const animate = () => {
     building.position.z += gameSpeed;
     if (building.position.z > 20) {
       const side = building.position.x > 0 ? 1 : -1;
-      building.position.z = -30 - Math.random() * 50;
+      building.position.z = -10 - Math.random() * 30;
       building.position.x = side * (15 + Math.random() * 10);
     }
   });
