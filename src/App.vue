@@ -67,7 +67,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.0.2 Clean Tree Sprites';
+const VERSION = 'v3.1.0 New Obstacles + Harder';
 
 // Audio system
 let audioCtx = null;
@@ -1088,33 +1088,337 @@ const spawnObstacle = () => {
   const lane = Math.floor(Math.random() * 3);
   const laneX = (lane - 1) * laneWidth;
   
-  const fruitGroup = new THREE.Group();
-  const colors = [0xff0000, 0xffa500, 0x8b0000, 0xff69b4];
-  const fruitColor = colors[Math.floor(Math.random() * colors.length)];
-  // Wider obstacle - sphere radius 1.2 (3x original)
-  const fruitGeo = new THREE.SphereGeometry(1.2, 24, 24);
-  const fruitMat = new THREE.MeshToonMaterial({ color: fruitColor });
-  const fruit = new THREE.Mesh(fruitGeo, fruitMat);
-  fruit.castShadow = true;
-  fruitGroup.add(fruit);
+  // Pick obstacle type based on difficulty
+  const difficultyMultiplier = Math.min(1 + (gameDuration / 30), 3.5);
+  const types = ['fruit', 'fruit', 'car']; // base types
+  if (difficultyMultiplier > 1.3) types.push('stone', 'barrier');
+  if (difficultyMultiplier > 1.8) types.push('police', 'bus');
+  if (difficultyMultiplier > 2.2) types.push('fireengine', 'wall');
+  if (difficultyMultiplier > 2.8) types.push('wall', 'barrel');
+  const obsType = types[Math.floor(Math.random() * types.length)];
   
-  const stemGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.5, 8);
-  const stemMat = new THREE.MeshToonMaterial({ color: 0x228b22 });
-  const stem = new THREE.Mesh(stemGeo, stemMat);
-  stem.position.y = 1.0;
-  fruitGroup.add(stem);
+  let group, obsLane = lane, hitWidth = 1.5;
   
-  // Add leaf
-  const leafGeo = new THREE.SphereGeometry(0.3, 8, 8);
-  const leafMat = new THREE.MeshToonMaterial({ color: 0x32cd32 });
-  const leaf = new THREE.Mesh(leafGeo, leafMat);
-  leaf.position.set(0.2, 1.2, 0);
-  leaf.scale.set(1, 0.3, 1);
-  fruitGroup.add(leaf);
+  switch (obsType) {
+    case 'fruit': {
+      group = new THREE.Group();
+      const colors = [0xff0000, 0xffa500, 0x8b0000, 0xff69b4];
+      const fruitColor = colors[Math.floor(Math.random() * colors.length)];
+      const fruitGeo = new THREE.SphereGeometry(1.2, 24, 24);
+      const fruitMat = new THREE.MeshToonMaterial({ color: fruitColor });
+      const fruit = new THREE.Mesh(fruitGeo, fruitMat);
+      fruit.castShadow = true;
+      group.add(fruit);
+      const stemGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.5, 8);
+      const stemMat = new THREE.MeshToonMaterial({ color: 0x228b22 });
+      const stem = new THREE.Mesh(stemGeo, stemMat);
+      stem.position.y = 1.0;
+      group.add(stem);
+      const leafGeo = new THREE.SphereGeometry(0.3, 8, 8);
+      const leafMat = new THREE.MeshToonMaterial({ color: 0x32cd32 });
+      const leaf = new THREE.Mesh(leafGeo, leafMat);
+      leaf.position.set(0.2, 1.2, 0);
+      leaf.scale.set(1, 0.3, 1);
+      group.add(leaf);
+      group.position.set(laneX, 0.6, -50);
+      break;
+    }
+    
+    case 'car': {
+      group = new THREE.Group();
+      // Car body
+      const bodyGeo = new THREE.BoxGeometry(1.8, 0.8, 3.0);
+      const carColors = [0xff3333, 0x3366ff, 0xffcc00, 0x33cc33, 0xff6600, 0xcc33ff];
+      const carMat = new THREE.MeshToonMaterial({ color: carColors[Math.floor(Math.random() * carColors.length)] });
+      const body = new THREE.Mesh(bodyGeo, carMat);
+      body.position.y = 0.6;
+      body.castShadow = true;
+      group.add(body);
+      // Roof/cabin
+      const roofGeo = new THREE.BoxGeometry(1.4, 0.6, 1.5);
+      const roofMat = new THREE.MeshToonMaterial({ color: 0x88ccff, transparent: true, opacity: 0.7 });
+      const roof = new THREE.Mesh(roofGeo, roofMat);
+      roof.position.set(0, 1.2, -0.3);
+      group.add(roof);
+      // Wheels
+      const wheelGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 12);
+      const wheelMat = new THREE.MeshToonMaterial({ color: 0x222222 });
+      for (const [wx, wz] of [[-0.9, 1.0], [0.9, 1.0], [-0.9, -1.0], [0.9, -1.0]]) {
+        const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+        wheel.rotation.z = Math.PI / 2;
+        wheel.position.set(wx, 0.3, wz);
+        group.add(wheel);
+      }
+      // Headlights
+      const hlGeo = new THREE.SphereGeometry(0.12, 8, 8);
+      const hlMat = new THREE.MeshBasicMaterial({ color: 0xffffaa });
+      for (const hx of [-0.6, 0.6]) {
+        const hl = new THREE.Mesh(hlGeo, hlMat);
+        hl.position.set(hx, 0.6, 1.51);
+        group.add(hl);
+      }
+      group.position.set(laneX, 0, -50);
+      break;
+    }
+    
+    case 'police': {
+      group = new THREE.Group();
+      const bodyGeo = new THREE.BoxGeometry(1.8, 0.8, 3.2);
+      const bodyMat = new THREE.MeshToonMaterial({ color: 0x111133 });
+      const body = new THREE.Mesh(bodyGeo, bodyMat);
+      body.position.y = 0.6;
+      body.castShadow = true;
+      group.add(body);
+      // White stripe
+      const stripeGeo = new THREE.BoxGeometry(1.82, 0.2, 2.0);
+      const stripeMat = new THREE.MeshToonMaterial({ color: 0xffffff });
+      const stripe = new THREE.Mesh(stripeGeo, stripeMat);
+      stripe.position.set(0, 0.7, 0);
+      group.add(stripe);
+      // Roof + lights
+      const roofGeo = new THREE.BoxGeometry(1.4, 0.6, 1.5);
+      const roofMat = new THREE.MeshToonMaterial({ color: 0x111133 });
+      const roof = new THREE.Mesh(roofGeo, roofMat);
+      roof.position.set(0, 1.2, -0.3);
+      group.add(roof);
+      // Siren lights (flash red/blue)
+      const sirenGeo = new THREE.BoxGeometry(0.4, 0.15, 0.3);
+      const redMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+      const blueMat = new THREE.MeshBasicMaterial({ color: 0x0000ff });
+      const sirenL = new THREE.Mesh(sirenGeo, redMat);
+      sirenL.position.set(-0.3, 1.55, -0.3);
+      sirenL.name = 'siren-red';
+      group.add(sirenL);
+      const sirenR = new THREE.Mesh(sirenGeo, blueMat);
+      sirenR.position.set(0.3, 1.55, -0.3);
+      sirenR.name = 'siren-blue';
+      group.add(sirenR);
+      // Wheels
+      const wheelGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 12);
+      const wheelMat = new THREE.MeshToonMaterial({ color: 0x222222 });
+      for (const [wx, wz] of [[-0.9, 1.1], [0.9, 1.1], [-0.9, -1.1], [0.9, -1.1]]) {
+        const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+        wheel.rotation.z = Math.PI / 2;
+        wheel.position.set(wx, 0.3, wz);
+        group.add(wheel);
+      }
+      group.position.set(laneX, 0, -50);
+      break;
+    }
+    
+    case 'fireengine': {
+      group = new THREE.Group();
+      // Long red body
+      const bodyGeo = new THREE.BoxGeometry(1.8, 1.2, 5.0);
+      const bodyMat = new THREE.MeshToonMaterial({ color: 0xcc0000 });
+      const body = new THREE.Mesh(bodyGeo, bodyMat);
+      body.position.y = 0.9;
+      body.castShadow = true;
+      group.add(body);
+      // Cabin
+      const cabGeo = new THREE.BoxGeometry(1.6, 1.0, 1.5);
+      const cabMat = new THREE.MeshToonMaterial({ color: 0xcc0000 });
+      const cab = new THREE.Mesh(cabGeo, cabMat);
+      cab.position.set(0, 1.8, 1.5);
+      group.add(cab);
+      // Windshield
+      const wsGeo = new THREE.BoxGeometry(1.2, 0.6, 0.05);
+      const wsMat = new THREE.MeshToonMaterial({ color: 0x88ccff, transparent: true, opacity: 0.7 });
+      const ws = new THREE.Mesh(wsGeo, wsMat);
+      ws.position.set(0, 1.9, 2.26);
+      group.add(ws);
+      // Ladder on top
+      const ladderGeo = new THREE.BoxGeometry(0.15, 0.1, 3.5);
+      const ladderMat = new THREE.MeshToonMaterial({ color: 0xcccccc });
+      for (const lx of [-0.4, 0.4]) {
+        const rail = new THREE.Mesh(ladderGeo, ladderMat);
+        rail.position.set(lx, 2.5, -0.5);
+        group.add(rail);
+      }
+      // Ladder rungs
+      const rungGeo = new THREE.BoxGeometry(0.8, 0.06, 0.06);
+      for (let rz = -2.0; rz <= 1.0; rz += 0.4) {
+        const rung = new THREE.Mesh(rungGeo, ladderMat);
+        rung.position.set(0, 2.5, rz);
+        group.add(rung);
+      }
+      // Wheels (6 wheels - 3 per side)
+      const wheelGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.25, 12);
+      const wheelMat = new THREE.MeshToonMaterial({ color: 0x222222 });
+      for (const wz of [1.8, 0.0, -1.8]) {
+        for (const wx of [-0.95, 0.95]) {
+          const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+          wheel.rotation.z = Math.PI / 2;
+          wheel.position.set(wx, 0.35, wz);
+          group.add(wheel);
+        }
+      }
+      group.position.set(laneX, 0, -50);
+      break;
+    }
+    
+    case 'bus': {
+      group = new THREE.Group();
+      // Long bus body
+      const bodyGeo = new THREE.BoxGeometry(2.0, 1.5, 5.5);
+      const busMat = new THREE.MeshToonMaterial({ color: 0xffaa00 });
+      const body = new THREE.Mesh(bodyGeo, busMat);
+      body.position.y = 1.1;
+      body.castShadow = true;
+      group.add(body);
+      // Windows row
+      const winGeo = new THREE.BoxGeometry(0.5, 0.4, 0.05);
+      const winMat = new THREE.MeshToonMaterial({ color: 0x88ccff, transparent: true, opacity: 0.7 });
+      for (let wz = -2.0; wz <= 2.0; wz += 0.8) {
+        for (const wx of [-1.0, 1.0]) {
+          const win = new THREE.Mesh(winGeo, winMat);
+          win.position.set(wx * (1.01), 1.3, wz);
+          win.rotation.y = wx > 0 ? 0 : Math.PI;
+          group.add(win);
+        }
+      }
+      // Windshield
+      const fwsGeo = new THREE.BoxGeometry(1.6, 0.6, 0.05);
+      const fws = new THREE.Mesh(fwsGeo, winMat);
+      fws.position.set(0, 1.3, 2.76);
+      group.add(fws);
+      // Wheels
+      const wheelGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.25, 12);
+      const wheelMat = new THREE.MeshToonMaterial({ color: 0x222222 });
+      for (const wz of [2.0, -2.0]) {
+        for (const wx of [-1.0, 1.0]) {
+          const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+          wheel.rotation.z = Math.PI / 2;
+          wheel.position.set(wx, 0.35, wz);
+          group.add(wheel);
+        }
+      }
+      group.position.set(laneX, 0, -50);
+      break;
+    }
+    
+    case 'stone': {
+      group = new THREE.Group();
+      const stoneGeo = new THREE.DodecahedronGeometry(1.0, 1);
+      const stoneMat = new THREE.MeshToonMaterial({ color: 0x888888 });
+      const stone = new THREE.Mesh(stoneGeo, stoneMat);
+      stone.position.y = 0.7;
+      stone.castShadow = true;
+      // Random rotation for variety
+      stone.rotation.set(Math.random() * 0.5, Math.random() * Math.PI, Math.random() * 0.3);
+      group.add(stone);
+      // Moss patches
+      const mossGeo = new THREE.SphereGeometry(0.3, 8, 8);
+      const mossMat = new THREE.MeshToonMaterial({ color: 0x447744 });
+      for (let m = 0; m < 3; m++) {
+        const moss = new THREE.Mesh(mossGeo, mossMat);
+        moss.position.set((Math.random()-0.5)*0.8, 1.0+Math.random()*0.3, (Math.random()-0.5)*0.8);
+        moss.scale.set(1, 0.3, 1);
+        group.add(moss);
+      }
+      group.position.set(laneX, 0, -50);
+      break;
+    }
+    
+    case 'barrier': {
+      group = new THREE.Group();
+      // Horizontal bar
+      const barGeo = new THREE.CylinderGeometry(0.08, 0.08, 2.0, 8);
+      const barMat = new THREE.MeshToonMaterial({ color: 0xff6600 });
+      const bar = new THREE.Mesh(barGeo, barMat);
+      bar.rotation.z = Math.PI / 2;
+      bar.position.y = 0.8;
+      group.add(bar);
+      // Striped cones
+      const coneGeo = new THREE.ConeGeometry(0.2, 0.6, 8);
+      for (const cx of [-0.8, 0.0, 0.8]) {
+        const coneMat = new THREE.MeshToonMaterial({ color: cx === 0 ? 0xff6600 : 0xffaa00 });
+        const cone = new THREE.Mesh(coneGeo, coneMat);
+        cone.position.set(cx, 0.3, 0);
+        group.add(cone);
+      }
+      // Stripes on bar (white bands)
+      const stripGeo = new THREE.CylinderGeometry(0.09, 0.09, 0.15, 8);
+      const stripMat = new THREE.MeshToonMaterial({ color: 0xffffff });
+      for (const sx of [-0.6, -0.2, 0.2, 0.6]) {
+        const strip = new THREE.Mesh(stripGeo, stripMat);
+        strip.rotation.z = Math.PI / 2;
+        strip.position.set(sx, 0.8, 0);
+        group.add(strip);
+      }
+      group.position.set(laneX, 0, -50);
+      break;
+    }
+    
+    case 'wall': {
+      group = new THREE.Group();
+      // Wall spans 2 lanes — find which 2 to block
+      const gapLane = lane; // the lane with the gap
+      const blockedLanes = [0, 1, 2].filter(l => l !== gapLane);
+      const wallX = ((blockedLanes[0] + blockedLanes[1] - 2) / 2) * laneWidth;
+      
+      // Brick wall
+      const wallGeo = new THREE.BoxGeometry(4.0, 2.0, 0.5);
+      const wallMat = new THREE.MeshToonMaterial({ color: 0xcc6633 });
+      const wall = new THREE.Mesh(wallGeo, wallMat);
+      wall.position.y = 1.0;
+      wall.castShadow = true;
+      group.add(wall);
+      // Brick lines
+      const lineGeo = new THREE.BoxGeometry(4.02, 0.04, 0.52);
+      const lineMat = new THREE.MeshToonMaterial({ color: 0x993311 });
+      for (let ly = 0.2; ly < 2.0; ly += 0.3) {
+        const brickLine = new THREE.Mesh(lineGeo, lineMat);
+        brickLine.position.y = ly;
+        group.add(brickLine);
+      }
+      // Vertical brick gaps
+      const vlineGeo = new THREE.BoxGeometry(0.04, 0.25, 0.52);
+      for (let ly = 0.2; ly < 2.0; ly += 0.3) {
+        const offset = (Math.floor(ly / 0.3) % 2) * 0.4;
+        for (let lx = -1.8 + offset; lx < 2.0; lx += 0.8) {
+          const vline = new THREE.Mesh(vlineGeo, lineMat);
+          vline.position.set(lx, ly + 0.15, 0);
+          group.add(vline);
+        }
+      }
+      group.position.set(wallX, 0, -50);
+      obsLane = gapLane; // gap lane for spawning purposes
+      hitWidth = 2.5;
+      break;
+    }
+    
+    case 'barrel': {
+      group = new THREE.Group();
+      const barrelGeo = new THREE.CylinderGeometry(0.5, 0.5, 1.0, 12);
+      const barrelMat = new THREE.MeshToonMaterial({ color: 0x336699 });
+      const barrel = new THREE.Mesh(barrelGeo, barrelMat);
+      barrel.position.y = 0.5;
+      barrel.castShadow = true;
+      group.add(barrel);
+      // Hazard stripes
+      const stripeGeo2 = new THREE.CylinderGeometry(0.52, 0.52, 0.1, 12);
+      const stripeMat2 = new THREE.MeshToonMaterial({ color: 0xffcc00 });
+      for (const sy of [0.3, 0.7]) {
+        const stripe = new THREE.Mesh(stripeGeo2, stripeMat2);
+        stripe.position.y = sy;
+        group.add(stripe);
+      }
+      // Barrel lid
+      const lidGeo = new THREE.CylinderGeometry(0.48, 0.48, 0.05, 12);
+      const lidMat = new THREE.MeshToonMaterial({ color: 0x224466 });
+      const lid = new THREE.Mesh(lidGeo, lidMat);
+      lid.position.y = 1.02;
+      group.add(lid);
+      group.position.set(laneX, 0, -50);
+      // Barrel drifts sideways
+      group.userData = { driftDir: Math.random() > 0.5 ? 1 : -1, driftSpeed: 0.01 + Math.random() * 0.02 };
+      break;
+    }
+  }
   
-  fruitGroup.position.set(laneX, 0.6, -50);
-  scene.add(fruitGroup);
-  obstacles.push({ mesh: fruitGroup, lane, type: 'ground' });
+  scene.add(group);
+  obstacles.push({ mesh: group, lane: obsLane, type: 'ground', obstacleType: obsType, hitWidth });
 };
 
 const spawnFloatingObstacle = () => {
@@ -1314,13 +1618,13 @@ const animate = () => {
   updateDayNightCycle(delta);
   
   // Progressive difficulty scaling
-  // Speed increases every 30 seconds, caps at 2x base speed
-  const difficultyMultiplier = Math.min(1 + (gameDuration / 30), 2);
+  // Speed increases every 30 seconds, caps at 3.5x base speed
+  const difficultyMultiplier = Math.min(1 + (gameDuration / 30), 3.5);
   const targetSpeed = 0.25 * difficultyMultiplier;
   gameSpeed = THREE.MathUtils.lerp(gameSpeed, targetSpeed, 0.01);
   
   // Spawn interval decreases over time (more obstacles)
-  spawnInterval = Math.max(0.6, 1.2 - (gameDuration / 60));
+  spawnInterval = Math.max(0.35, 1.2 - (gameDuration / 80));
   
   score.value += Math.floor(delta * 50 * difficultyMultiplier);
 
@@ -1339,22 +1643,43 @@ const animate = () => {
 
   obstacles.forEach((obs, index) => {
     obs.mesh.position.z += gameSpeed;
-    // Spin UFOs faster, ground obstacles slow spin
+    // Spin UFOs, ground obstacles gentle spin
     obs.mesh.rotation.y += obs.type === 'floating' ? 0.08 : 0.05;
+    
+    // Barrel drift: move sideways
+    if (obs.obstacleType === 'barrel' && obs.mesh.userData) {
+      obs.mesh.position.x += obs.mesh.userData.driftDir * obs.mesh.userData.driftSpeed;
+      // Bounce off lane boundaries
+      const laneCenter = Math.round(obs.mesh.position.x / laneWidth) * laneWidth;
+      if (obs.mesh.position.x < -laneWidth * 1.5 || obs.mesh.position.x > laneWidth * 1.5) {
+        obs.mesh.userData.driftDir *= -1;
+      }
+    }
+    
+    // Police siren flash
+    if (obs.obstacleType === 'police') {
+      const sirenR = obs.mesh.getObjectByName('siren-red');
+      const sirenB = obs.mesh.getObjectByName('siren-blue');
+      if (sirenR && sirenB) {
+        const flash = Math.sin(time * 15) > 0;
+        sirenR.material.color.setHex(flash ? 0xff0000 : 0x440000);
+        sirenB.material.color.setHex(flash ? 0x000044 : 0x0000ff);
+      }
+    }
 
     // Horizontal + Z distance (ignore Y for collision range check)
     const dx = player.position.x - obs.mesh.position.x;
     const dz = player.position.z - obs.mesh.position.z;
     const horizDist = Math.sqrt(dx * dx + dz * dz);
+    const collisionDist = obs.hitWidth || 1.5;
     const isFloating = obs.type === 'floating';
     
     // Ground obstacles: hit if player is on ground level and not flying
     const hitGroundObs = !isFloating && player.position.y < 1.0 && !isFlying;
-    // Floating/UFO: hit if player is NOT sliding (must slide under), regardless of y-distance
-    // Standing, jumping, or flying through a UFO all hit unless sliding
+    // Floating/UFO: hit if player is NOT sliding (must slide under)
     const hitFloatingObs = isFloating && !isSliding;
     // Flying characters still avoid ground obstacles
-    if (horizDist < 1.5 && (hitGroundObs || hitFloatingObs)) {
+    if (horizDist < collisionDist && (hitGroundObs || hitFloatingObs)) {
       if (isInvincible) {
         // Shield blocks the hit
         playSound('shield_hit');
