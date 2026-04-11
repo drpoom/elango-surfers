@@ -67,7 +67,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v2.5.0 AI Assets';
+const VERSION = 'v2.5.1 Sprite Fix';
 
 // Audio system
 let audioCtx = null;
@@ -575,23 +575,31 @@ const initGame = () => {
   });
 
   // Load character sprite textures
+  const loaderManager = new THREE.LoadingManager();
+  const charLoader = new THREE.TextureLoader(loaderManager);
+  let texturesLoaded = 0;
+  const totalTextures = 8; // 4 char + tree + coin + shield + magnet
+  
   ['run', 'jump', 'slide', 'fly'].forEach(state => {
-    textureLoader.load(`assets/character_${state}.png`, (tex) => {
+    charLoader.load(`assets/character_${state}.png`, (tex) => {
       tex.colorSpace = THREE.SRGBColorSpace;
+      tex.generateMipmaps = true;
       characterTextures[state] = tex;
-      // Set initial sprite once first texture loads
+      texturesLoaded++;
+      // Set initial sprite texture once run loads
       if (state === 'run' && playerSprite) {
         playerSprite.material.map = tex;
+        playerSprite.material.opacity = 1.0;
         playerSprite.material.needsUpdate = true;
       }
     });
   });
   
   // Load other textures
-  textureLoader.load('assets/tree.png', (tex) => { treeTexture = tex; });
-  textureLoader.load('assets/coin.png', (tex) => { coinTexture = tex; });
-  textureLoader.load('assets/powerup_shield.png', (tex) => { shieldTexture = tex; });
-  textureLoader.load('assets/powerup_magnet.png', (tex) => { magnetTexture = tex; });
+  charLoader.load('assets/tree.png', (tex) => { treeTexture = tex; texturesLoaded++; });
+  charLoader.load('assets/coin.png', (tex) => { coinTexture = tex; texturesLoaded++; });
+  charLoader.load('assets/powerup_shield.png', (tex) => { shieldTexture = tex; texturesLoaded++; });
+  charLoader.load('assets/powerup_magnet.png', (tex) => { magnetTexture = tex; texturesLoaded++; });
 
   camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.set(0, 6, 12);
@@ -651,11 +659,13 @@ const initGame = () => {
   // === SPRITE CHARACTER ===
   const playerGroup = new THREE.Group();
   
-  // Create sprite material (starts with run texture, updates on state change)
+  // Create sprite material (starts semi-transparent until texture loads)
   const spriteMat = new THREE.SpriteMaterial({ 
     transparent: true,
     depthTest: true,
-    depthWrite: true
+    depthWrite: true,
+    opacity: 0.01, // Nearly invisible until texture loads
+    color: 0xff6b35 // Fallback color matching first skin
   });
   playerSprite = new THREE.Sprite(spriteMat);
   playerSprite.scale.set(2.0, 2.0, 1.0);
@@ -985,9 +995,9 @@ const createBackgroundElements = () => {
     
     const side = Math.random() > 0.5 ? 1 : -1;
     buildingGroup.position.set(
-      side * (15 + Math.random() * 10),
+      side * (8 + Math.random() * 12),
       height / 2,
-      -10 - Math.random() * 30
+      -20 - Math.random() * 60
     );
     scene.add(buildingGroup);
     buildings.push(buildingGroup);
@@ -1325,6 +1335,11 @@ const animate = () => {
         const pullSpeed = 0.8; // Much faster than gameSpeed
         coin.mesh.position.add(direction.multiplyScalar(pullSpeed));
         coin.mesh.rotation.y += 0.2;
+        // Pulse sprite coins
+        if (coin.mesh.isSprite) {
+          const pulse = 1.0 + Math.sin(Date.now() * 0.005) * 0.15;
+          coin.mesh.scale.set(0.8 * pulse, 0.8 * pulse, 1);
+        }
       } else {
         // Blocked by obstacle - continue normal movement
         coin.mesh.position.z += gameSpeed;
@@ -1334,6 +1349,11 @@ const animate = () => {
       // No magnet - normal movement
       coin.mesh.position.z += gameSpeed;
       coin.mesh.rotation.y += 0.1;
+      // Pulse sprite coins
+      if (coin.mesh.isSprite) {
+        const pulse = 1.0 + Math.sin(Date.now() * 0.008) * 0.1;
+        coin.mesh.scale.set(0.8 * pulse, 0.8 * pulse, 1);
+      }
     }
     
     if (dist < 1.2) {
@@ -1447,7 +1467,7 @@ const animate = () => {
     building.position.z += gameSpeed;
     if (building.position.z > 20) {
       const side = building.position.x > 0 ? 1 : -1;
-      building.position.z = -10 - Math.random() * 30;
+      building.position.z = -20 - Math.random() * 60;
       building.position.x = side * (15 + Math.random() * 10);
     }
   });
