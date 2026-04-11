@@ -67,7 +67,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.0.0-dev';
+const VERSION = 'v3.0.1 AI Textures';
 
 // Audio system
 let audioCtx = null;
@@ -828,9 +828,16 @@ const createGround = () => {
   ground.name = 'road';
   scene.add(ground);
   
-  // Add colorful grass borders
+  // Add colorful grass borders with AI texture
+  const grassTileTex = textureLoader.load('assets/grass_tile.png');
+  grassTileTex.wrapS = THREE.RepeatWrapping;
+  grassTileTex.wrapT = THREE.RepeatWrapping;
+  grassTileTex.repeat.set(10, 25);
   const grassGeo = new THREE.PlaneGeometry(80, 200);
-  const grassMat = new THREE.MeshToonMaterial({ color: 0x8bc34a });
+  const grassMat = new THREE.MeshToonMaterial({ 
+    map: grassTileTex,
+    color: 0x8bc34a 
+  });
   const grass = new THREE.Mesh(grassGeo, grassMat);
   grass.rotation.x = -Math.PI / 2;
   grass.position.z = -50;
@@ -990,31 +997,32 @@ const createClouds = () => {
 
 const createBackgroundElements = () => {
   // Create procedural cartoon trees
-  const trunkGeo = new THREE.CylinderGeometry(0.2, 0.3, 2, 6);
-  const trunkMat = new THREE.MeshToonMaterial({ color: 0x8b4513 });
-  const leavesGeo = new THREE.ConeGeometry(1.5, 3, 6);
-  const leavesColors = [0x228b22, 0x32cd32, 0x8fbc8f, 0x90ee90];
+  // Load AI tree textures
+  const treeRoundTex = textureLoader.load('assets/tree_round.png');
+  const treePineTex = textureLoader.load('assets/tree_pine.png');
   
   for (let i = 0; i < 20; i++) {
-    const tree = new THREE.Group();
+    const isPine = Math.random() > 0.5;
+    const treeTex = isPine ? treePineTex : treeRoundTex;
+    const treeH = isPine ? 7 : 6;
+    const treeW = isPine ? 4 : 5;
     
-    const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-    trunk.position.y = 1;
-    trunk.castShadow = true;
-    tree.add(trunk);
-    
-    const leavesMat = new THREE.MeshToonMaterial({ 
-      color: leavesColors[Math.floor(Math.random() * leavesColors.length)] 
+    // Billboard tree sprite (always faces camera)
+    const spriteMat = new THREE.SpriteMaterial({ 
+      map: treeTex, 
+      transparent: true,
+      depthWrite: false
     });
-    const leaves = new THREE.Mesh(leavesGeo, leavesMat);
-    leaves.position.y = 3;
-    leaves.castShadow = true;
-    tree.add(leaves);
+    const sprite = new THREE.Sprite(spriteMat);
+    sprite.scale.set(treeW, treeH, 1);
+    
+    const tree = new THREE.Group();
+    tree.add(sprite);
     
     const side = Math.random() > 0.5 ? 1 : -1;
     tree.position.set(
       side * (8 + Math.random() * 10),
-      0,
+      treeH / 2,
       -10 - Math.random() * 30
     );
     const treeScale = 0.8 + Math.random() * 0.4;
@@ -1023,43 +1031,40 @@ const createBackgroundElements = () => {
     trees.push(tree);
   }
   
-  // Add colorful cartoon buildings with windows
+  // Load AI building facade textures
+  const buildingTextures = [
+    textureLoader.load('assets/building_pink.png'),
+    textureLoader.load('assets/building_blue.png'),
+    textureLoader.load('assets/building_green.png'),
+  ];
   const buildingColors = [0xffb6c1, 0x87ceeb, 0x98fb98, 0xffd700, 0xdda0dd, 0xffa07a, 0xadd8e6];
+  
   for (let i = 0; i < 12; i++) {
     const height = 5 + Math.random() * 10;
     const width = 3 + Math.random() * 4;
     const buildingGroup = new THREE.Group();
     
+    // Use AI texture on front face, color on sides/back
+    const texIdx = Math.floor(Math.random() * buildingTextures.length);
+    const facadeTex = buildingTextures[texIdx];
+    facadeTex.wrapS = THREE.RepeatWrapping;
+    facadeTex.wrapT = THREE.RepeatWrapping;
+    
     const buildingGeo = new THREE.BoxGeometry(width, height, width);
-    const buildingMat = new THREE.MeshToonMaterial({ 
+    // Multi-material: right, left, top, bottom, front, back
+    const sideMat = new THREE.MeshToonMaterial({ 
       color: buildingColors[Math.floor(Math.random() * buildingColors.length)] 
     });
-    const building = new THREE.Mesh(buildingGeo, buildingMat);
+    const frontMat = new THREE.MeshToonMaterial({ 
+      map: facadeTex,
+      color: 0xffffff
+    });
+    const topMat = new THREE.MeshToonMaterial({ color: 0x555555 });
+    const buildingMats = [sideMat, sideMat, topMat, topMat, frontMat, sideMat];
+    const building = new THREE.Mesh(buildingGeo, buildingMats);
     building.castShadow = true;
     building.receiveShadow = true;
     buildingGroup.add(building);
-    
-    // Add windows
-    const windowRows = Math.floor(height / 2);
-    const windowCols = Math.floor(width / 1.5);
-    for (let row = 0; row < windowRows; row++) {
-      for (let col = 0; col < windowCols; col++) {
-        const winGeo = new THREE.PlaneGeometry(0.4, 0.5);
-        const isLit = Math.random() > 0.4;
-        const winMat = new THREE.MeshBasicMaterial({ 
-          color: isLit ? 0xffffaa : 0x666666,
-          transparent: !isLit,
-          opacity: isLit ? 1.0 : 0.7
-        });
-        const win = new THREE.Mesh(winGeo, winMat);
-        win.position.set(
-          (col - (windowCols - 1) / 2) * 1.2,
-          (row - (windowRows - 1) / 2) * 1.8,
-          width / 2 + 0.01
-        );
-        buildingGroup.add(win);
-      }
-    }
     
     // Rooftop detail
     const roofGeo = new THREE.BoxGeometry(width + 0.3, 0.3, width + 0.3);
