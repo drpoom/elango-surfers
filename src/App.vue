@@ -1703,7 +1703,6 @@ const animate = () => {
         obs.mesh.userData.policeDir = -1;
       }
     }
-    }
     
     // Police siren flash
     if (obs.obstacleType === 'police') {
