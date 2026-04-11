@@ -67,7 +67,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v2.5.3 Clothing Texture + Grass Fix';
+const VERSION = 'v2.5.4 Procedural Trees + Freeze Fix';
 
 // Audio system
 let audioCtx = null;
@@ -509,10 +509,8 @@ let groundTexture;
 let skyTextures = {};
 let mountainMesh;
 let textureLoader = new THREE.TextureLoader();
-let characterTextures = {};
 let torsoTexture;
 let armTexture;
-let treeTexture;
 let coinTexture;
 let shieldTexture;
 let magnetTexture;
@@ -580,21 +578,7 @@ const initGame = () => {
   let texturesLoaded = 0;
   const totalTextures = 8; // 4 char + tree + coin + shield + magnet
   
-  ['run', 'jump', 'slide', 'fly'].forEach(state => {
-    charLoader.load(`assets/character_${state}.png`, (tex) => {
-      tex.colorSpace = THREE.SRGBColorSpace;
-      tex.generateMipmaps = true;
-      characterTextures[state] = tex;
-      texturesLoaded++;
-      // Set initial sprite texture once run loads
-      if (state === 'run') {
-        // Texture loaded - torso update will happen via setInterval check
-      }
-    });
-  });
-  
-  // Load other textures
-  charLoader.load('assets/tree.png', (tex) => { treeTexture = tex; texturesLoaded++; });
+  // Load clothing textures for character
   charLoader.load('assets/coin.png', (tex) => { coinTexture = tex; texturesLoaded++; });
   charLoader.load('assets/powerup_shield.png', (tex) => { shieldTexture = tex; texturesLoaded++; });
   charLoader.load('assets/powerup_magnet.png', (tex) => { magnetTexture = tex; texturesLoaded++; });
@@ -1047,49 +1031,38 @@ const createClouds = () => {
 };
 
 const createBackgroundElements = () => {
-  // Create cartoon tree sprites (AI-generated)
+  // Create procedural cartoon trees
+  const trunkGeo = new THREE.CylinderGeometry(0.2, 0.3, 2, 6);
+  const trunkMat = new THREE.MeshToonMaterial({ color: 0x8b4513 });
+  const leavesGeo = new THREE.ConeGeometry(1.5, 3, 6);
+  const leavesColors = [0x228b22, 0x32cd32, 0x8fbc8f, 0x90ee90];
+  
   for (let i = 0; i < 20; i++) {
-    const treeGroup = new THREE.Group();
+    const tree = new THREE.Group();
     
-    if (treeTexture) {
-      // Use AI tree texture as billboard sprite
-      const treeSpriteMat = new THREE.SpriteMaterial({ 
-        map: treeTexture, 
-        transparent: true,
-        depthWrite: false 
-      });
-      const treeSprite = new THREE.Sprite(treeSpriteMat);
-      const s = 3 + Math.random() * 2;
-      treeSprite.scale.set(s, s * 1.5, 1);
-      treeSprite.position.y = s * 0.75;
-      treeGroup.add(treeSprite);
-    } else {
-      // Fallback procedural tree
-      const trunkGeo = new THREE.CylinderGeometry(0.2, 0.3, 2, 6);
-      const trunkMat = new THREE.MeshToonMaterial({ color: 0x8b4513 });
-      const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-      trunk.position.y = 1;
-      trunk.castShadow = true;
-      treeGroup.add(trunk);
-      const leavesGeo = new THREE.ConeGeometry(1.5, 3, 6);
-      const leavesColors = [0x228b22, 0x32cd32, 0x8fbc8f, 0x90ee90];
-      const leavesMat = new THREE.MeshToonMaterial({ color: leavesColors[Math.floor(Math.random() * leavesColors.length)] });
-      const leaves = new THREE.Mesh(leavesGeo, leavesMat);
-      leaves.position.y = 3;
-      leaves.castShadow = true;
-      treeGroup.add(leaves);
-    }
+    const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+    trunk.position.y = 1;
+    trunk.castShadow = true;
+    tree.add(trunk);
+    
+    const leavesMat = new THREE.MeshToonMaterial({ 
+      color: leavesColors[Math.floor(Math.random() * leavesColors.length)] 
+    });
+    const leaves = new THREE.Mesh(leavesGeo, leavesMat);
+    leaves.position.y = 3;
+    leaves.castShadow = true;
+    tree.add(leaves);
     
     const side = Math.random() > 0.5 ? 1 : -1;
-    treeGroup.position.set(
+    tree.position.set(
       side * (8 + Math.random() * 10),
       0,
       -10 - Math.random() * 30
     );
     const treeScale = 0.8 + Math.random() * 0.4;
-    treeGroup.scale.setScalar(treeScale);
-    scene.add(treeGroup);
-    trees.push(treeGroup);
+    tree.scale.setScalar(treeScale);
+    scene.add(tree);
+    trees.push(tree);
   }
   
   // Add colorful cartoon buildings with windows
