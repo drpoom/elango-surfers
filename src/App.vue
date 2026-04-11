@@ -67,7 +67,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.1.0 New Obstacles + Harder';
+const VERSION = 'v3.1.1 Obstacle Tweaks';
 
 // Audio system
 let audioCtx = null;
@@ -1644,16 +1644,20 @@ const animate = () => {
   obstacles.forEach((obs, index) => {
     obs.mesh.position.z += gameSpeed;
     // Spin UFOs, ground obstacles gentle spin
-    obs.mesh.rotation.y += obs.type === 'floating' ? 0.08 : 0.05;
+    obs.mesh.rotation.y += obs.type === 'floating' ? 0.08 : (obs.obstacleType === 'fruit' ? 0.05 : 0);
     
     // Barrel drift: move sideways
     if (obs.obstacleType === 'barrel' && obs.mesh.userData) {
       obs.mesh.position.x += obs.mesh.userData.driftDir * obs.mesh.userData.driftSpeed;
-      // Bounce off lane boundaries
-      const laneCenter = Math.round(obs.mesh.position.x / laneWidth) * laneWidth;
       if (obs.mesh.position.x < -laneWidth * 1.5 || obs.mesh.position.x > laneWidth * 1.5) {
         obs.mesh.userData.driftDir *= -1;
       }
+    }
+    
+    // Hard obstacles sway left-right at higher difficulty
+    if (difficultyMultiplier > 1.8 && (obs.obstacleType === 'police' || obs.obstacleType === 'fireengine' || obs.obstacleType === 'bus')) {
+      const sway = Math.sin(obs.mesh.position.z * 0.05 + time * 2) * 0.015 * difficultyMultiplier;
+      obs.mesh.position.x += sway;
     }
     
     // Police siren flash
