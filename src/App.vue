@@ -67,7 +67,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.1.1 Obstacle Tweaks';
+const VERSION = 'v3.1.2 Obstacle AI';
 
 // Audio system
 let audioCtx = null;
@@ -1203,6 +1203,7 @@ const spawnObstacle = () => {
         group.add(wheel);
       }
       group.position.set(laneX, 0, -50);
+      group.rotation.y = Math.PI / 2; // Police car across the road
       break;
     }
     
@@ -1646,6 +1647,26 @@ const animate = () => {
     // Spin UFOs, ground obstacles gentle spin
     obs.mesh.rotation.y += obs.type === 'floating' ? 0.08 : (obs.obstacleType === 'fruit' ? 0.05 : 0);
     
+    // UFO: sin wave + lateral sweep across road
+    if (obs.type === 'floating') {
+      // Sine wave on Y axis (bob up and down)
+      obs.mesh.position.y = 2.2 + Math.sin(time * 3 + obs.mesh.position.z * 0.1) * 0.5;
+      // Lateral sweep at higher difficulty
+      if (difficultyMultiplier > 1.5) {
+        if (!obs.mesh.userData.ufoSwayDir) {
+          obs.mesh.userData.ufoSwayDir = Math.random() > 0.5 ? 1 : -1;
+          obs.mesh.userData.ufoSwaySpeed = 0.01 * difficultyMultiplier;
+        }
+        obs.mesh.position.x += obs.mesh.userData.ufoSwayDir * obs.mesh.userData.ufoSwaySpeed;
+        // Keep within road boundaries (don't hit trees/buildings at x=±8+)
+        if (obs.mesh.position.x < -laneWidth * 1.3) {
+          obs.mesh.userData.ufoSwayDir = 1;
+        } else if (obs.mesh.position.x > laneWidth * 1.3) {
+          obs.mesh.userData.ufoSwayDir = -1;
+        }
+      }
+    }
+    
     // Barrel drift: move sideways
     if (obs.obstacleType === 'barrel' && obs.mesh.userData) {
       obs.mesh.position.x += obs.mesh.userData.driftDir * obs.mesh.userData.driftSpeed;
@@ -1654,10 +1675,34 @@ const animate = () => {
       }
     }
     
-    // Hard obstacles sway left-right at higher difficulty
-    if (difficultyMultiplier > 1.8 && (obs.obstacleType === 'police' || obs.obstacleType === 'fireengine' || obs.obstacleType === 'bus')) {
-      const sway = Math.sin(obs.mesh.position.z * 0.05 + time * 2) * 0.015 * difficultyMultiplier;
-      obs.mesh.position.x += sway;
+    // Bus/Car: move forward (toward player) or backward (away) at higher difficulty
+    if (difficultyMultiplier > 1.8 && (obs.obstacleType === 'bus' || obs.obstacleType === 'car' || obs.obstacleType === 'fireengine')) {
+      if (!obs.mesh.userData.lungeTimer) {
+        obs.mesh.userData.lungeTimer = Math.random() * 3;
+        obs.mesh.userData.lungeDir = Math.random() > 0.5 ? 1 : -1;
+      }
+      obs.mesh.userData.lungeTimer -= delta;
+      if (obs.mesh.userData.lungeTimer <= 0) {
+        obs.mesh.userData.lungeDir *= -1;
+        obs.mesh.userData.lungeTimer = 1.5 + Math.random() * 2;
+      }
+      obs.mesh.position.z += obs.mesh.userData.lungeDir * 0.01 * difficultyMultiplier;
+    }
+    
+    // Police car: 90° across the road, slides left or right across lanes
+    if (obs.obstacleType === 'police') {
+      if (!obs.mesh.userData.policeDir) {
+        obs.mesh.userData.policeDir = Math.random() > 0.5 ? 1 : -1;
+        obs.mesh.userData.policeSpeed = 0.02 * difficultyMultiplier;
+      }
+      obs.mesh.position.x += obs.mesh.userData.policeDir * obs.mesh.userData.policeSpeed * delta * 60;
+      // Bounce between road edges
+      if (obs.mesh.position.x < -laneWidth * 1.5) {
+        obs.mesh.userData.policeDir = 1;
+      } else if (obs.mesh.position.x > laneWidth * 1.5) {
+        obs.mesh.userData.policeDir = -1;
+      }
+    }
     }
     
     // Police siren flash
