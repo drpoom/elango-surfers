@@ -67,7 +67,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v2.5.7 Shield Cleanup';
+const VERSION = 'v2.5.8 UI Readability';
 
 // Audio system
 let audioCtx = null;
@@ -2089,9 +2089,10 @@ onUnmounted(() => {
 }
 #version {
   font-size: 0.6rem;
-  opacity: 0.5;
+  opacity: 0.6;
   margin-bottom: 2px;
   font-family: monospace;
+  text-shadow: 1px 1px 3px rgba(0,0,0,0.8);
 }
 #score {
   font-size: 1.4rem;
@@ -2105,9 +2106,11 @@ onUnmounted(() => {
 }
 #instructions {
   font-size: 0.65rem;
-  opacity: 0.8;
+  opacity: 0.9;
   margin-top: 6px;
   line-height: 1.3;
+  color: #fff;
+  text-shadow: 0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.5), 1px 1px 2px rgba(0,0,0,0.8);
 }
 #game-canvas {
   width: 100%;
