@@ -78,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.4.0 Curved Earth';
+const VERSION = 'v3.4.1 Less Curve + Curbed Curbs';
 
 // Audio system
 let audioCtx = null;
@@ -439,7 +439,7 @@ const gravity = 0.015;
 const laneWidth = 3;
 
 // Curved earth: ground and objects follow a sphere arc
-const EARTH_R = 200; // planet radius — larger = less curve
+const EARTH_R = 350; // planet radius — larger = less curve
 const getSurfaceY = (z) => {
   // z is world Z (negative = ahead). Returns Y offset.
   // Near the player (z > -5): flat (y=0)
@@ -950,9 +950,18 @@ const createGround = () => {
   grass.receiveShadow = true;
   scene.add(grass);
   
-  // Road edge curbs
-  const curbGeo = new THREE.BoxGeometry(0.3, 0.15, 200);
+  // Road edge curbs (curved to match earth)
+  const curbGeo = new THREE.BoxGeometry(0.3, 0.15, 200, 1, 1, 60); // 60 segments for curve
   const curbMat = new THREE.MeshToonMaterial({ color: 0xcccccc });
+  // Curve curb vertices
+  const curbPos = curbGeo.attributes.position;
+  for (let i = 0; i < curbPos.count; i++) {
+    const cz = curbPos.getZ(i);
+    const worldZ = cz - 50; // same offset as road center
+    curbPos.setY(i, curbPos.getY(i) + getSurfaceY(worldZ));
+  }
+  curbPos.needsUpdate = true;
+  curbGeo.computeVertexNormals();
   const leftCurb = new THREE.Mesh(curbGeo, curbMat);
   leftCurb.position.set(-7.5, 0.07, -50);
   leftCurb.receiveShadow = true;
