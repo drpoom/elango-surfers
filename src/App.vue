@@ -78,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.6.7 Bullet Time Fixes';
+const VERSION = 'v3.6.8 Camera LookAt Fix';
 
 // Audio system
 let audioCtx = null;
@@ -2846,11 +2846,11 @@ const animate = () => {
       // Actually we need a smooth ramp. Let's use a global override.
     }
     
-    // Camera: on the road AHEAD of the player, at ground level, looking UP at the character
-    // Camera offset to the side + tracks player's lane position
-    const targetCamX = player.position.x + bulletTimeCamSide * 4; // side offset + follows lane
+    // Camera: on the road AHEAD of the player, at ground level, looking BACK at character's face
+    // Character runs toward -Z. Camera at z=-6 (ahead on road), looks BACK (+Z direction) at the character
+    const targetCamX = player.position.x + bulletTimeCamSide * 3; // side offset + lane tracking
     const targetCamY = 0.3; // ground level
-    const targetCamZ = player.position.z - 6; // ahead of player on the road
+    const targetCamZ = player.position.z - 6; // ahead on the road (lower z)
     const camSpeed = 0.1;
     camera.position.x += (targetCamX - camera.position.x) * camSpeed;
     camera.position.y += (targetCamY - camera.position.y) * camSpeed;
@@ -2861,9 +2861,9 @@ const animate = () => {
     camera.fov += (targetFov - camera.fov) * camSpeed;
     camera.updateProjectionMatrix();
     
-    // Look at the PLAYER - tracks lane movement
-    // From z-6 at y=0.3, looking at player z, y=1.5 = character body center = 45 degree upward angle
-    camera.lookAt(player.position.x, 1.5, player.position.z + 1);
+    // Look BACK at the character: from z=-6, look toward z=0 (player position)
+    // y=1.5 = character face/body level, x tracks lane
+    camera.lookAt(player.position.x, 1.5, player.position.z);
     
     // Animate word art sprite
     if (bulletTimeWordMesh) {
