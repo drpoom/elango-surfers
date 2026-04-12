@@ -78,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.6.0 Bullet Time + Texture Optimization';
+const VERSION = 'v3.6.1 Bullet Time Tuning';
 
 // Audio system
 let audioCtx = null;
@@ -2320,22 +2320,16 @@ const animate = () => {
       nearMissTextRef.value = 'CLOSE CALL! 🔥';
       nearMissTimer = 1.0;
       
-      // Bullet time on 2+ near-misses
-      if (nearMissCount >= 2 && !bulletTimeActive) {
+      // Every near-miss triggers bullet time!
+      if (!bulletTimeActive) {
         bulletTimeActive = true;
-        slowMoTimer = 1.5;
-        slowMoFactor = 0.15;
+        slowMoTimer = 2.5; // 2.5 seconds of slow-mo
+        slowMoFactor = 0.08; // Very slow — doesn't affect gameplay
         bulletTimeCamSide = Math.random() < 0.5 ? -1 : 1;
         bulletTimeWord = ['POW!', 'WHAM!', 'ZOOM!', 'BAM!'][Math.floor(Math.random() * 4)];
-        bulletTimeWordLife = 1.5;
+        bulletTimeWordLife = 2.5;
         createBulletTimeWord(bulletTimeWord);
         nearMissTextRef.value = '💥 BULLET TIME! 💥';
-        nearMissCount = 0;
-        nearMissCountRef.value = 0;
-      } else {
-        // Regular near-miss: subtle camera shake
-        cameraShakeTimer = 0.3;
-        cameraShakeIntensity = 0.15;
       }
       nearMissCountRef.value = nearMissCount;
     }
@@ -2819,51 +2813,56 @@ const animate = () => {
   // === BULLET TIME ===
   if (slowMoTimer > 0 && bulletTimeActive) {
     slowMoTimer -= delta;
-    const totalTime = 1.5;
+    const totalTime = 2.5;
     const progress = 1 - (slowMoTimer / totalTime); // 0→1 over duration
     
-    // Slow-mo factor: sharp dip then smooth recovery
-    if (progress < 0.2) {
-      // Ramp into slow-mo
-      slowMoFactor = THREE.MathUtils.lerp(1, 0.15, progress / 0.2);
+    // Slow-mo factor: sharp dip then slow recovery
+    // Last 30% ramps back up so it doesn't affect gameplay
+    if (progress < 0.1) {
+      // Quick ramp into slow-mo
+      slowMoFactor = THREE.MathUtils.lerp(1, 0.08, progress / 0.1);
+    } else if (progress < 0.7) {
+      // Hold slow-mo
+      slowMoFactor = 0.08;
     } else {
-      // Gradually speed back up
-      slowMoFactor = THREE.MathUtils.lerp(0.15, 1, (progress - 0.2) / 0.8);
+      // Gradual ramp back to normal
+      slowMoFactor = THREE.MathUtils.lerp(0.08, 1, (progress - 0.7) / 0.3);
     }
     
-    // Action camera: low angle from the side, facing character
-    const camTargetX = bulletTimeCamSide * 5; // 5 units left or right
-    const camTargetY = 2.0; // Low angle - below character
-    const camTargetZ = player.position.z + 4; // In front of player
+    // Action camera: front-facing, ground level, 45° up toward character
+    // Position camera in FRONT of the player, at ground level, offset slightly to one side
+    const camTargetX = bulletTimeCamSide * 2.5; // Slight side offset
+    const camTargetY = 0.5; // Ground level
+    const camTargetZ = player.position.z + 3; // In front of player
     
     // Smooth camera transition
-    const camLerp = 0.05;
+    const camLerp = 0.06;
     camera.position.x = THREE.MathUtils.lerp(camera.position.x, camTargetX, camLerp);
     camera.position.y = THREE.MathUtils.lerp(camera.position.y, camTargetY, camLerp);
     camera.position.z = THREE.MathUtils.lerp(camera.position.z, camTargetZ, camLerp);
     
-    // Dramatic FOV zoom
-    const targetFov = THREE.MathUtils.lerp(35, 60, Math.min(progress / 0.5, 1));
+    // Dramatic FOV zoom — start tight, gradually widen
+    const targetFov = THREE.MathUtils.lerp(30, 60, Math.min(progress / 0.6, 1));
     camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, 0.08);
     camera.updateProjectionMatrix();
     
-    // Look at the player
-    camera.lookAt(player.position.x, 1.5, player.position.z - 5);
+    // Look up at the character from ground level (45° angle)
+    camera.lookAt(player.position.x, 2.0, player.position.z - 8);
     
     // Animate word art sprite
     if (bulletTimeWordMesh) {
       // Scale pulse: pop in then settle
-      const wordScale = progress < 0.15 
-        ? THREE.MathUtils.lerp(0.1, 7, progress / 0.15) 
-        : THREE.MathUtils.lerp(7, 5, (progress - 0.15) / 0.85);
+      const wordScale = progress < 0.1 
+        ? THREE.MathUtils.lerp(0.1, 7, progress / 0.1) 
+        : THREE.MathUtils.lerp(7, 4, (progress - 0.1) / 0.9);
       bulletTimeWordMesh.scale.set(wordScale * 2, wordScale, 1);
       // Follow player position
       bulletTimeWordMesh.position.x = THREE.MathUtils.lerp(bulletTimeWordMesh.position.x, player.position.x, 0.1);
       bulletTimeWordMesh.position.z = THREE.MathUtils.lerp(bulletTimeWordMesh.position.z, player.position.z - 3, 0.1);
       bulletTimeWordMesh.position.y = 3.5;
-      // Fade out in last 30%
-      if (progress > 0.7) {
-        bulletTimeWordMesh.material.opacity = 1 - ((progress - 0.7) / 0.3);
+      // Fade out in last 25%
+      if (progress > 0.75) {
+        bulletTimeWordMesh.material.opacity = 1 - ((progress - 0.75) / 0.25);
       }
     }
     
