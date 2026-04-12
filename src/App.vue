@@ -16,7 +16,7 @@
       <div id="settings-btn" @click="toggleSettings">⚙️</div>
       <div id="instructions">A/D ←/→ Move | W/↑ Jump | S/↓ Slide | Space Restart<br>📱 Swipe | Tilt | 🎤 Blow to fly!<br>⚡ Speed increases over time!</div>
     </div>
-    <div id="game-canvas" :class="{ 'comic-bw': bulletTimeActive }"></div>
+    <div id="game-canvas"></div>
     <div id="vignette-glow"></div>
     <div id="bullet-time-word" v-if="bulletTimeActive && bulletTimeWord" :class="'bt-word-' + bulletTimeWord">{{ bulletTimeWord }}</div>
     <div v-if="gameOver" id="game-over">
@@ -77,9 +77,10 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.7.2 Comic B&W Canvas Filter';
+const VERSION = 'v3.7.3 WebGL Comic Shader';
 
 // Audio system
 let audioCtx = null;
@@ -685,6 +686,70 @@ const initGame = () => {
     0.85   // threshold
   );
   composer.addPass(bloomPass);
+
+  // Comic-book post-processing shader (active during bullet time)
+  const ComicShader = {
+    uniforms: {
+      tDiffuse: { value: null },
+      uComicMix: { value: 0.0 }, // 0 = normal, 1 = full comic
+      uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+      uTime: { value: 0.0 }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D tDiffuse;
+      uniform float uComicMix;
+      uniform vec2 uResolution;
+      uniform float uTime;
+      varying vec2 vUv;
+
+      float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+
+      void main() {
+        vec4 color = texture2D(tDiffuse, vUv);
+        float lum = luma(color.rgb);
+
+        // Halftone dots - classic comic printing
+        vec2 dotUV = vUv * uResolution / 4.0;
+        float dotPattern = sin(dotUV.x * 3.14159) * sin(dotUV.y * 3.14159);
+        float halftone = step(0.0, dotPattern - (1.0 - lum) * 0.8);
+
+        // Ink outline via edge detection (Sobel)
+        vec2 texel = vec2(1.0) / uResolution;
+        float l = luma(texture2D(tDiffuse, vUv - vec2(texel.x, 0.0)).rgb);
+        float r = luma(texture2D(tDiffuse, vUv + vec2(texel.x, 0.0)).rgb);
+        float t = luma(texture2D(tDiffuse, vUv + vec2(0.0, texel.y)).rgb);
+        float b = luma(texture2D(tDiffuse, vUv - vec2(0.0, texel.y)).rgb);
+        float edge = abs(l - r) + abs(t - b);
+        float inkOutline = smoothstep(0.1, 0.3, edge);
+
+        // B&W with 3 levels of shading (comic ink wash)
+        float bw = smoothstep(0.25, 0.35, lum) * 0.5 + smoothstep(0.55, 0.65, lum) * 0.5;
+
+        // Combine: B&W base + halftone + ink outlines
+        vec3 comicColor = vec3(bw * halftone);
+        comicColor = mix(comicColor, vec3(0.0), inkOutline * 0.9);
+
+        // Vignette
+        vec2 vigUV = vUv * 2.0 - 1.0;
+        float vig = 1.0 - dot(vigUV * 0.7, vigUV * 0.7);
+        comicColor *= smoothstep(0.0, 0.5, vig);
+
+        // Mix normal vs comic
+        vec3 finalColor = mix(color.rgb, comicColor, uComicMix);
+        gl_FragColor = vec4(finalColor, 1.0);
+      }
+    `
+  };
+  const comicPass = new ShaderPass(ComicShader);
+  comicPass.renderToScreen = true;
+  composer.addPass(comicPass);
 
   // Enhanced cartoon lighting
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
@@ -2287,14 +2352,15 @@ const animate = () => {
     if (!obs.nearMissTriggered && horizDist < collisionDist + 1.2 && horizDist >= collisionDist && Math.abs(dz) < 1.5) {
       obs.nearMissTriggered = true;
       nearMissCount++;
-      nearMissTextRef.value = 'CLOSE CALL! 🔥';
+      nearMissTextRef.value = 'CLOSE CALL! \u{1F525}';
       nearMissTimer = 1.0;
       
-      // Every near-miss triggers bullet time!
-      if (!bulletTimeActive) {
+      // Bullet time triggers after 2 near-misses
+      if (!bulletTimeActive && nearMissCount >= 2) {
         bulletTimeActive = true;
         bulletTimeStartTime = clock.getElapsedTime();
-        savedGameSpeed = gameSpeed; // save current speed
+        savedGameSpeed = gameSpeed;
+        nearMissCount = 0; // reset counter
         bulletTimeCamSide = Math.random() < 0.5 ? -1 : 1;
         bulletTimeWord.value = ['POW!', 'WHAM!', 'ZOOM!', 'BAM!'][Math.floor(Math.random() * 4)];
         createBulletTimeWord(bulletTimeWord.value);
@@ -2784,6 +2850,14 @@ const animate = () => {
     try {
     const elapsed = clock.getElapsedTime() - bulletTimeStartTime;
     const progress = Math.min(elapsed / BULLET_TIME_DURATION, 1); // 0→1
+
+    // Update comic shader intensity: snap on, fade out in last 30%
+    if (composer && composer.passes.length > 2) {
+      const comicMix = progress < 0.7 ? 1.0 : 1.0 - (progress - 0.7) / 0.3;
+      composer.passes[2].uniforms.uComicMix.value = comicMix;
+      composer.passes[2].uniforms.uTime.value = clock.getElapsedTime();
+      composer.passes[2].uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+    }
     
     // Gradual ramp back to normal speed in last 30%
     if (progress > 0.7) {
@@ -2828,6 +2902,9 @@ const animate = () => {
       gameSpeed = savedGameSpeed; // restore original speed immediately
       if (composer && composer.passes.length > 1) {
         composer.passes[1].strength = 0.35;
+      }
+      if (composer && composer.passes.length > 2) {
+        composer.passes[2].uniforms.uComicMix.value = 0.0;
       }
     }
     } catch(e) { console.error('Bullet time error:', e); bulletTimeActive = false; bulletTimeWord.value = ''; }
@@ -3579,46 +3656,36 @@ button {
 #near-miss { position: absolute; top: 40%; left: 50%; transform: translateX(-50%); font-size: 24px; color: #ff0; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); pointer-events: none; animation: nearMissPop 0.5s ease-out; }
 #near-miss.bullet-time-flash { font-size: 48px; color: #ff4400; text-shadow: 0 0 20px #ff0000, 0 0 40px #ff4400, 2px 2px 4px rgba(0,0,0,0.9); animation: bulletTimeFlash 0.4s ease-out; }
 
-/* Bullet time: B&W comic effect on the game canvas */
-#game-canvas.comic-bw {
-  filter: grayscale(1) contrast(2) brightness(0.65);
-  -webkit-filter: grayscale(1) contrast(2) brightness(0.65);
-  transition: filter 0.15s ease-out;
-}
-#game-canvas:not(.comic-bw) {
-  transition: filter 0.3s ease-in;
-}
-
 /* Bullet time word art - COMIC EXPLOSION starburst background */
 #bullet-time-word {
   position: absolute; z-index: 20; pointer-events: none;
-  top: 20%; left: 50%; transform: translate(-50%, -50%);
+  top: 22%; left: 50%; transform: translate(-50%, -50%);
   font-family: "Arial Black", Impact, sans-serif;
-  font-size: min(16vw, 100px);
+  font-size: min(12vw, 72px);
   font-weight: 900;
   color: #FFF;
-  letter-spacing: 3px;
-  padding: 0.15em 0.3em;
-  /* Starburst explosion background */
-  background: radial-gradient(circle, #FFEE00 0%, #FF8800 40%, #FF2200 70%, transparent 100%);
+  letter-spacing: 2px;
+  padding: 0.4em 0.8em;
+  /* Starburst explosion background - yellow/red burst */
+  background: radial-gradient(circle, #FFEE00 0%, #FFAA00 25%, #FF4400 50%, #CC0000 75%, transparent 100%);
   border-radius: 0;
   clip-path: polygon(
-    50% 0%, 61% 15%, 78% 2%, 72% 20%, 95% 15%, 80% 30%,
-    100% 45%, 82% 45%, 95% 65%, 75% 55%, 85% 80%, 65% 65%,
-    50% 100%, 35% 65%, 15% 80%, 25% 55%, 5% 65%, 18% 45%,
-    0% 45%, 20% 30%, 5% 15%, 28% 20%, 22% 2%, 39% 15%
+    50% 0%, 63% 12%, 80% 0%, 74% 18%, 98% 12%, 82% 28%,
+    100% 42%, 84% 42%, 98% 62%, 78% 54%, 88% 82%, 68% 66%,
+    50% 100%, 32% 66%, 12% 82%, 22% 54%, 2% 62%, 16% 42%,
+    0% 42%, 18% 28%, 2% 12%, 26% 18%, 20% 0%, 37% 12%
   );
-  /* Thick black comic outline */
+  /* Thick black comic outline via drop-shadow */
   -webkit-text-stroke: 3px #000;
   text-shadow:
     3px 3px 0 #000, -3px -3px 0 #000, 3px -3px 0 #000, -3px 3px 0 #000,
-    0 0 20px #FF4400, 0 0 40px #FF0000;
+    0 0 15px #FF4400, 0 0 30px #FF0000;
   animation: comicBurst 0.25s ease-out;
   filter: drop-shadow(4px 4px 0 #000);
 }
 @keyframes comicBurst {
   0% { transform: translate(-50%, -50%) scale(0.2) rotate(-15deg); opacity: 0; }
-  40% { transform: translate(-50%, -50%) scale(1.4) rotate(5deg); opacity: 1; }
+  40% { transform: translate(-50%, -50%) scale(1.3) rotate(5deg); opacity: 1; }
   100% { transform: translate(-50%, -50%) scale(1) rotate(0deg); opacity: 1; }
 }
 #event-alert { position: absolute; top: 25%; left: 50%; transform: translateX(-50%); font-size: 28px; color: #fff; font-weight: bold; text-shadow: 2px 2px 8px rgba(0,0,0,0.9); pointer-events: none; }
