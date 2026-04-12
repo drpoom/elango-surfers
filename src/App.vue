@@ -78,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.4.2 Rainbow + Nyan Cat';
+const VERSION = 'v3.4.3 Nyan Cat + Softer Rainbow';
 
 // Audio system
 let audioCtx = null;
@@ -2122,6 +2122,7 @@ const animate = () => {
       if (road) {
         originalRoadMaterial = road.material;
         road.material = new THREE.ShaderMaterial({
+          transparent: true,
           uniforms: {
             uTime: { value: 0 },
           },
@@ -2137,10 +2138,10 @@ const animate = () => {
             varying vec2 vUv;
             void main() {
               // Left side = different hue from right, cycling over time
-              float hue = fract(vUv.x * 2.0 + uTime * 0.3 + vUv.y * 0.5);
-              // RGB from HSL (simplified rainbow)
+              float hue = fract(vUv.x * 1.5 + uTime * 0.15 + vUv.y * 0.3);
+              // RGB from HSL (simplified rainbow) — mild and pastel
               float h = hue * 6.0;
-              float c = 1.0;
+              float c = 0.6; // less saturated
               float x = c * (1.0 - abs(mod(h, 2.0) - 1.0));
               vec3 col;
               if (h < 1.0) col = vec3(c, x, 0.0);
@@ -2149,7 +2150,9 @@ const animate = () => {
               else if (h < 4.0) col = vec3(0.0, x, c);
               else if (h < 5.0) col = vec3(x, 0.0, c);
               else col = vec3(c, 0.0, x);
-              gl_FragColor = vec4(col, 1.0);
+              // Mix with light base for pastel look
+              col = mix(col, vec3(0.9, 0.9, 0.95), 0.45);
+              gl_FragColor = vec4(col, 0.85);
             }
           `,
         });
@@ -2172,73 +2175,119 @@ const animate = () => {
       }
       scene.userData.bonusEnvActive = true;
       
-      // Nyan Cat flies across the sky!
+      // Nyan Cat flies across the sky! (looks like the meme)
       const nyanCat = new THREE.Group();
-      // Body (poptart cat torso)
-      const bodyGeo = new THREE.BoxGeometry(1.2, 0.8, 0.6);
-      const poptartMat = new THREE.MeshToonMaterial({ color: 0xf5c06f }); // poptart color
-      const body = new THREE.Mesh(bodyGeo, poptartMat);
-      nyanCat.add(body);
-      // Sprinkles on poptart
-      const sprinkleColors = [0xff4444, 0x44ff44, 0x4444ff, 0xffff44, 0xff44ff];
-      for (let i = 0; i < 5; i++) {
-        const sprGeo = new THREE.SphereGeometry(0.06, 6, 6);
+      // Poptart body (rectangular, pink-brown crust)
+      const poptartGeo = new THREE.BoxGeometry(1.4, 1.0, 0.15);
+      const crustMat = new THREE.MeshToonMaterial({ color: 0xc8945a }); // crust edge
+      const poptart = new THREE.Mesh(poptartGeo, crustMat);
+      nyanCat.add(poptart);
+      // Poptart filling (lighter inner rectangle on front face)
+      const fillingGeo = new THREE.BoxGeometry(1.1, 0.7, 0.02);
+      const fillingMat = new THREE.MeshToonMaterial({ color: 0xffb7c5 }); // pink frosting
+      const filling = new THREE.Mesh(fillingGeo, fillingMat);
+      filling.position.set(0, 0, 0.08);
+      nyanCat.add(filling);
+      // Sprinkles on frosting
+      const sprinkleColors = [0xff4444, 0xffff44, 0x44aaff, 0xff44ff, 0x44ff44, 0xff8844, 0xaa44ff, 0x44ffff];
+      for (let i = 0; i < 8; i++) {
+        const sprGeo = new THREE.SphereGeometry(0.04, 5, 5);
         const sprMat = new THREE.MeshToonMaterial({ color: sprinkleColors[i] });
         const spr = new THREE.Mesh(sprGeo, sprMat);
-        spr.position.set(-0.3 + i * 0.15, 0.1 + (i % 2) * 0.15, 0.31);
+        const row = Math.floor(i / 4);
+        const col = i % 4;
+        spr.position.set(-0.35 + col * 0.22, -0.15 + row * 0.3, 0.10);
         nyanCat.add(spr);
       }
-      // Head
-      const headGeo = new THREE.BoxGeometry(0.6, 0.6, 0.6);
-      const head = new THREE.Mesh(headGeo, poptartMat);
-      head.position.set(0.9, 0.1, 0);
-      nyanCat.add(head);
-      // Ears
-      const earGeo = new THREE.ConeGeometry(0.15, 0.3, 4);
-      const earMat = new THREE.MeshToonMaterial({ color: 0xf5c06f });
-      const earL = new THREE.Mesh(earGeo, earMat);
-      earL.position.set(0.75, 0.5, 0);
-      earL.rotation.z = 0.3;
-      nyanCat.add(earL);
-      const earR = new THREE.Mesh(earGeo, earMat);
-      earR.position.set(1.05, 0.5, 0);
-      earR.rotation.z = -0.3;
-      nyanCat.add(earR);
-      // Eyes
-      const eyeGeo = new THREE.SphereGeometry(0.08, 6, 6);
-      const eyeMat = new THREE.MeshToonMaterial({ color: 0x000000 });
-      const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
-      eyeL.position.set(1.05, 0.2, 0.3);
-      nyanCat.add(eyeL);
-      const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
-      eyeR.position.set(1.05, 0.2, -0.3);
-      nyanCat.add(eyeR);
-      // Nose
-      const noseGeo = new THREE.SphereGeometry(0.05, 6, 6);
-      const noseMat = new THREE.MeshToonMaterial({ color: 0xff6666 });
-      const nose = new THREE.Mesh(noseGeo, noseMat);
-      nose.position.set(1.2, 0.1, 0);
-      nyanCat.add(nose);
-      // Legs
-      const legGeo = new THREE.BoxGeometry(0.2, 0.4, 0.2);
-      const legMat = new THREE.MeshToonMaterial({ color: 0xf5c06f });
-      [[-0.3, -0.6, 0.2], [-0.3, -0.6, -0.2], [0.3, -0.6, 0.2], [0.3, -0.6, -0.2]].forEach(p => {
+      // Cat face on front of poptart (grey cat)
+      const catFaceMat = new THREE.MeshToonMaterial({ color: 0x999999 }); // grey cat
+      // Cat head (circle-ish, use dodecahedron for roundness)
+      const catHeadGeo = new THREE.DodecahedronGeometry(0.28, 1);
+      const catHead = new THREE.Mesh(catHeadGeo, catFaceMat);
+      catHead.position.set(0, 0, 0.12);
+      catHead.scale.set(1.3, 1.1, 0.5);
+      nyanCat.add(catHead);
+      // Cat ears (triangles)
+      const catEarGeo = new THREE.ConeGeometry(0.1, 0.18, 3);
+      const catEarL = new THREE.Mesh(catEarGeo, catFaceMat);
+      catEarL.position.set(-0.2, 0.32, 0.12);
+      catEarL.rotation.z = 0.3;
+      nyanCat.add(catEarL);
+      const catEarR = new THREE.Mesh(catEarGeo, catFaceMat);
+      catEarR.position.set(0.2, 0.32, 0.12);
+      catEarR.rotation.z = -0.3;
+      nyanCat.add(catEarR);
+      // Big round eyes (white + black pupil — distinctive Nyan look)
+      const eyeWhiteGeo = new THREE.SphereGeometry(0.07, 8, 8);
+      const eyeWhiteMat = new THREE.MeshToonMaterial({ color: 0xffffff });
+      const eyeBlackGeo = new THREE.SphereGeometry(0.04, 8, 8);
+      const eyeBlackMat = new THREE.MeshToonMaterial({ color: 0x000000 });
+      [-0.1, 0.1].forEach(xOff => {
+        const ew = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat);
+        ew.position.set(xOff, 0.05, 0.22);
+        nyanCat.add(ew);
+        const eb = new THREE.Mesh(eyeBlackGeo, eyeBlackMat);
+        eb.position.set(xOff, 0.05, 0.26);
+        nyanCat.add(eb);
+      });
+      // Nose (small pink)
+      const catNoseGeo = new THREE.SphereGeometry(0.03, 6, 6);
+      const catNoseMat = new THREE.MeshToonMaterial({ color: 0xff6688 });
+      const catNose = new THREE.Mesh(catNoseGeo, catNoseMat);
+      catNose.position.set(0, -0.05, 0.25);
+      nyanCat.add(catNose);
+      // Mouth (simple line — two small boxes for W shape)
+      const mouthMat = new THREE.MeshToonMaterial({ color: 0x333333 });
+      const mouthGeo = new THREE.BoxGeometry(0.08, 0.015, 0.01);
+      const mouthL = new THREE.Mesh(mouthGeo, mouthMat);
+      mouthL.position.set(-0.04, -0.1, 0.22);
+      mouthL.rotation.z = 0.3;
+      nyanCat.add(mouthL);
+      const mouthR = new THREE.Mesh(mouthGeo, mouthMat);
+      mouthR.position.set(0.04, -0.1, 0.22);
+      mouthR.rotation.z = -0.3;
+      nyanCat.add(mouthR);
+      // Cheeks (pink blush)
+      const cheekGeo = new THREE.SphereGeometry(0.05, 6, 6);
+      const cheekMat = new THREE.MeshToonMaterial({ color: 0xffaaaa, transparent: true, opacity: 0.6 });
+      [-0.18, 0.18].forEach(xOff => {
+        const cheek = new THREE.Mesh(cheekGeo, cheekMat);
+        cheek.position.set(xOff, -0.02, 0.20);
+        nyanCat.add(cheek);
+      });
+      // Cat legs (stubby, sticking out below poptart)
+      const legGeo = new THREE.BoxGeometry(0.15, 0.35, 0.12);
+      const legMat = new THREE.MeshToonMaterial({ color: 0x999999 });
+      [[-0.45, -0.65, 0.03], [-0.45, -0.65, -0.03], [0.45, -0.65, 0.03], [0.45, -0.65, -0.03]].forEach(p => {
         const leg = new THREE.Mesh(legGeo, legMat);
         leg.position.set(...p);
         nyanCat.add(leg);
       });
-      // Tail (rainbow trail)
+      // Tail (stubby, sticking out back)
+      const tailGeo = new THREE.BoxGeometry(0.12, 0.12, 0.3);
+      const tail = new THREE.Mesh(tailGeo, catFaceMat);
+      tail.position.set(0, 0.15, -0.22);
+      nyanCat.add(tail);
+      // Rainbow trail (behind the cat — the iconic trail)
       const rainbowColors = [0xff0000, 0xff8800, 0xffff00, 0x00ff00, 0x0088ff, 0x8800ff];
       for (let i = 0; i < 6; i++) {
-        const trailGeo = new THREE.BoxGeometry(0.4, 0.25, 0.25);
-        const trailMat = new THREE.MeshToonMaterial({ color: rainbowColors[i], emissive: rainbowColors[i], emissiveIntensity: 0.3 });
+        // Each color band is a tall thin strip, stacked vertically
+        const trailGeo = new THREE.BoxGeometry(1.8, 0.18, 0.05);
+        const trailMat = new THREE.MeshToonMaterial({ 
+          color: rainbowColors[i], 
+          emissive: rainbowColors[i], 
+          emissiveIntensity: 0.4,
+          transparent: true,
+          opacity: 0.85
+        });
         const trail = new THREE.Mesh(trailGeo, trailMat);
-        trail.position.set(-0.8 - i * 0.4, 0, 0);
+        // Stack vertically: red on top, violet on bottom
+        trail.position.set(-1.8, 0.45 - i * 0.18, 0);
         nyanCat.add(trail);
       }
       nyanCat.position.set(30, 10, -20); // start off-screen right
-      nyanCat.rotation.y = Math.PI; // face left (flying left)
-      nyanCat.scale.setScalar(1.5);
+      nyanCat.rotation.y = Math.PI * 0.1; // slight angle so you can see both front face and trail
+      nyanCat.scale.setScalar(2.0);
       scene.add(nyanCat);
       scene.userData.nyanCat = nyanCat;
       scene.userData.nyanCatTime = 0;
@@ -2700,6 +2749,7 @@ const animate = () => {
       const side = tree.position.x > 0 ? 1 : -1;
       tree.position.z = -Math.random() * 80;
       tree.position.x = side * (8 + Math.random() * 10);
+      tree.position.y = (tree.baseY || 0) + getSurfaceY(tree.position.z);
     }
   });
   
@@ -2713,6 +2763,7 @@ const animate = () => {
       const side = building.position.x > 0 ? 1 : -1;
       building.position.z = -20 - Math.random() * 60;
       building.position.x = side * (15 + Math.random() * 10);
+      building.position.y = (building.baseY || 0) + getSurfaceY(building.position.z);
     }
   });
   
