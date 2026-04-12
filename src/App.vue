@@ -78,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.3.1 Curved Earth + Countdown Fix';
+const VERSION = 'v3.3.2 Curved Earth v2';
 
 // Audio system
 let audioCtx = null;
@@ -439,17 +439,19 @@ const gravity = 0.015;
 const laneWidth = 3;
 
 // Fake curved earth: objects rise from horizon
-const CURVE_RADIUS = 80; // virtual planet radius (larger = less curve)
+const CURVE_RADIUS = 60; // virtual planet radius (smaller = more curve)
 const getCurveOffset = (z) => {
-  // z is negative (ahead of player). Farther = more below horizon.
-  // At z=0 (player): no offset. At z=-80: fully below horizon.
   const dist = Math.max(0, -z); // distance ahead
-  if (dist < 5) return { yOff: 0, tilt: 0 }; // no curve near player
-  // y offset: objects drop below and rise as they approach
-  const yOff = -Math.pow(dist / CURVE_RADIUS, 2) * 4; // quadratic drop
+  if (dist < 8) return { yOff: 0, tilt: 0, hidden: false }; // no curve near player
+  // y offset: objects drop below ground and rise as they approach
+  // Using arc of a circle: y = -R + R*cos(angle)
+  const angle = Math.min(dist / CURVE_RADIUS, Math.PI / 3);
+  const yOff = -CURVE_RADIUS * (1 - Math.cos(angle));
   // tilt: objects lean back as if on a sphere surface
-  const tilt = -Math.atan2(dist, CURVE_RADIUS) * 0.5;
-  return { yOff, tilt };
+  const tilt = -angle * 0.4;
+  // Hidden when far below ground (won't be visible until they rise enough)
+  const hidden = yOff < -3;
+  return { yOff, tilt, hidden };
 };
 
 // Voice/fly controls
@@ -906,8 +908,8 @@ const createGround = () => {
     color: 0x555555
   });
   const ground = new THREE.Mesh(groundGeo, groundMat);
-  ground.rotation.x = -Math.PI / 2 + 0.03; // slight tilt for earth curve illusion
-  ground.position.set(0, -0.1, -50);
+  ground.rotation.x = -Math.PI / 2; // flat road - curve is via object positions
+  ground.position.set(0, 0, -50);
   ground.receiveShadow = true;
   ground.name = 'road';
   scene.add(ground);
@@ -924,8 +926,7 @@ const createGround = () => {
   });
   const grass = new THREE.Mesh(grassGeo, grassMat);
   grass.rotation.x = -Math.PI / 2;
-  grass.position.z = -50;
-  grass.position.y = -0.1;
+  grass.position.set(0, -0.1, -50); // just below road
   grass.receiveShadow = true;
   scene.add(grass);
   
@@ -1846,6 +1847,7 @@ const spawnFloatingObstacle = () => {
   
   ufoGroup.position.set(laneX, 2.2, -50);
   scene.add(ufoGroup);
+  ufoGroup.baseY = ufoGroup.position.y;
   obstacles.push({ mesh: ufoGroup, lane, type: 'floating' });
 };
 
@@ -2025,6 +2027,7 @@ const animate = () => {
     const portalCurve = getCurveOffset(bonusPortal.mesh.position.z);
     bonusPortal.mesh.position.y = (bonusPortal.baseY || 1.5) + portalCurve.yOff;
     bonusPortal.mesh.rotation.x = portalCurve.tilt;
+    bonusPortal.mesh.visible = !portalCurve.hidden;
     // Spin and pulse portal
     const ring = bonusPortal.mesh.getObjectByName('portal-ring');
     if (ring) ring.rotation.z += 0.05;
@@ -2193,19 +2196,19 @@ const animate = () => {
 
   obstacles.forEach((obs, index) => {
     obs.mesh.position.z += gameSpeed;
-    // Fake earth curve: objects rise from horizon
+    // Fake earth curve: ALL objects rise from horizon
     const curve = getCurveOffset(obs.mesh.position.z);
-    if (obs.type !== 'floating') {
-      obs.mesh.position.y = (obs.baseY || 0) + curve.yOff;
-      obs.mesh.rotation.x = curve.tilt;
-    }
+    obs.mesh.position.y = (obs.baseY || 0) + curve.yOff;
+    obs.mesh.rotation.x = curve.tilt;
+    obs.mesh.visible = !curve.hidden;
     // Spin UFOs, ground obstacles gentle spin
     obs.mesh.rotation.y += obs.type === 'floating' ? 0.08 : (obs.obstacleType === 'fruit' ? 0.05 : 0);
     
     // UFO: sin wave + lateral sweep across road
     if (obs.type === 'floating') {
-      // Sine wave on Y axis (bob up and down)
-      obs.mesh.position.y = 2.2 + Math.sin(time * 3 + obs.mesh.position.z * 0.1) * 0.5;
+      // Sine wave on Y axis (bob up and down) + earth curve
+      const ufoCurve = getCurveOffset(obs.mesh.position.z);
+      obs.mesh.position.y = 2.2 + Math.sin(time * 3 + obs.mesh.position.z * 0.1) * 0.5 + ufoCurve.yOff;
       // Lateral sweep at higher difficulty
       if (difficultyMultiplier > 1.5) {
         if (!obs.mesh.userData.ufoSwayDir) {
@@ -2394,6 +2397,7 @@ const animate = () => {
     // Fake earth curve: coins rise from horizon
     const coinCurve = getCurveOffset(coin.mesh.position.z);
     coin.mesh.position.y = (coin.baseY || 0.5) + coinCurve.yOff;
+    coin.mesh.visible = !coinCurve.hidden;
     
     if (dist < 1.2) {
       coin.collected = true;
@@ -2427,6 +2431,7 @@ const animate = () => {
     // Fake earth curve
     const bcCurve = getCurveOffset(bc.mesh.position.z);
     bc.mesh.position.y = 0.5 + bcCurve.yOff;
+    bc.mesh.visible = !bcCurve.hidden;
     const dist = player.position.distanceTo(bc.mesh.position);
     if (dist < 1.2) {
       bc.collected = true;
@@ -2457,6 +2462,7 @@ const animate = () => {
     const pwCurve = getCurveOffset(pw.mesh.position.z);
     pw.mesh.position.y = (pw.baseY || 1.5) + pwCurve.yOff;
     pw.mesh.rotation.x = pwCurve.tilt;
+    pw.mesh.visible = !pwCurve.hidden;
     
     // Animate rings
     if (pw.type === 'shield') {
@@ -2557,6 +2563,7 @@ const animate = () => {
     const treeCurve = getCurveOffset(tree.position.z);
     tree.position.y = (tree.baseY || 0) + treeCurve.yOff;
     tree.rotation.x = treeCurve.tilt;
+    if (!inBonusZone) tree.visible = !treeCurve.hidden;
     if (tree.position.z > 10) {
       const side = tree.position.x > 0 ? 1 : -1;
       tree.position.z = -Math.random() * 80;
@@ -2571,6 +2578,7 @@ const animate = () => {
     const bldCurve = getCurveOffset(building.position.z);
     building.position.y = (building.baseY || 0) + bldCurve.yOff;
     building.rotation.x = bldCurve.tilt;
+    if (!inBonusZone) building.visible = !bldCurve.hidden;
     if (building.position.z > 20) {
       const side = building.position.x > 0 ? 1 : -1;
       building.position.z = -20 - Math.random() * 60;
