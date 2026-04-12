@@ -78,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.4.6 Black Screen Fix';
+const VERSION = 'v3.4.7 Nyan Direction + Smaller Trees + WebP';
 
 // Audio system
 let audioCtx = null;
@@ -620,9 +620,9 @@ const initGame = () => {
 
   // Load AI-generated sky textures
   const skyUrls = {
-    sunny: 'assets/sky_sunny.png',
-    sunset: 'assets/sky_sunset.png',
-    night: 'assets/sky_night.png'
+    sunny: 'assets/sky_sunny.webp',
+    sunset: 'assets/sky_sunset.webp',
+    night: 'assets/sky_night.webp'
   };
   Object.keys(skyUrls).forEach(key => {
     textureLoader.load(skyUrls[key], (tex) => {
@@ -631,7 +631,7 @@ const initGame = () => {
   });
   
   // Load mountain texture for parallax
-  textureLoader.load('assets/mountains.png', (tex) => {
+  textureLoader.load('assets/mountains.webp', (tex) => {
     const mtGeo = new THREE.PlaneGeometry(80, 15);
     const mtMat = new THREE.MeshBasicMaterial({
       map: tex,
@@ -1412,14 +1412,14 @@ const createBackgroundElements = () => {
     tex.colorSpace = THREE.SRGBColorSpace;
   });
   // 2. Trees (billboard sprites) — grass already loaded above
-  const treeRoundTex = textureLoader.load('assets/tree_round_clean.png');
-  const treePineTex = textureLoader.load('assets/tree_pine_clean.png');
+  const treeRoundTex = textureLoader.load('assets/tree_round_clean.webp');
+  const treePineTex = textureLoader.load('assets/tree_pine_clean.webp');
   
   for (let i = 0; i < 20; i++) {
     const isPine = Math.random() > 0.5;
     const treeTex = isPine ? treePineTex : treeRoundTex;
-    const treeH = isPine ? 7 : 6;
-    const treeW = isPine ? 4 : 5;
+    const treeH = isPine ? 5.6 : 4.8;
+    const treeW = isPine ? 3.2 : 4.0;
     
     // Billboard tree sprite (always faces camera)
     const spriteMat = new THREE.SpriteMaterial({ 
@@ -1442,7 +1442,7 @@ const createBackgroundElements = () => {
       treeH / 2 + getSurfaceY(treeZ),
       treeZ
     );
-    const treeScale = 0.8 + Math.random() * 0.4;
+    const treeScale = 0.7 + Math.random() * 0.3;
     tree.scale.setScalar(treeScale);
     tree.baseY = treeH / 2;
     scene.add(tree);
@@ -2195,7 +2195,7 @@ const animate = () => {
       });
       const nyanCat = new THREE.Sprite(nyanSpriteMat);
       nyanCat.scale.set(4, 2.5, 1); // wide aspect ratio matching the meme
-      nyanCat.position.set(30, 10, -20); // start off-screen right
+      nyanCat.position.set(-30, 10, -20); // start off-screen LEFT, fly RIGHT
       scene.add(nyanCat);
       scene.userData.nyanCat = nyanCat;
       scene.userData.nyanCatTime = 0;
@@ -2203,13 +2203,13 @@ const animate = () => {
     // Nyan Cat animation
     if (scene.userData.nyanCat) {
       scene.userData.nyanCatTime += delta * 8; // speed across sky
-      const nyanX = 30 - scene.userData.nyanCatTime; // fly left
+      const nyanX = -30 + scene.userData.nyanCatTime; // fly RIGHT
       scene.userData.nyanCat.position.x = nyanX;
       scene.userData.nyanCat.position.y = 10 + Math.sin(scene.userData.nyanCatTime * 2) * 0.5; // gentle bob
-      // Loop: when off-screen left, restart from right
-      if (nyanX < -30) {
+      // Loop: when off-screen right, restart from left
+      if (nyanX > 30) {
         scene.userData.nyanCatTime = 0;
-        scene.userData.nyanCat.position.x = 30;
+        scene.userData.nyanCat.position.x = -30;
       }
     }
     // Rainbow road animation
