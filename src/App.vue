@@ -78,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.6.9 Camera LookAt Override Fix';
+const VERSION = 'v3.7.0 Comic Bullet Time';
 
 // Audio system
 let audioCtx = null;
@@ -1902,51 +1902,89 @@ const createBulletTimeWord = (word) => {
     bulletTimeWordMesh = null;
   }
   const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 256;
+  canvas.width = 1024;
+  canvas.height = 512;
   const ctx = canvas.getContext('2d');
-  // Comic-book style: star burst background
-  ctx.fillStyle = '#FFD700';
+  const cx = 512, cy = 256;
+  
+  // COMIC-BOOK EXPLOSION: Big saturated starburst
+  // Outer glow
+  const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, 240);
+  gradient.addColorStop(0, '#FFFF00');
+  gradient.addColorStop(0.5, '#FF8800');
+  gradient.addColorStop(1, 'rgba(255,0,0,0)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 1024, 512);
+  
+  // Starburst shape - 20 points for jagged explosion look
+  ctx.fillStyle = '#FFDD00';
   ctx.beginPath();
-  // Draw starburst shape
-  const cx = 256, cy = 128;
-  for (let i = 0; i < 16; i++) {
-    const angle = (i / 16) * Math.PI * 2 - Math.PI / 2;
-    const r = i % 2 === 0 ? 120 : 60;
+  for (let i = 0; i < 20; i++) {
+    const angle = (i / 20) * Math.PI * 2 - Math.PI / 2;
+    const r = i % 2 === 0 ? 220 : 100;
     if (i === 0) ctx.moveTo(cx + r * Math.cos(angle), cy + r * Math.sin(angle));
     else ctx.lineTo(cx + r * Math.cos(angle), cy + r * Math.sin(angle));
   }
   ctx.closePath();
   ctx.fill();
-  // Red outline
-  ctx.strokeStyle = '#FF0000';
-  ctx.lineWidth = 6;
+  
+  // Bold red border
+  ctx.strokeStyle = '#CC0000';
+  ctx.lineWidth = 10;
   ctx.stroke();
-  // Word text
-  ctx.font = 'bold 72px Impact, Arial Black, sans-serif';
+  
+  // Inner starburst (smaller, white-hot)
+  ctx.fillStyle = '#FFFFCC';
+  ctx.beginPath();
+  for (let i = 0; i < 20; i++) {
+    const angle = (i / 20) * Math.PI * 2 - Math.PI / 2;
+    const r = i % 2 === 0 ? 130 : 70;
+    if (i === 0) ctx.moveTo(cx + r * Math.cos(angle), cy + r * Math.sin(angle));
+    else ctx.lineTo(cx + r * Math.cos(angle), cy + r * Math.sin(angle));
+  }
+  ctx.closePath();
+  ctx.fill();
+  
+  // WORD TEXT - thick black outline + bright white fill
+  ctx.font = 'bold 110px "Arial Black", Impact, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  // Black outline
+  // Multiple outline passes for thick comic border
   ctx.strokeStyle = '#000';
+  ctx.lineWidth = 16;
+  ctx.lineJoin = 'round';
+  ctx.miterLimit = 2;
+  ctx.strokeText(word, cx, cy);
   ctx.lineWidth = 8;
   ctx.strokeText(word, cx, cy);
-  // White fill with red shadow
-  ctx.fillStyle = '#FFF';
-  ctx.shadowColor = '#FF0000';
-  ctx.shadowBlur = 0;
+  // Bright white fill
+  ctx.fillStyle = '#FFFFFF';
   ctx.fillText(word, cx, cy);
-  // Red inner highlight
-  ctx.fillStyle = '#FF4444';
-  ctx.globalAlpha = 0.3;
-  ctx.fillText(word, cx, cy - 2);
+  // Saturated red shadow/depth
+  ctx.fillStyle = '#FF2200';
+  ctx.globalAlpha = 0.5;
+  ctx.fillText(word, cx + 3, cy + 3);
+  ctx.globalAlpha = 1.0;
+  // Highlight on top
+  ctx.fillStyle = '#FFFFFF';
+  ctx.globalAlpha = 0.4;
+  ctx.fillText(word, cx - 1, cy - 3);
   ctx.globalAlpha = 1.0;
   
   const texture = new THREE.CanvasTexture(canvas);
-  const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
+  texture.colorSpace = THREE.SRGBColorSpace; // ensure saturated colors
+  const material = new THREE.SpriteMaterial({ 
+    map: texture, 
+    transparent: true,
+    depthTest: false, // always render on top
+    depthWrite: false
+  });
   const sprite = new THREE.Sprite(material);
-  // Position in front of player, slightly above
-  sprite.position.set(player.position.x, 3.5, player.position.z - 3);
-  sprite.scale.set(6, 3, 1);
+  sprite.renderOrder = 999; // render last = on top of everything
+  // Position: between camera and player, at eye-level from the low camera
+  // Camera is at y=0.3, looking up at y=1.5. Word should be right in the view
+  sprite.position.set(0, 2.0, -2); // slightly above character, between camera and player
+  sprite.scale.set(8, 4, 1); // BIG
   scene.add(sprite);
   bulletTimeWordMesh = sprite;
 };
@@ -2237,7 +2275,9 @@ const animate = () => {
     scene.userData.eventAlertTimer = 0;
   }
 
-  if (time - lastSpawnTime > spawnInterval && !bonusNoSpawn) {
+  // During bullet time, stretch spawn interval so objects don't pile up
+  const effectiveSpawnInterval = bulletTimeActive ? spawnInterval / BULLET_TIME_SLOW : spawnInterval;
+  if (time - lastSpawnTime > effectiveSpawnInterval && !bonusNoSpawn) {
     if (Math.random() < 0.7) {
     if (Math.random() < 0.3) {
       spawnFloatingObstacle();
@@ -2867,15 +2907,30 @@ const animate = () => {
     // y=1.5 = character face/body level, x tracks lane
     camera.lookAt(player.position.x, 1.5, player.position.z);
     
-    // Animate word art sprite
+    // Animate word art sprite - dramatic comic book pop
     if (bulletTimeWordMesh) {
-      const wordScale = progress < 0.1 
-        ? 0.1 + 6.9 * (progress / 0.1)  // pop in
-        : 7 - 3 * ((progress - 0.1) / 0.9); // settle to 4
-      bulletTimeWordMesh.scale.set(wordScale * 2, wordScale, 1);
-      bulletTimeWordMesh.position.set(0, 3.5, -3);
-      if (progress > 0.8) {
-        bulletTimeWordMesh.material.opacity = Math.max(0, 1 - (progress - 0.8) / 0.2);
+      if (progress < 0.05) {
+        // Explosive pop-in: scale from 0 to huge
+        const t = progress / 0.05;
+        const s = t * t * (3 - 2 * t); // smoothstep
+        bulletTimeWordMesh.scale.set(s * 12, s * 6, 1);
+      } else if (progress < 0.15) {
+        // Overshoot then settle
+        const t = (progress - 0.05) / 0.1;
+        const overshoot = 1 + 0.3 * Math.sin(t * Math.PI);
+        bulletTimeWordMesh.scale.set(8 * overshoot, 4 * overshoot, 1);
+      } else {
+        // Slow pulse
+        const pulse = 1 + 0.05 * Math.sin((progress - 0.15) * 30);
+        bulletTimeWordMesh.scale.set(8 * pulse, 4 * pulse, 1);
+      }
+      // Position: tracks player lane slightly
+      bulletTimeWordMesh.position.x = player.position.x * 0.3;
+      bulletTimeWordMesh.position.y = 2.0;
+      bulletTimeWordMesh.position.z = -2;
+      // Fade out in last 15%
+      if (progress > 0.85) {
+        bulletTimeWordMesh.material.opacity = Math.max(0, 1 - (progress - 0.85) / 0.15);
       }
     }
     
