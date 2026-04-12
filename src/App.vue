@@ -78,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.4.4 Tree Fix + Better Rainbow';
+const VERSION = 'v3.4.5 Texture Priority + Nyan Sprite';
 
 // Audio system
 let audioCtx = null;
@@ -926,10 +926,7 @@ const createGround = () => {
   scene.add(ground);
   
   // Add colorful grass borders with AI texture
-  const grassTileTex = textureLoader.load('assets/grass_tile.png');
-  grassTileTex.wrapS = THREE.RepeatWrapping;
-  grassTileTex.wrapT = THREE.RepeatWrapping;
-  grassTileTex.repeat.set(10, 25);
+  // grassTileTex loaded above with priority
   const grassGeo = new THREE.PlaneGeometry(80, 200, 1, 60); // curve match
   const gPosG = grassGeo.attributes.position;
   for (let i = 0; i < gPosG.count; i++) {
@@ -1395,8 +1392,24 @@ const updateEvent = (delta) => {
 };
 
 const createBackgroundElements = () => {
-  // Create procedural cartoon trees
-  // Load AI tree textures
+  // Priority texture loading: most visible objects first
+  // 1. Building facades (most visible, darkest when missing)
+  const buildingTextures = [
+    textureLoader.load('assets/building_pink.png'),
+    textureLoader.load('assets/building_blue.png'),
+    textureLoader.load('assets/building_green.png'),
+  ];
+  // Set dominant colors as fallback so buildings don't appear dark before texture loads
+  const buildingDominantColors = [0xffb6c1, 0x87ceeb, 0x98fb98]; // pink, blue, green
+  buildingTextures.forEach((tex, idx) => {
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.colorSpace = THREE.SRGBColorSpace;
+  });
+  // 2. Grass tile (large surface area)
+  // grassTileTex loaded above with priority
+  // Tree textures loaded above with priority
+  // 3. Trees (billboard sprites)
   const treeRoundTex = textureLoader.load('assets/tree_round_clean.png');
   const treePineTex = textureLoader.load('assets/tree_pine_clean.png');
   
@@ -1416,7 +1429,6 @@ const createBackgroundElements = () => {
     // Offset sprite up so bottom of visible content aligns with ground
     // Tree textures have ~12% bottom padding — shift center up by half
     sprite.scale.set(treeW, treeH, 1);
-    sprite.position.y = treeH * 0.12; // shift up to account for bottom transparent padding
     
     const tree = new THREE.Group();
     tree.add(sprite);
@@ -1435,12 +1447,7 @@ const createBackgroundElements = () => {
     trees.push(tree);
   }
   
-  // Load AI building facade textures
-  const buildingTextures = [
-    textureLoader.load('assets/building_pink.png'),
-    textureLoader.load('assets/building_blue.png'),
-    textureLoader.load('assets/building_green.png'),
-  ];
+  // buildingTextures loaded above with priority
   const buildingColors = [0xffb6c1, 0x87ceeb, 0x98fb98, 0xffd700, 0xdda0dd, 0xffa07a, 0xadd8e6];
   
   for (let i = 0; i < 12; i++) {
@@ -1451,17 +1458,16 @@ const createBackgroundElements = () => {
     // Use AI texture on front face, color on sides/back
     const texIdx = Math.floor(Math.random() * buildingTextures.length);
     const facadeTex = buildingTextures[texIdx];
-    facadeTex.wrapS = THREE.RepeatWrapping;
-    facadeTex.wrapT = THREE.RepeatWrapping;
-    
+    const facadeDominant = buildingDominantColors[texIdx]; // fallback color before texture loads
     const buildingGeo = new THREE.BoxGeometry(width, height, width);
     // Multi-material: right, left, top, bottom, front, back
     const sideMat = new THREE.MeshToonMaterial({ 
       color: buildingColors[Math.floor(Math.random() * buildingColors.length)] 
     });
+    // Front uses texture with dominant color fallback so it's not dark before load
     const frontMat = new THREE.MeshToonMaterial({ 
       map: facadeTex,
-      color: 0xffffff
+      color: facadeDominant
     });
     const topMat = new THREE.MeshToonMaterial({ color: 0x555555 });
     const buildingMats = [sideMat, sideMat, topMat, topMat, frontMat, sideMat];
@@ -2178,119 +2184,16 @@ const animate = () => {
       }
       scene.userData.bonusEnvActive = true;
       
-      // Nyan Cat flies across the sky! (looks like the meme)
-      const nyanCat = new THREE.Group();
-      // Poptart body (rectangular, pink-brown crust)
-      const poptartGeo = new THREE.BoxGeometry(1.4, 1.0, 0.15);
-      const crustMat = new THREE.MeshToonMaterial({ color: 0xc8945a }); // crust edge
-      const poptart = new THREE.Mesh(poptartGeo, crustMat);
-      nyanCat.add(poptart);
-      // Poptart filling (lighter inner rectangle on front face)
-      const fillingGeo = new THREE.BoxGeometry(1.1, 0.7, 0.02);
-      const fillingMat = new THREE.MeshToonMaterial({ color: 0xffb7c5 }); // pink frosting
-      const filling = new THREE.Mesh(fillingGeo, fillingMat);
-      filling.position.set(0, 0, 0.08);
-      nyanCat.add(filling);
-      // Sprinkles on frosting
-      const sprinkleColors = [0xff4444, 0xffff44, 0x44aaff, 0xff44ff, 0x44ff44, 0xff8844, 0xaa44ff, 0x44ffff];
-      for (let i = 0; i < 8; i++) {
-        const sprGeo = new THREE.SphereGeometry(0.04, 5, 5);
-        const sprMat = new THREE.MeshToonMaterial({ color: sprinkleColors[i] });
-        const spr = new THREE.Mesh(sprGeo, sprMat);
-        const row = Math.floor(i / 4);
-        const col = i % 4;
-        spr.position.set(-0.35 + col * 0.22, -0.15 + row * 0.3, 0.10);
-        nyanCat.add(spr);
-      }
-      // Cat face on front of poptart (grey cat)
-      const catFaceMat = new THREE.MeshToonMaterial({ color: 0x999999 }); // grey cat
-      // Cat head (circle-ish, use dodecahedron for roundness)
-      const catHeadGeo = new THREE.DodecahedronGeometry(0.28, 1);
-      const catHead = new THREE.Mesh(catHeadGeo, catFaceMat);
-      catHead.position.set(0, 0, 0.12);
-      catHead.scale.set(1.3, 1.1, 0.5);
-      nyanCat.add(catHead);
-      // Cat ears (triangles)
-      const catEarGeo = new THREE.ConeGeometry(0.1, 0.18, 3);
-      const catEarL = new THREE.Mesh(catEarGeo, catFaceMat);
-      catEarL.position.set(-0.2, 0.32, 0.12);
-      catEarL.rotation.z = 0.3;
-      nyanCat.add(catEarL);
-      const catEarR = new THREE.Mesh(catEarGeo, catFaceMat);
-      catEarR.position.set(0.2, 0.32, 0.12);
-      catEarR.rotation.z = -0.3;
-      nyanCat.add(catEarR);
-      // Big round eyes (white + black pupil — distinctive Nyan look)
-      const eyeWhiteGeo = new THREE.SphereGeometry(0.07, 8, 8);
-      const eyeWhiteMat = new THREE.MeshToonMaterial({ color: 0xffffff });
-      const eyeBlackGeo = new THREE.SphereGeometry(0.04, 8, 8);
-      const eyeBlackMat = new THREE.MeshToonMaterial({ color: 0x000000 });
-      [-0.1, 0.1].forEach(xOff => {
-        const ew = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat);
-        ew.position.set(xOff, 0.05, 0.22);
-        nyanCat.add(ew);
-        const eb = new THREE.Mesh(eyeBlackGeo, eyeBlackMat);
-        eb.position.set(xOff, 0.05, 0.26);
-        nyanCat.add(eb);
+      // Nyan Cat flies across the sky! (meme-accurate PNG sprite)
+      const nyanTex = textureLoader.load('assets/nyan_cat.png');
+      const nyanSpriteMat = new THREE.SpriteMaterial({
+        map: nyanTex,
+        transparent: true,
+        depthWrite: false
       });
-      // Nose (small pink)
-      const catNoseGeo = new THREE.SphereGeometry(0.03, 6, 6);
-      const catNoseMat = new THREE.MeshToonMaterial({ color: 0xff6688 });
-      const catNose = new THREE.Mesh(catNoseGeo, catNoseMat);
-      catNose.position.set(0, -0.05, 0.25);
-      nyanCat.add(catNose);
-      // Mouth (simple line — two small boxes for W shape)
-      const mouthMat = new THREE.MeshToonMaterial({ color: 0x333333 });
-      const mouthGeo = new THREE.BoxGeometry(0.08, 0.015, 0.01);
-      const mouthL = new THREE.Mesh(mouthGeo, mouthMat);
-      mouthL.position.set(-0.04, -0.1, 0.22);
-      mouthL.rotation.z = 0.3;
-      nyanCat.add(mouthL);
-      const mouthR = new THREE.Mesh(mouthGeo, mouthMat);
-      mouthR.position.set(0.04, -0.1, 0.22);
-      mouthR.rotation.z = -0.3;
-      nyanCat.add(mouthR);
-      // Cheeks (pink blush)
-      const cheekGeo = new THREE.SphereGeometry(0.05, 6, 6);
-      const cheekMat = new THREE.MeshToonMaterial({ color: 0xffaaaa, transparent: true, opacity: 0.6 });
-      [-0.18, 0.18].forEach(xOff => {
-        const cheek = new THREE.Mesh(cheekGeo, cheekMat);
-        cheek.position.set(xOff, -0.02, 0.20);
-        nyanCat.add(cheek);
-      });
-      // Cat legs (stubby, sticking out below poptart)
-      const legGeo = new THREE.BoxGeometry(0.15, 0.35, 0.12);
-      const legMat = new THREE.MeshToonMaterial({ color: 0x999999 });
-      [[-0.45, -0.65, 0.03], [-0.45, -0.65, -0.03], [0.45, -0.65, 0.03], [0.45, -0.65, -0.03]].forEach(p => {
-        const leg = new THREE.Mesh(legGeo, legMat);
-        leg.position.set(...p);
-        nyanCat.add(leg);
-      });
-      // Tail (stubby, sticking out back)
-      const tailGeo = new THREE.BoxGeometry(0.12, 0.12, 0.3);
-      const tail = new THREE.Mesh(tailGeo, catFaceMat);
-      tail.position.set(0, 0.15, -0.22);
-      nyanCat.add(tail);
-      // Rainbow trail (behind the cat — the iconic trail)
-      const rainbowColors = [0xff0000, 0xff8800, 0xffff00, 0x00ff00, 0x0088ff, 0x8800ff];
-      for (let i = 0; i < 6; i++) {
-        // Each color band is a tall thin strip, stacked vertically
-        const trailGeo = new THREE.BoxGeometry(1.8, 0.18, 0.05);
-        const trailMat = new THREE.MeshToonMaterial({ 
-          color: rainbowColors[i], 
-          emissive: rainbowColors[i], 
-          emissiveIntensity: 0.4,
-          transparent: true,
-          opacity: 0.85
-        });
-        const trail = new THREE.Mesh(trailGeo, trailMat);
-        // Stack vertically: red on top, violet on bottom
-        trail.position.set(-1.8, 0.45 - i * 0.18, 0);
-        nyanCat.add(trail);
-      }
+      const nyanCat = new THREE.Sprite(nyanSpriteMat);
+      nyanCat.scale.set(4, 2.5, 1); // wide aspect ratio matching the meme
       nyanCat.position.set(30, 10, -20); // start off-screen right
-      nyanCat.rotation.y = Math.PI * 0.1; // slight angle so you can see both front face and trail
-      nyanCat.scale.setScalar(2.0);
       scene.add(nyanCat);
       scene.userData.nyanCat = nyanCat;
       scene.userData.nyanCatTime = 0;
