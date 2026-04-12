@@ -78,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.4.7 Nyan Direction + Smaller Trees + WebP';
+const VERSION = 'v3.4.8 Bonus Zone Game Over Fix';
 
 // Audio system
 let audioCtx = null;
@@ -2418,6 +2418,31 @@ const animate = () => {
         gameOver.value = true;
         if (bonusPortal) { scene.remove(bonusPortal.mesh); bonusPortal = null; }
         inBonusZone = false; inBonusZoneRef.value = false; bonusTimer = 0; bonusTimerRef.value = 0;
+        // Clean up bonus zone state on game over
+        bonusNoSpawn = false;
+        bonusCoins.forEach(bc => scene.remove(bc.mesh));
+        bonusCoins = [];
+        if (scene.userData.nyanCat) {
+          scene.remove(scene.userData.nyanCat);
+          scene.userData.nyanCat = null;
+          scene.userData.nyanCatTime = 0;
+        }
+        // Restore road material if in rainbow mode
+        const roadGO = scene.getObjectByName('road');
+        if (roadGO && originalRoadMaterial) {
+          roadGO.material.dispose();
+          roadGO.material = originalRoadMaterial;
+          originalRoadMaterial = null;
+        }
+        // Discard saved substage state (we're starting fresh)
+        if (savedSubstageState) {
+          savedSubstageState.obstacles.forEach(obs => scene.remove(obs.mesh));
+          savedSubstageState.coins.forEach(coin => scene.remove(coin.mesh));
+          savedSubstageState = null;
+        }
+        // Restore building/tree visibility
+        buildings.forEach(b => { b.visible = true; });
+        trees.forEach(t => { t.visible = true; });
         saveHighScore();
         playSound('crash');
         createParticleEffect(player.position, 0xff0000, 30);
@@ -3193,6 +3218,30 @@ const restartGame = () => {
   bonusTimer = 0;
   inBonusZoneRef.value = false;
   bonusTimerRef.value = 0;
+  bonusNoSpawn = false;
+  bonusCoins.forEach(bc => scene.remove(bc.mesh));
+  bonusCoins = [];
+  if (scene.userData.nyanCat) {
+    scene.remove(scene.userData.nyanCat);
+    scene.userData.nyanCat = null;
+    scene.userData.nyanCatTime = 0;
+  }
+  // Restore road material if stuck on rainbow
+  const roadCheck = scene.getObjectByName('road');
+  if (roadCheck && originalRoadMaterial) {
+    roadCheck.material.dispose();
+    roadCheck.material = originalRoadMaterial;
+    originalRoadMaterial = null;
+  }
+  // Discard any saved substage state
+  if (savedSubstageState) {
+    savedSubstageState.obstacles.forEach(obs => scene.remove(obs.mesh));
+    savedSubstageState.coins.forEach(coin => scene.remove(coin.mesh));
+    savedSubstageState = null;
+  }
+  // Restore buildings/trees visibility
+  buildings.forEach(b => { b.visible = true; });
+  trees.forEach(t => { t.visible = true; });
   eventAlertTextRef.value = '';
   
   // Clear crack objects
