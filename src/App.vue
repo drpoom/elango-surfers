@@ -78,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.3.3 Gentle Curve';
+const VERSION = 'v3.3.4 Straight Road';
 
 // Audio system
 let audioCtx = null;
@@ -437,23 +437,6 @@ let slideTimer = 0;
 const slideDuration = 0.6;
 const gravity = 0.015;
 const laneWidth = 3;
-
-// Fake curved earth: objects roll over the horizon
-const CURVE_START = 20; // distance ahead where curve begins
-const CURVE_MAX_TILT = 0.35; // max backward tilt (radians)
-const CURVE_MAX_DROP = 1.2; // subtle Y drop at horizon (not below road)
-const getCurveOffset = (z) => {
-  const dist = Math.max(0, -z); // distance ahead
-  if (dist < CURVE_START) return { yOff: 0, tilt: 0 }; // flat near player
-  // How far into the curve zone (0 = just starting, 1 = far horizon)
-  const t = Math.min((dist - CURVE_START) / 60, 1); // over 60 units, full curve
-  const smooth = t * t * (3 - 2 * t); // smoothstep
-  // Y: subtle drop - objects dip slightly at horizon (not below road)
-  const yOff = -smooth * CURVE_MAX_DROP;
-  // Tilt: objects lean backward as if on far side of a hill
-  const tilt = -smooth * CURVE_MAX_TILT;
-  return { yOff, tilt };
-};
 
 // Voice/fly controls
 let micStream = null;
@@ -903,17 +886,7 @@ const createGround = () => {
   groundTexture.wrapT = THREE.RepeatWrapping;
   groundTexture.repeat.set(1, 10);
   
-  const groundGeo = new THREE.PlaneGeometry(15, 200, 1, 40); // segments for curve
-  // Curve the road vertices to match the earth curve
-  const posAttr = groundGeo.attributes.position;
-  for (let i = 0; i < posAttr.count; i++) {
-    const py = posAttr.getY(i); // plane Y = world Z (before rotation)
-    const worldZ = -py - 50; // approximate world Z
-    const curveOff = getCurveOffset(worldZ);
-    posAttr.setZ(i, posAttr.getZ(i) + curveOff.yOff * 0.3);
-  }
-  posAttr.needsUpdate = true;
-  groundGeo.computeVertexNormals();
+  const groundGeo = new THREE.PlaneGeometry(15, 200);
   const groundMat = new THREE.MeshToonMaterial({ 
     map: groundTexture,
     color: 0x555555
@@ -2034,10 +2007,6 @@ const animate = () => {
   // Bonus portal animation & collection
   if (bonusPortal) {
     bonusPortal.mesh.position.z += gameSpeed;
-    // Fake earth curve for portal
-    const portalCurve = getCurveOffset(bonusPortal.mesh.position.z);
-    bonusPortal.mesh.position.y = (bonusPortal.baseY || 1.5) + portalCurve.yOff;
-    bonusPortal.mesh.rotation.x = portalCurve.tilt;
     // Spin and pulse portal
     const ring = bonusPortal.mesh.getObjectByName('portal-ring');
     if (ring) ring.rotation.z += 0.05;
@@ -2206,18 +2175,13 @@ const animate = () => {
 
   obstacles.forEach((obs, index) => {
     obs.mesh.position.z += gameSpeed;
-    // Fake earth curve: ALL objects rise from horizon
-    const curve = getCurveOffset(obs.mesh.position.z);
-    obs.mesh.position.y = (obs.baseY || 0) + curve.yOff;
-    obs.mesh.rotation.x = curve.tilt;
     // Spin UFOs, ground obstacles gentle spin
     obs.mesh.rotation.y += obs.type === 'floating' ? 0.08 : (obs.obstacleType === 'fruit' ? 0.05 : 0);
     
     // UFO: sin wave + lateral sweep across road
     if (obs.type === 'floating') {
-      // Sine wave on Y axis (bob up and down) + earth curve
-      const ufoCurve = getCurveOffset(obs.mesh.position.z);
-      obs.mesh.position.y = 2.2 + Math.sin(time * 3 + obs.mesh.position.z * 0.1) * 0.5 + ufoCurve.yOff;
+      // Sine wave on Y axis (bob up and down)
+      obs.mesh.position.y = 2.2 + Math.sin(time * 3 + obs.mesh.position.z * 0.1) * 0.5;
       // Lateral sweep at higher difficulty
       if (difficultyMultiplier > 1.5) {
         if (!obs.mesh.userData.ufoSwayDir) {
@@ -2403,10 +2367,6 @@ const animate = () => {
       coin.mesh.rotation.y += 0.1;
     }
     
-    // Fake earth curve: coins rise from horizon
-    const coinCurve = getCurveOffset(coin.mesh.position.z);
-    coin.mesh.position.y = (coin.baseY || 0.5) + coinCurve.yOff;
-    
     if (dist < 1.2) {
       coin.collected = true;
       comboCount++;
@@ -2436,9 +2396,6 @@ const animate = () => {
     if (bc.collected) return;
     bc.mesh.position.z += gameSpeed;
     bc.mesh.rotation.y += 0.1;
-    // Fake earth curve
-    const bcCurve = getCurveOffset(bc.mesh.position.z);
-    bc.mesh.position.y = 0.5 + bcCurve.yOff;
     const dist = player.position.distanceTo(bc.mesh.position);
     if (dist < 1.2) {
       bc.collected = true;
@@ -2465,10 +2422,6 @@ const animate = () => {
     
     pw.mesh.position.z += gameSpeed;
     pw.mesh.rotation.y += 0.15;
-    // Fake earth curve
-    const pwCurve = getCurveOffset(pw.mesh.position.z);
-    pw.mesh.position.y = (pw.baseY || 1.5) + pwCurve.yOff;
-    pw.mesh.rotation.x = pwCurve.tilt;
     
     // Animate rings
     if (pw.type === 'shield') {
@@ -2565,10 +2518,6 @@ const animate = () => {
   // Animate trees moving
   trees.forEach((tree) => {
     tree.position.z += gameSpeed;
-    // Fake earth curve
-    const treeCurve = getCurveOffset(tree.position.z);
-    tree.position.y = (tree.baseY || 0) + treeCurve.yOff;
-    tree.rotation.x = treeCurve.tilt;
     if (tree.position.z > 10) {
       const side = tree.position.x > 0 ? 1 : -1;
       tree.position.z = -Math.random() * 80;
@@ -2579,10 +2528,6 @@ const animate = () => {
   // Animate buildings moving
   buildings.forEach((building) => {
     building.position.z += gameSpeed;
-    // Fake earth curve
-    const bldCurve = getCurveOffset(building.position.z);
-    building.position.y = (building.baseY || 0) + bldCurve.yOff;
-    building.rotation.x = bldCurve.tilt;
     if (building.position.z > 20) {
       const side = building.position.x > 0 ? 1 : -1;
       building.position.z = -20 - Math.random() * 60;
