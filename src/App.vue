@@ -16,10 +16,9 @@
       <div id="settings-btn" @click="toggleSettings">⚙️</div>
       <div id="instructions">A/D ←/→ Move | W/↑ Jump | S/↓ Slide | Space Restart<br>📱 Swipe | Tilt | 🎤 Blow to fly!<br>⚡ Speed increases over time!</div>
     </div>
-    <div id="game-canvas"></div>
+    <div id="game-canvas" :class="{ 'comic-bw': bulletTimeActive }"></div>
     <div id="vignette-glow"></div>
-    <div id="bullet-time-overlay" v-if="bulletTimeActive" class="comic-bw"></div>
-    <div id="bullet-time-word" v-if="bulletTimeActive && bulletTimeWord">{{ bulletTimeWord }}</div>
+    <div id="bullet-time-word" v-if="bulletTimeActive && bulletTimeWord" :class="'bt-word-' + bulletTimeWord">{{ bulletTimeWord }}</div>
     <div v-if="gameOver" id="game-over">
       <h1>GAME OVER</h1>
       <p>Your Score: {{ score }}</p>
@@ -80,7 +79,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.7.1 Comic B&W Bullet Time';
+const VERSION = 'v3.7.2 Comic B&W Canvas Filter';
 
 // Audio system
 let audioCtx = null;
@@ -3580,44 +3579,46 @@ button {
 #near-miss { position: absolute; top: 40%; left: 50%; transform: translateX(-50%); font-size: 24px; color: #ff0; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); pointer-events: none; animation: nearMissPop 0.5s ease-out; }
 #near-miss.bullet-time-flash { font-size: 48px; color: #ff4400; text-shadow: 0 0 20px #ff0000, 0 0 40px #ff4400, 2px 2px 4px rgba(0,0,0,0.9); animation: bulletTimeFlash 0.4s ease-out; }
 
-/* Bullet time: B&W comic effect */
-#bullet-time-overlay {
-  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-  pointer-events: none; z-index: 10;
-  animation: btFadeIn 0.15s ease-out;
+/* Bullet time: B&W comic effect on the game canvas */
+#game-canvas.comic-bw {
+  filter: grayscale(1) contrast(2) brightness(0.65);
+  -webkit-filter: grayscale(1) contrast(2) brightness(0.65);
+  transition: filter 0.15s ease-out;
 }
-.comic-bw {
-  /* Desaturate the 3D scene + thick ink borders */
-  backdrop-filter: grayscale(0.85) contrast(1.8) brightness(0.7);
-  -webkit-backdrop-filter: grayscale(0.85) contrast(1.8) brightness(0.7);
-  /* Comic ink border vignette */
-  box-shadow: inset 0 0 80px rgba(0,0,0,0.8), inset 0 0 20px rgba(0,0,0,0.5);
-  /* Thick ink frame */
-  border: 4px solid #000;
+#game-canvas:not(.comic-bw) {
+  transition: filter 0.3s ease-in;
 }
-@keyframes btFadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-/* Bullet time word art - screen-space, always fully visible */
+/* Bullet time word art - COMIC EXPLOSION starburst background */
 #bullet-time-word {
   position: absolute; z-index: 20; pointer-events: none;
-  top: 25%; left: 50%; transform: translate(-50%, -50%);
+  top: 20%; left: 50%; transform: translate(-50%, -50%);
   font-family: "Arial Black", Impact, sans-serif;
-  font-size: min(18vw, 120px);
+  font-size: min(16vw, 100px);
   font-weight: 900;
-  color: #FFDD00;
+  color: #FFF;
+  letter-spacing: 3px;
+  padding: 0.15em 0.3em;
+  /* Starburst explosion background */
+  background: radial-gradient(circle, #FFEE00 0%, #FF8800 40%, #FF2200 70%, transparent 100%);
+  border-radius: 0;
+  clip-path: polygon(
+    50% 0%, 61% 15%, 78% 2%, 72% 20%, 95% 15%, 80% 30%,
+    100% 45%, 82% 45%, 95% 65%, 75% 55%, 85% 80%, 65% 65%,
+    50% 100%, 35% 65%, 15% 80%, 25% 55%, 5% 65%, 18% 45%,
+    0% 45%, 20% 30%, 5% 15%, 28% 20%, 22% 2%, 39% 15%
+  );
+  /* Thick black comic outline */
+  -webkit-text-stroke: 3px #000;
   text-shadow:
-    /* Thick black ink outline */
-    -3px -3px 0 #000, 3px -3px 0 #000, -3px 3px 0 #000, 3px 3px 0 #000,
-    -4px 0 0 #000, 4px 0 0 #000, 0 -4px 0 #000, 0 4px 0 #000,
-    /* Glow */
-    0 0 30px #FF4400, 0 0 60px #FF0000;
-  animation: wordArtPop 0.2s ease-out;
-  letter-spacing: 4px;
-  -webkit-text-stroke: 2px #000;
+    3px 3px 0 #000, -3px -3px 0 #000, 3px -3px 0 #000, -3px 3px 0 #000,
+    0 0 20px #FF4400, 0 0 40px #FF0000;
+  animation: comicBurst 0.25s ease-out;
+  filter: drop-shadow(4px 4px 0 #000);
 }
-@keyframes wordArtPop {
-  0% { transform: translate(-50%, -50%) scale(0.1) rotate(-10deg); opacity: 0; }
-  50% { transform: translate(-50%, -50%) scale(1.3) rotate(3deg); opacity: 1; }
+@keyframes comicBurst {
+  0% { transform: translate(-50%, -50%) scale(0.2) rotate(-15deg); opacity: 0; }
+  40% { transform: translate(-50%, -50%) scale(1.4) rotate(5deg); opacity: 1; }
   100% { transform: translate(-50%, -50%) scale(1) rotate(0deg); opacity: 1; }
 }
 #event-alert { position: absolute; top: 25%; left: 50%; transform: translateX(-50%); font-size: 28px; color: #fff; font-weight: bold; text-shadow: 2px 2px 8px rgba(0,0,0,0.9); pointer-events: none; }
