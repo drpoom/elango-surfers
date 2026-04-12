@@ -78,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.6.1 Bullet Time Tuning';
+const VERSION = 'v3.6.2 Bullet Time Fix';
 
 // Audio system
 let audioCtx = null;
@@ -1974,7 +1974,8 @@ const animate = () => {
     return;
   }
 
-  const delta = clock.getDelta() * (slowMoFactor || 1);
+  const realDelta = clock.getDelta(); // unscaled time for timers
+  const delta = realDelta * (slowMoFactor || 1); // scaled time for gameplay
   const time = clock.getElapsedTime();
   
   gameDuration += delta;
@@ -2804,7 +2805,7 @@ const animate = () => {
   
   // === NEAR-MISS TIMER ===
   if (nearMissTimer > 0) {
-    nearMissTimer -= delta;
+    nearMissTimer -= realDelta;
     if (nearMissTimer <= 0) {
       nearMissTextRef.value = '';
     }
@@ -2812,57 +2813,56 @@ const animate = () => {
   
   // === BULLET TIME ===
   if (slowMoTimer > 0 && bulletTimeActive) {
-    slowMoTimer -= delta;
+    slowMoTimer -= realDelta; // Use UNSCALED delta so timer counts in real time
     const totalTime = 2.5;
-    const progress = 1 - (slowMoTimer / totalTime); // 0→1 over duration
+    const progress = Math.min(1 - (slowMoTimer / totalTime), 1); // 0→1 over duration
     
-    // Slow-mo factor: sharp dip then slow recovery
-    // Last 30% ramps back up so it doesn't affect gameplay
-    if (progress < 0.1) {
-      // Quick ramp into slow-mo
-      slowMoFactor = THREE.MathUtils.lerp(1, 0.08, progress / 0.1);
-    } else if (progress < 0.7) {
-      // Hold slow-mo
-      slowMoFactor = 0.08;
+    // Slow-mo factor: instant dip, hold, then smooth recovery
+    if (progress < 0.05) {
+      // Snap into slow-mo
+      slowMoFactor = THREE.MathUtils.lerp(1, 0.05, progress / 0.05);
+    } else if (progress < 0.65) {
+      // Hold slow-mo — very slow, doesn't affect gameplay
+      slowMoFactor = 0.05;
     } else {
-      // Gradual ramp back to normal
-      slowMoFactor = THREE.MathUtils.lerp(0.08, 1, (progress - 0.7) / 0.3);
+      // Smooth ramp back to normal over last 35%
+      slowMoFactor = THREE.MathUtils.lerp(0.05, 1, (progress - 0.65) / 0.35);
     }
     
-    // Action camera: front-facing, ground level, 45° up toward character
-    // Position camera in FRONT of the player, at ground level, offset slightly to one side
-    const camTargetX = bulletTimeCamSide * 2.5; // Slight side offset
-    const camTargetY = 0.5; // Ground level
-    const camTargetZ = player.position.z + 3; // In front of player
+    // Action camera: ground level, in FRONT of player on the road, looking back UP at character
+    // Player runs toward -Z, so "in front" = lower Z values
+    const camTargetX = bulletTimeCamSide * 3; // Offset to left or right
+    const camTargetY = 0.3; // Near ground level
+    const camTargetZ = player.position.z - 5; // In front of player (further down the road)
     
-    // Smooth camera transition
-    const camLerp = 0.06;
+    // Smooth camera transition (use realDelta so it's consistent regardless of slowMo)
+    const camLerp = 1 - Math.pow(0.03, realDelta);
     camera.position.x = THREE.MathUtils.lerp(camera.position.x, camTargetX, camLerp);
     camera.position.y = THREE.MathUtils.lerp(camera.position.y, camTargetY, camLerp);
     camera.position.z = THREE.MathUtils.lerp(camera.position.z, camTargetZ, camLerp);
     
-    // Dramatic FOV zoom — start tight, gradually widen
-    const targetFov = THREE.MathUtils.lerp(30, 60, Math.min(progress / 0.6, 1));
-    camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, 0.08);
+    // Dramatic FOV zoom — tight at start, gradually widen
+    const targetFov = THREE.MathUtils.lerp(30, 60, Math.min(progress / 0.5, 1));
+    camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, camLerp);
     camera.updateProjectionMatrix();
     
-    // Look up at the character from ground level (45° angle)
-    camera.lookAt(player.position.x, 2.0, player.position.z - 8);
+    // Look UP at the character from ground level (~45° angle)
+    camera.lookAt(player.position.x, 2.5, player.position.z + 2);
     
     // Animate word art sprite
     if (bulletTimeWordMesh) {
       // Scale pulse: pop in then settle
-      const wordScale = progress < 0.1 
-        ? THREE.MathUtils.lerp(0.1, 7, progress / 0.1) 
-        : THREE.MathUtils.lerp(7, 4, (progress - 0.1) / 0.9);
+      const wordScale = progress < 0.08 
+        ? THREE.MathUtils.lerp(0.1, 7, progress / 0.08) 
+        : THREE.MathUtils.lerp(7, 4, (progress - 0.08) / 0.92);
       bulletTimeWordMesh.scale.set(wordScale * 2, wordScale, 1);
-      // Follow player position
-      bulletTimeWordMesh.position.x = THREE.MathUtils.lerp(bulletTimeWordMesh.position.x, player.position.x, 0.1);
-      bulletTimeWordMesh.position.z = THREE.MathUtils.lerp(bulletTimeWordMesh.position.z, player.position.z - 3, 0.1);
+      // Stay in front of player
+      bulletTimeWordMesh.position.x = player.position.x;
       bulletTimeWordMesh.position.y = 3.5;
-      // Fade out in last 25%
-      if (progress > 0.75) {
-        bulletTimeWordMesh.material.opacity = 1 - ((progress - 0.75) / 0.25);
+      bulletTimeWordMesh.position.z = player.position.z - 3;
+      // Fade out in last 20%
+      if (progress > 0.8) {
+        bulletTimeWordMesh.material.opacity = 1 - ((progress - 0.8) / 0.2);
       }
     }
     
@@ -2901,14 +2901,15 @@ const animate = () => {
     }
   }
 
-  // Lerp camera back to default position when not in slow-mo
+  // Lerp camera back to default position when not in bullet time
   if (!bulletTimeActive && slowMoTimer <= 0 && cameraShakeTimer <= 0) {
-    camera.position.x = THREE.MathUtils.lerp(camera.position.x, 0, delta * 5);
-    camera.position.y = THREE.MathUtils.lerp(camera.position.y, 6, delta * 5);
-    camera.position.z = THREE.MathUtils.lerp(camera.position.z, 12, delta * 5);
+    const returnLerp = 1 - Math.pow(0.01, realDelta); // Smooth return using real time
+    camera.position.x = THREE.MathUtils.lerp(camera.position.x, 0, returnLerp);
+    camera.position.y = THREE.MathUtils.lerp(camera.position.y, 6, returnLerp);
+    camera.position.z = THREE.MathUtils.lerp(camera.position.z, 12, returnLerp);
     camera.lookAt(0, 1, -8);
     if (!fovWarpEnabled) {
-      camera.fov = THREE.MathUtils.lerp(camera.fov, 60, delta * 5);
+      camera.fov = THREE.MathUtils.lerp(camera.fov, 60, returnLerp);
       camera.updateProjectionMatrix();
     }
   }
