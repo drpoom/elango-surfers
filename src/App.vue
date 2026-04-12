@@ -78,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.5.0 Performance Optimization';
+const VERSION = 'v3.5.1 Black Screen Fix';
 
 // Audio system
 let audioCtx = null;
@@ -661,9 +661,9 @@ const initGame = () => {
 
   renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
   renderer.shadowMap.enabled = isMobile ? false : true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
   renderer.setPixelRatio(isMobile ? 1 : Math.min(window.devicePixelRatio, 2));
   document.getElementById('game-canvas').appendChild(renderer.domElement);
 
