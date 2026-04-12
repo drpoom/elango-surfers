@@ -78,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.6.3 Bullet Time TDZ Fix + Camera';
+const VERSION = 'v3.6.4 Bullet Time Error Handling';
 
 // Audio system
 let audioCtx = null;
@@ -600,6 +600,7 @@ let skyTextures = {};
 let mountainMesh;
 let textureLoader = new THREE.TextureLoader();
 
+window.addEventListener('error', (e) => { console.log('GLOBAL ERROR:', e.message, 'at', e.filename + ':' + e.lineno + ':' + e.colno); });
 onMounted(() => {
   const saved = localStorage.getItem('elangoSurfersHighScore');
   if (saved) highScore.value = parseInt(saved, 10);
@@ -2326,7 +2327,6 @@ const animate = () => {
         bulletTimeActive = true;
         slowMoTimer = 2.5; // 2.5 seconds of slow-mo
         slowMoFactor = 0.08; // Very slow — doesn't affect gameplay
-        console.log('BULLET TIME ACTIVATED! slowMoFactor=', slowMoFactor, 'timer=', slowMoTimer);
         bulletTimeCamSide = Math.random() < 0.5 ? -1 : 1;
         bulletTimeWord = ['POW!', 'WHAM!', 'ZOOM!', 'BAM!'][Math.floor(Math.random() * 4)];
         bulletTimeWordLife = 2.5;
@@ -2814,10 +2814,10 @@ const animate = () => {
   
   // === BULLET TIME ===
   if (slowMoTimer > 0 && bulletTimeActive) {
+    try {
     slowMoTimer -= realDelta; // Use UNSCALED delta so timer counts in real time
     const totalTime = 2.5;
     const progress = Math.min(1 - (slowMoTimer / totalTime), 1); // 0→1 over duration
-    if (progress < 0.02) console.log('BT animate: slowMo=', slowMoFactor, 'timer=', slowMoTimer, 'progress=', progress, 'camPos=', camera.position.x.toFixed(1), camera.position.y.toFixed(1), camera.position.z.toFixed(1));
     
     // Slow-mo factor: instant dip, hold, then smooth recovery
     if (progress < 0.05) {
@@ -2871,7 +2871,7 @@ const animate = () => {
     }
     
     // Vignette-like effect via bloom intensity bump
-    if (composer && composer.passes[1]) {
+    if (composer && composer.passes.length > 1 && composer.passes[1].strength !== undefined) {
       composer.passes[1].strength = THREE.MathUtils.lerp(0.8, 0.35, Math.min(progress / 0.3, 1));
     }
     
@@ -2884,10 +2884,11 @@ const animate = () => {
         bulletTimeWordMesh = null;
       }
       // Reset bloom
-      if (composer && composer.passes[1]) {
+      if (composer && composer.passes.length > 1 && composer.passes[1].strength !== undefined) {
         composer.passes[1].strength = 0.35;
       }
     }
+    } catch(e) { console.error('Bullet time error:', e); slowMoFactor = 1; bulletTimeActive = false; if (bulletTimeWordMesh) { scene.remove(bulletTimeWordMesh); bulletTimeWordMesh = null; } }
   }
 
   // === CAMERA SHAKE (regular near-miss) ===
@@ -3280,6 +3281,7 @@ const restartGame = () => {
   playSound('start');
 };
 
+window.addEventListener('error', (e) => { console.log('GLOBAL ERROR:', e.message, 'at', e.filename + ':' + e.lineno + ':' + e.colno); });
 onMounted(() => {
   const saved = localStorage.getItem('elangoSurfersHighScore');
   if (saved) highScore.value = parseInt(saved, 10);
