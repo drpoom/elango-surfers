@@ -78,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.3.2 Curved Earth v2';
+const VERSION = 'v3.3.3 Gentle Curve';
 
 // Audio system
 let audioCtx = null;
@@ -438,20 +438,21 @@ const slideDuration = 0.6;
 const gravity = 0.015;
 const laneWidth = 3;
 
-// Fake curved earth: objects rise from horizon
-const CURVE_RADIUS = 60; // virtual planet radius (smaller = more curve)
+// Fake curved earth: objects roll over the horizon
+const CURVE_START = 20; // distance ahead where curve begins
+const CURVE_MAX_TILT = 0.35; // max backward tilt (radians)
+const CURVE_MAX_DROP = 1.2; // subtle Y drop at horizon (not below road)
 const getCurveOffset = (z) => {
   const dist = Math.max(0, -z); // distance ahead
-  if (dist < 8) return { yOff: 0, tilt: 0, hidden: false }; // no curve near player
-  // y offset: objects drop below ground and rise as they approach
-  // Using arc of a circle: y = -R + R*cos(angle)
-  const angle = Math.min(dist / CURVE_RADIUS, Math.PI / 3);
-  const yOff = -CURVE_RADIUS * (1 - Math.cos(angle));
-  // tilt: objects lean back as if on a sphere surface
-  const tilt = -angle * 0.4;
-  // Hidden when far below ground (won't be visible until they rise enough)
-  const hidden = yOff < -3;
-  return { yOff, tilt, hidden };
+  if (dist < CURVE_START) return { yOff: 0, tilt: 0 }; // flat near player
+  // How far into the curve zone (0 = just starting, 1 = far horizon)
+  const t = Math.min((dist - CURVE_START) / 60, 1); // over 60 units, full curve
+  const smooth = t * t * (3 - 2 * t); // smoothstep
+  // Y: subtle drop - objects dip slightly at horizon (not below road)
+  const yOff = -smooth * CURVE_MAX_DROP;
+  // Tilt: objects lean backward as if on far side of a hill
+  const tilt = -smooth * CURVE_MAX_TILT;
+  return { yOff, tilt };
 };
 
 // Voice/fly controls
@@ -902,7 +903,17 @@ const createGround = () => {
   groundTexture.wrapT = THREE.RepeatWrapping;
   groundTexture.repeat.set(1, 10);
   
-  const groundGeo = new THREE.PlaneGeometry(15, 200);
+  const groundGeo = new THREE.PlaneGeometry(15, 200, 1, 40); // segments for curve
+  // Curve the road vertices to match the earth curve
+  const posAttr = groundGeo.attributes.position;
+  for (let i = 0; i < posAttr.count; i++) {
+    const py = posAttr.getY(i); // plane Y = world Z (before rotation)
+    const worldZ = -py - 50; // approximate world Z
+    const curveOff = getCurveOffset(worldZ);
+    posAttr.setZ(i, posAttr.getZ(i) + curveOff.yOff * 0.3);
+  }
+  posAttr.needsUpdate = true;
+  groundGeo.computeVertexNormals();
   const groundMat = new THREE.MeshToonMaterial({ 
     map: groundTexture,
     color: 0x555555
@@ -2027,7 +2038,6 @@ const animate = () => {
     const portalCurve = getCurveOffset(bonusPortal.mesh.position.z);
     bonusPortal.mesh.position.y = (bonusPortal.baseY || 1.5) + portalCurve.yOff;
     bonusPortal.mesh.rotation.x = portalCurve.tilt;
-    bonusPortal.mesh.visible = !portalCurve.hidden;
     // Spin and pulse portal
     const ring = bonusPortal.mesh.getObjectByName('portal-ring');
     if (ring) ring.rotation.z += 0.05;
@@ -2200,7 +2210,6 @@ const animate = () => {
     const curve = getCurveOffset(obs.mesh.position.z);
     obs.mesh.position.y = (obs.baseY || 0) + curve.yOff;
     obs.mesh.rotation.x = curve.tilt;
-    obs.mesh.visible = !curve.hidden;
     // Spin UFOs, ground obstacles gentle spin
     obs.mesh.rotation.y += obs.type === 'floating' ? 0.08 : (obs.obstacleType === 'fruit' ? 0.05 : 0);
     
@@ -2397,7 +2406,6 @@ const animate = () => {
     // Fake earth curve: coins rise from horizon
     const coinCurve = getCurveOffset(coin.mesh.position.z);
     coin.mesh.position.y = (coin.baseY || 0.5) + coinCurve.yOff;
-    coin.mesh.visible = !coinCurve.hidden;
     
     if (dist < 1.2) {
       coin.collected = true;
@@ -2431,7 +2439,6 @@ const animate = () => {
     // Fake earth curve
     const bcCurve = getCurveOffset(bc.mesh.position.z);
     bc.mesh.position.y = 0.5 + bcCurve.yOff;
-    bc.mesh.visible = !bcCurve.hidden;
     const dist = player.position.distanceTo(bc.mesh.position);
     if (dist < 1.2) {
       bc.collected = true;
@@ -2462,7 +2469,6 @@ const animate = () => {
     const pwCurve = getCurveOffset(pw.mesh.position.z);
     pw.mesh.position.y = (pw.baseY || 1.5) + pwCurve.yOff;
     pw.mesh.rotation.x = pwCurve.tilt;
-    pw.mesh.visible = !pwCurve.hidden;
     
     // Animate rings
     if (pw.type === 'shield') {
@@ -2563,7 +2569,6 @@ const animate = () => {
     const treeCurve = getCurveOffset(tree.position.z);
     tree.position.y = (tree.baseY || 0) + treeCurve.yOff;
     tree.rotation.x = treeCurve.tilt;
-    if (!inBonusZone) tree.visible = !treeCurve.hidden;
     if (tree.position.z > 10) {
       const side = tree.position.x > 0 ? 1 : -1;
       tree.position.z = -Math.random() * 80;
@@ -2578,7 +2583,6 @@ const animate = () => {
     const bldCurve = getCurveOffset(building.position.z);
     building.position.y = (building.baseY || 0) + bldCurve.yOff;
     building.rotation.x = bldCurve.tilt;
-    if (!inBonusZone) building.visible = !bldCurve.hidden;
     if (building.position.z > 20) {
       const side = building.position.x > 0 ? 1 : -1;
       building.position.z = -20 - Math.random() * 60;
