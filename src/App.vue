@@ -76,7 +76,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.2.3 Render Fix';
+const VERSION = 'v3.2.4 Cloud Tint Fix';
 
 // Audio system
 let audioCtx = null;
@@ -462,6 +462,11 @@ let zoomTimer = 0;
 let cameraShakeTimer = 0;
 let cameraShakeIntensity = 0;
 let originalRoadMaterial = null;
+
+// Cloud tint colors (module-level to avoid allocation per frame)
+const cloudWhiteColor = new THREE.Color(0xffffff);
+const cloudNightColor = new THREE.Color(0x667788);
+const cloudSunsetColor = new THREE.Color(0xff8866);
 
 // Environmental events
 let eventTimer = 0;
@@ -2361,9 +2366,9 @@ const animate = () => {
       cloud.position.x = (Math.random() - 0.5) * 40;
     }
     // Tint clouds based on day/night cycle
-    const whiteColor = new THREE.Color(0xffffff);
-    const nightColor = new THREE.Color(0x667788);
-    const sunsetColor = new THREE.Color(0xff8866);
+    const whiteColor = cloudWhiteColor;
+    const nightColor = cloudNightColor;
+    const sunsetColor = cloudSunsetColor;
     let targetColor;
     if (cycleProgress > 0.35 && cycleProgress < 0.65) {
       // Night: darker clouds
@@ -2380,11 +2385,9 @@ const animate = () => {
     }
     // Apply color to main cloud puffs (children)
     cloud.children.forEach(child => {
-      if (child.isMesh && child.material && child.material.color) {
-        // Only tint the main cloud material (not shadows)
-        if (child.material !== shadowMat) {
-          child.material.color.lerp(targetColor, 0.05);
-        }
+      if (child.isMesh && child.material && child.material.color && child.material.opacity > 0.6) {
+        // Only tint the main cloud material (not shadows with lower opacity)
+        child.material.color.lerp(targetColor, 0.05);
       }
     });
   });
