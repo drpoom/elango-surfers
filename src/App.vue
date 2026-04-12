@@ -2326,6 +2326,7 @@ const animate = () => {
         bulletTimeActive = true;
         slowMoTimer = 2.5; // 2.5 seconds of slow-mo
         slowMoFactor = 0.08; // Very slow — doesn't affect gameplay
+        console.log('BULLET TIME ACTIVATED! slowMoFactor=', slowMoFactor, 'timer=', slowMoTimer);
         bulletTimeCamSide = Math.random() < 0.5 ? -1 : 1;
         bulletTimeWord = ['POW!', 'WHAM!', 'ZOOM!', 'BAM!'][Math.floor(Math.random() * 4)];
         bulletTimeWordLife = 2.5;
@@ -2814,6 +2815,7 @@ const animate = () => {
   // === BULLET TIME ===
   if (slowMoTimer > 0 && bulletTimeActive) {
     slowMoTimer -= realDelta; // Use UNSCALED delta so timer counts in real time
+    if (progress < 0.02) console.log('BT animate: slowMo=', slowMoFactor, 'timer=', slowMoTimer, 'progress=', progress, 'camPos=', camera.position.x.toFixed(1), camera.position.y.toFixed(1), camera.position.z.toFixed(1));
     const totalTime = 2.5;
     const progress = Math.min(1 - (slowMoTimer / totalTime), 1); // 0→1 over duration
     
