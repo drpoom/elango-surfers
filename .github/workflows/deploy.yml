@@ -29,6 +29,9 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Pre-deploy checks
+        run: node scripts/pre-deploy-check.cjs
+
       - name: Build
         run: npm run build
 
