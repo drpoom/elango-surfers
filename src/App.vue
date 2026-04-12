@@ -78,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.3.4 Straight Road';
+const VERSION = 'v3.4.0 Curved Earth';
 
 // Audio system
 let audioCtx = null;
@@ -438,6 +438,23 @@ const slideDuration = 0.6;
 const gravity = 0.015;
 const laneWidth = 3;
 
+// Curved earth: ground and objects follow a sphere arc
+const EARTH_R = 200; // planet radius — larger = less curve
+const getSurfaceY = (z) => {
+  // z is world Z (negative = ahead). Returns Y offset.
+  // Near the player (z > -5): flat (y=0)
+  // Far away: drops below as if curving over a sphere
+  const dist = Math.max(0, -z);
+  if (dist < 5) return 0;
+  const angle = dist / EARTH_R;
+  return -EARTH_R * (1 - Math.cos(angle));
+};
+const getSurfaceTilt = (z) => {
+  const dist = Math.max(0, -z);
+  if (dist < 5) return 0;
+  return -dist / EARTH_R; // radians, objects lean back
+};
+
 // Voice/fly controls
 let micStream = null;
 let micAnalyser = null;
@@ -623,14 +640,14 @@ const initGame = () => {
       side: THREE.DoubleSide
     });
     mountainMesh = new THREE.Mesh(mtGeo, mtMat);
-    mountainMesh.position.set(0, 4, -90);
+    mountainMesh.position.set(0, 4 + getSurfaceY(-90), -90);
     mountainMesh.renderOrder = -2;
     scene.add(mountainMesh);
     // Second mountain layer (further back, dimmer)
     const mt2 = new THREE.Mesh(mtGeo.clone(), mtMat.clone());
     mt2.material.opacity = 0.5;
     mt2.material.transparent = true;
-    mt2.position.set(0, 5, -120);
+    mt2.position.set(0, 5 + getSurfaceY(-120), -120);
     mt2.scale.set(2.0, 1.5, 1);
     mt2.renderOrder = -3;
     scene.add(mt2);
@@ -886,7 +903,17 @@ const createGround = () => {
   groundTexture.wrapT = THREE.RepeatWrapping;
   groundTexture.repeat.set(1, 10);
   
-  const groundGeo = new THREE.PlaneGeometry(15, 200);
+  const groundGeo = new THREE.PlaneGeometry(15, 200, 1, 60); // 60 segments for smooth curve
+  // Bend the road to follow the earth curve
+  const gPos = groundGeo.attributes.position;
+  for (let i = 0; i < gPos.count; i++) {
+    const py = gPos.getY(i); // in plane local space, Y is the long axis
+    const worldZ = -py - 50; // center at z=-50, so py=0 → z=-50, py=100 → z=-150
+    const yOffset = getSurfaceY(worldZ);
+    gPos.setZ(i, gPos.getZ(i) + yOffset); // Z in plane = Y in world after rotation
+  }
+  gPos.needsUpdate = true;
+  groundGeo.computeVertexNormals();
   const groundMat = new THREE.MeshToonMaterial({ 
     map: groundTexture,
     color: 0x555555
@@ -903,7 +930,16 @@ const createGround = () => {
   grassTileTex.wrapS = THREE.RepeatWrapping;
   grassTileTex.wrapT = THREE.RepeatWrapping;
   grassTileTex.repeat.set(10, 25);
-  const grassGeo = new THREE.PlaneGeometry(80, 200);
+  const grassGeo = new THREE.PlaneGeometry(80, 200, 1, 60); // curve match
+  const gPosG = grassGeo.attributes.position;
+  for (let i = 0; i < gPosG.count; i++) {
+    const py = gPosG.getY(i);
+    const worldZ = -py - 50;
+    const yOffset = getSurfaceY(worldZ);
+    gPosG.setZ(i, gPosG.getZ(i) + yOffset);
+  }
+  gPosG.needsUpdate = true;
+  grassGeo.computeVertexNormals();
   const grassMat = new THREE.MeshToonMaterial({ 
     map: grassTileTex,
     color: 0x8bc34a 
@@ -2007,6 +2043,9 @@ const animate = () => {
   // Bonus portal animation & collection
   if (bonusPortal) {
     bonusPortal.mesh.position.z += gameSpeed;
+    // Curved earth
+    bonusPortal.mesh.position.y = (bonusPortal.baseY || 1.5) + getSurfaceY(bonusPortal.mesh.position.z);
+    bonusPortal.mesh.rotation.x = getSurfaceTilt(bonusPortal.mesh.position.z);
     // Spin and pulse portal
     const ring = bonusPortal.mesh.getObjectByName('portal-ring');
     if (ring) ring.rotation.z += 0.05;
@@ -2175,13 +2214,16 @@ const animate = () => {
 
   obstacles.forEach((obs, index) => {
     obs.mesh.position.z += gameSpeed;
+    // Curved earth: follow ground surface
+    obs.mesh.position.y = (obs.baseY || 0) + getSurfaceY(obs.mesh.position.z);
+    obs.mesh.rotation.x = getSurfaceTilt(obs.mesh.position.z);
     // Spin UFOs, ground obstacles gentle spin
     obs.mesh.rotation.y += obs.type === 'floating' ? 0.08 : (obs.obstacleType === 'fruit' ? 0.05 : 0);
     
     // UFO: sin wave + lateral sweep across road
     if (obs.type === 'floating') {
-      // Sine wave on Y axis (bob up and down)
-      obs.mesh.position.y = 2.2 + Math.sin(time * 3 + obs.mesh.position.z * 0.1) * 0.5;
+      // Sine wave on Y axis (bob up and down) on curved surface
+      obs.mesh.position.y = 2.2 + Math.sin(time * 3 + obs.mesh.position.z * 0.1) * 0.5 + getSurfaceY(obs.mesh.position.z);
       // Lateral sweep at higher difficulty
       if (difficultyMultiplier > 1.5) {
         if (!obs.mesh.userData.ufoSwayDir) {
@@ -2367,6 +2409,10 @@ const animate = () => {
       coin.mesh.rotation.y += 0.1;
     }
     
+    // Curved earth: coins follow ground
+    coin.mesh.position.y = (coin.baseY || 0.5) + getSurfaceY(coin.mesh.position.z);
+    coin.mesh.rotation.x = getSurfaceTilt(coin.mesh.position.z);
+    
     if (dist < 1.2) {
       coin.collected = true;
       comboCount++;
@@ -2396,6 +2442,9 @@ const animate = () => {
     if (bc.collected) return;
     bc.mesh.position.z += gameSpeed;
     bc.mesh.rotation.y += 0.1;
+    // Curved earth
+    bc.mesh.position.y = 0.5 + getSurfaceY(bc.mesh.position.z);
+    bc.mesh.rotation.x = getSurfaceTilt(bc.mesh.position.z);
     const dist = player.position.distanceTo(bc.mesh.position);
     if (dist < 1.2) {
       bc.collected = true;
@@ -2422,6 +2471,9 @@ const animate = () => {
     
     pw.mesh.position.z += gameSpeed;
     pw.mesh.rotation.y += 0.15;
+    // Curved earth
+    pw.mesh.position.y = (pw.baseY || 1.5) + getSurfaceY(pw.mesh.position.z);
+    pw.mesh.rotation.x = getSurfaceTilt(pw.mesh.position.z);
     
     // Animate rings
     if (pw.type === 'shield') {
@@ -2518,6 +2570,9 @@ const animate = () => {
   // Animate trees moving
   trees.forEach((tree) => {
     tree.position.z += gameSpeed;
+    // Curved earth
+    tree.position.y = (tree.baseY || 0) + getSurfaceY(tree.position.z);
+    tree.rotation.x = getSurfaceTilt(tree.position.z);
     if (tree.position.z > 10) {
       const side = tree.position.x > 0 ? 1 : -1;
       tree.position.z = -Math.random() * 80;
@@ -2528,6 +2583,9 @@ const animate = () => {
   // Animate buildings moving
   buildings.forEach((building) => {
     building.position.z += gameSpeed;
+    // Curved earth
+    building.position.y = (building.baseY || 0) + getSurfaceY(building.position.z);
+    building.rotation.x = getSurfaceTilt(building.position.z);
     if (building.position.z > 20) {
       const side = building.position.x > 0 ? 1 : -1;
       building.position.z = -20 - Math.random() * 60;
