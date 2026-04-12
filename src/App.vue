@@ -78,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.4.3 Nyan Cat + Softer Rainbow';
+const VERSION = 'v3.4.4 Tree Fix + Better Rainbow';
 
 // Audio system
 let audioCtx = null;
@@ -1413,7 +1413,10 @@ const createBackgroundElements = () => {
       depthWrite: false
     });
     const sprite = new THREE.Sprite(spriteMat);
+    // Offset sprite up so bottom of visible content aligns with ground
+    // Tree textures have ~12% bottom padding — shift center up by half
     sprite.scale.set(treeW, treeH, 1);
+    sprite.position.y = treeH * 0.12; // shift up to account for bottom transparent padding
     
     const tree = new THREE.Group();
     tree.add(sprite);
@@ -2141,7 +2144,7 @@ const animate = () => {
               float hue = fract(vUv.x * 1.5 + uTime * 0.15 + vUv.y * 0.3);
               // RGB from HSL (simplified rainbow) — mild and pastel
               float h = hue * 6.0;
-              float c = 0.6; // less saturated
+              float c = 0.75; // moderately saturated
               float x = c * (1.0 - abs(mod(h, 2.0) - 1.0));
               vec3 col;
               if (h < 1.0) col = vec3(c, x, 0.0);
@@ -2150,9 +2153,9 @@ const animate = () => {
               else if (h < 4.0) col = vec3(0.0, x, c);
               else if (h < 5.0) col = vec3(x, 0.0, c);
               else col = vec3(c, 0.0, x);
-              // Mix with light base for pastel look
-              col = mix(col, vec3(0.9, 0.9, 0.95), 0.45);
-              gl_FragColor = vec4(col, 0.85);
+              // Mix with light base for soft but colorful look
+              col = mix(col, vec3(0.95, 0.95, 1.0), 0.25);
+              gl_FragColor = vec4(col, 0.9);
             }
           `,
         });
