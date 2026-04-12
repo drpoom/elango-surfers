@@ -18,6 +18,8 @@
     </div>
     <div id="game-canvas"></div>
     <div id="vignette-glow"></div>
+    <div id="bullet-time-overlay" v-if="bulletTimeActive" class="comic-bw"></div>
+    <div id="bullet-time-word" v-if="bulletTimeActive && bulletTimeWord">{{ bulletTimeWord }}</div>
     <div v-if="gameOver" id="game-over">
       <h1>GAME OVER</h1>
       <p>Your Score: {{ score }}</p>
@@ -78,7 +80,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.7.0 Comic Bullet Time';
+const VERSION = 'v3.7.1 Comic B&W Bullet Time';
 
 // Audio system
 let audioCtx = null;
@@ -482,8 +484,7 @@ let bulletTimeActive = false;
 let bulletTimeStartTime = 0; // real clock time when bullet time started
 const BULLET_TIME_DURATION = 2.5; // real seconds
 const BULLET_TIME_SLOW = 0.05; // gameplay speed factor during bullet time
-let bulletTimeWord = '';
-let bulletTimeWordMesh = null;
+const bulletTimeWord = ref('');
 let bulletTimeCamSide = 0; // -1 left, 1 right
 let savedGameSpeed = 0; // gameSpeed before bullet time
 let cameraShakeTimer = 0;
@@ -1896,97 +1897,8 @@ const createFloatingText = (text, position) => {
 
 // Comic-book word art for bullet time
 const createBulletTimeWord = (word) => {
-  // Remove previous word if any
-  if (bulletTimeWordMesh) {
-    scene.remove(bulletTimeWordMesh);
-    bulletTimeWordMesh = null;
-  }
-  const canvas = document.createElement('canvas');
-  canvas.width = 1024;
-  canvas.height = 512;
-  const ctx = canvas.getContext('2d');
-  const cx = 512, cy = 256;
-  
-  // COMIC-BOOK EXPLOSION: Big saturated starburst
-  // Outer glow
-  const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, 240);
-  gradient.addColorStop(0, '#FFFF00');
-  gradient.addColorStop(0.5, '#FF8800');
-  gradient.addColorStop(1, 'rgba(255,0,0,0)');
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, 1024, 512);
-  
-  // Starburst shape - 20 points for jagged explosion look
-  ctx.fillStyle = '#FFDD00';
-  ctx.beginPath();
-  for (let i = 0; i < 20; i++) {
-    const angle = (i / 20) * Math.PI * 2 - Math.PI / 2;
-    const r = i % 2 === 0 ? 220 : 100;
-    if (i === 0) ctx.moveTo(cx + r * Math.cos(angle), cy + r * Math.sin(angle));
-    else ctx.lineTo(cx + r * Math.cos(angle), cy + r * Math.sin(angle));
-  }
-  ctx.closePath();
-  ctx.fill();
-  
-  // Bold red border
-  ctx.strokeStyle = '#CC0000';
-  ctx.lineWidth = 10;
-  ctx.stroke();
-  
-  // Inner starburst (smaller, white-hot)
-  ctx.fillStyle = '#FFFFCC';
-  ctx.beginPath();
-  for (let i = 0; i < 20; i++) {
-    const angle = (i / 20) * Math.PI * 2 - Math.PI / 2;
-    const r = i % 2 === 0 ? 130 : 70;
-    if (i === 0) ctx.moveTo(cx + r * Math.cos(angle), cy + r * Math.sin(angle));
-    else ctx.lineTo(cx + r * Math.cos(angle), cy + r * Math.sin(angle));
-  }
-  ctx.closePath();
-  ctx.fill();
-  
-  // WORD TEXT - thick black outline + bright white fill
-  ctx.font = 'bold 110px "Arial Black", Impact, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  // Multiple outline passes for thick comic border
-  ctx.strokeStyle = '#000';
-  ctx.lineWidth = 16;
-  ctx.lineJoin = 'round';
-  ctx.miterLimit = 2;
-  ctx.strokeText(word, cx, cy);
-  ctx.lineWidth = 8;
-  ctx.strokeText(word, cx, cy);
-  // Bright white fill
-  ctx.fillStyle = '#FFFFFF';
-  ctx.fillText(word, cx, cy);
-  // Saturated red shadow/depth
-  ctx.fillStyle = '#FF2200';
-  ctx.globalAlpha = 0.5;
-  ctx.fillText(word, cx + 3, cy + 3);
-  ctx.globalAlpha = 1.0;
-  // Highlight on top
-  ctx.fillStyle = '#FFFFFF';
-  ctx.globalAlpha = 0.4;
-  ctx.fillText(word, cx - 1, cy - 3);
-  ctx.globalAlpha = 1.0;
-  
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace; // ensure saturated colors
-  const material = new THREE.SpriteMaterial({ 
-    map: texture, 
-    transparent: true,
-    depthTest: false, // always render on top
-    depthWrite: false
-  });
-  const sprite = new THREE.Sprite(material);
-  sprite.renderOrder = 999; // render last = on top of everything
-  // Position: between camera and player, at eye-level from the low camera
-  // Camera is at y=0.3, looking up at y=1.5. Word should be right in the view
-  sprite.position.set(0, 2.0, -2); // slightly above character, between camera and player
-  sprite.scale.set(8, 4, 1); // BIG
-  scene.add(sprite);
-  bulletTimeWordMesh = sprite;
+  // Word art is now rendered as HTML overlay, not 3D sprite
+  // Just make sure the ref is set (it should be already by the caller)
 };
 
 const animate = () => {
@@ -2385,8 +2297,8 @@ const animate = () => {
         bulletTimeStartTime = clock.getElapsedTime();
         savedGameSpeed = gameSpeed; // save current speed
         bulletTimeCamSide = Math.random() < 0.5 ? -1 : 1;
-        bulletTimeWord = ['POW!', 'WHAM!', 'ZOOM!', 'BAM!'][Math.floor(Math.random() * 4)];
-        createBulletTimeWord(bulletTimeWord);
+        bulletTimeWord.value = ['POW!', 'WHAM!', 'ZOOM!', 'BAM!'][Math.floor(Math.random() * 4)];
+        createBulletTimeWord(bulletTimeWord.value);
         nearMissTextRef.value = '\u{1F4A5} BULLET TIME! \u{1F4A5}';
       }
       nearMissCountRef.value = nearMissCount;
@@ -2411,7 +2323,8 @@ const animate = () => {
         if (bonusPortal) { scene.remove(bonusPortal.mesh); bonusPortal = null; }
         // Clean up bullet time on game over
         bulletTimeActive = false;
-        if (bulletTimeWordMesh) { scene.remove(bulletTimeWordMesh); bulletTimeWordMesh = null; }
+        bulletTimeWord.value = '';
+        // Word art is HTML overlay
         inBonusZone = false; inBonusZoneRef.value = false; bonusTimer = 0; bonusTimerRef.value = 0;
         // Clean up bonus zone state on game over
         bonusNoSpawn = false;
@@ -2907,46 +2820,18 @@ const animate = () => {
     // y=1.5 = character face/body level, x tracks lane
     camera.lookAt(player.position.x, 1.5, player.position.z);
     
-    // Animate word art sprite - dramatic comic book pop
-    if (bulletTimeWordMesh) {
-      if (progress < 0.05) {
-        // Explosive pop-in: scale from 0 to huge
-        const t = progress / 0.05;
-        const s = t * t * (3 - 2 * t); // smoothstep
-        bulletTimeWordMesh.scale.set(s * 12, s * 6, 1);
-      } else if (progress < 0.15) {
-        // Overshoot then settle
-        const t = (progress - 0.05) / 0.1;
-        const overshoot = 1 + 0.3 * Math.sin(t * Math.PI);
-        bulletTimeWordMesh.scale.set(8 * overshoot, 4 * overshoot, 1);
-      } else {
-        // Slow pulse
-        const pulse = 1 + 0.05 * Math.sin((progress - 0.15) * 30);
-        bulletTimeWordMesh.scale.set(8 * pulse, 4 * pulse, 1);
-      }
-      // Position: tracks player lane slightly
-      bulletTimeWordMesh.position.x = player.position.x * 0.3;
-      bulletTimeWordMesh.position.y = 2.0;
-      bulletTimeWordMesh.position.z = -2;
-      // Fade out in last 15%
-      if (progress > 0.85) {
-        bulletTimeWordMesh.material.opacity = Math.max(0, 1 - (progress - 0.85) / 0.15);
-      }
-    }
+
     
     // End bullet time when duration expires
     if (progress >= 1) {
       bulletTimeActive = false;
+      bulletTimeWord.value = '';
       gameSpeed = savedGameSpeed; // restore original speed immediately
-      if (bulletTimeWordMesh) {
-        scene.remove(bulletTimeWordMesh);
-        bulletTimeWordMesh = null;
-      }
       if (composer && composer.passes.length > 1) {
         composer.passes[1].strength = 0.35;
       }
     }
-    } catch(e) { console.error('Bullet time error:', e); bulletTimeActive = false; if (bulletTimeWordMesh) { scene.remove(bulletTimeWordMesh); bulletTimeWordMesh = null; } }
+    } catch(e) { console.error('Bullet time error:', e); bulletTimeActive = false; bulletTimeWord.value = ''; }
   }
 
   // === CAMERA SHAKE (regular near-miss) ===
@@ -3261,7 +3146,7 @@ const restartGame = () => {
   nearMissTextRef.value = '';
   nearMissCountRef.value = 0;
   bulletTimeActive = false;
-  if (bulletTimeWordMesh) { scene.remove(bulletTimeWordMesh); bulletTimeWordMesh = null; }
+  // Word art is HTML overlay
   eventTimer = 0;
   activeEvent = null;
   eventDuration = 0;
@@ -3694,6 +3579,47 @@ button {
 }
 #near-miss { position: absolute; top: 40%; left: 50%; transform: translateX(-50%); font-size: 24px; color: #ff0; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); pointer-events: none; animation: nearMissPop 0.5s ease-out; }
 #near-miss.bullet-time-flash { font-size: 48px; color: #ff4400; text-shadow: 0 0 20px #ff0000, 0 0 40px #ff4400, 2px 2px 4px rgba(0,0,0,0.9); animation: bulletTimeFlash 0.4s ease-out; }
+
+/* Bullet time: B&W comic effect */
+#bullet-time-overlay {
+  position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+  pointer-events: none; z-index: 10;
+  animation: btFadeIn 0.15s ease-out;
+}
+.comic-bw {
+  /* Desaturate the 3D scene + thick ink borders */
+  backdrop-filter: grayscale(0.85) contrast(1.8) brightness(0.7);
+  -webkit-backdrop-filter: grayscale(0.85) contrast(1.8) brightness(0.7);
+  /* Comic ink border vignette */
+  box-shadow: inset 0 0 80px rgba(0,0,0,0.8), inset 0 0 20px rgba(0,0,0,0.5);
+  /* Thick ink frame */
+  border: 4px solid #000;
+}
+@keyframes btFadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* Bullet time word art - screen-space, always fully visible */
+#bullet-time-word {
+  position: absolute; z-index: 20; pointer-events: none;
+  top: 25%; left: 50%; transform: translate(-50%, -50%);
+  font-family: "Arial Black", Impact, sans-serif;
+  font-size: min(18vw, 120px);
+  font-weight: 900;
+  color: #FFDD00;
+  text-shadow:
+    /* Thick black ink outline */
+    -3px -3px 0 #000, 3px -3px 0 #000, -3px 3px 0 #000, 3px 3px 0 #000,
+    -4px 0 0 #000, 4px 0 0 #000, 0 -4px 0 #000, 0 4px 0 #000,
+    /* Glow */
+    0 0 30px #FF4400, 0 0 60px #FF0000;
+  animation: wordArtPop 0.2s ease-out;
+  letter-spacing: 4px;
+  -webkit-text-stroke: 2px #000;
+}
+@keyframes wordArtPop {
+  0% { transform: translate(-50%, -50%) scale(0.1) rotate(-10deg); opacity: 0; }
+  50% { transform: translate(-50%, -50%) scale(1.3) rotate(3deg); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1) rotate(0deg); opacity: 1; }
+}
 #event-alert { position: absolute; top: 25%; left: 50%; transform: translateX(-50%); font-size: 28px; color: #fff; font-weight: bold; text-shadow: 2px 2px 8px rgba(0,0,0,0.9); pointer-events: none; }
 #bonus-zone { position: absolute; top: 15%; left: 50%; transform: translateX(-50%); font-size: 36px; color: #ff0; font-weight: bold; text-shadow: 0 0 20px #f0f, 0 0 40px #0ff; animation: bonusPulse 0.5s ease-in-out infinite alternate; }
 #vignette-glow { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; transition: opacity 0.3s; box-shadow: inset 0 0 100px 40px rgba(255,0,0,0.4); }
