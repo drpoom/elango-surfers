@@ -78,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.4.1 Less Curve + Curbed Curbs';
+const VERSION = 'v3.4.2 Rainbow + Nyan Cat';
 
 // Audio system
 let audioCtx = null;
@@ -1419,14 +1419,15 @@ const createBackgroundElements = () => {
     tree.add(sprite);
     
     const side = Math.random() > 0.5 ? 1 : -1;
+    const treeZ = -10 - Math.random() * 30;
     tree.position.set(
       side * (8 + Math.random() * 10),
-      treeH / 2,
-      -10 - Math.random() * 30
+      treeH / 2 + getSurfaceY(treeZ),
+      treeZ
     );
     const treeScale = 0.8 + Math.random() * 0.4;
     tree.scale.setScalar(treeScale);
-    tree.baseY = tree.position.y;
+    tree.baseY = treeH / 2;
     scene.add(tree);
     trees.push(tree);
   }
@@ -1474,13 +1475,14 @@ const createBackgroundElements = () => {
     buildingGroup.add(roof);
     
     const side = Math.random() > 0.5 ? 1 : -1;
+    const bldgZ = -20 - Math.random() * 60;
     buildingGroup.position.set(
       side * (10 + Math.random() * 10),
-      height / 2,
-      -20 - Math.random() * 60
+      height / 2 + getSurfaceY(bldgZ),
+      bldgZ
     );
     scene.add(buildingGroup);
-    buildingGroup.baseY = buildingGroup.position.y;
+    buildingGroup.baseY = height / 2;
     buildings.push(buildingGroup);
   }
 };
@@ -1820,7 +1822,8 @@ const spawnObstacle = () => {
   }
   
   scene.add(group);
-  group.baseY = group.position.y;
+  group.position.y += getSurfaceY(-50); // apply curve at spawn
+  group.baseY = group.position.y - getSurfaceY(-50); // store flat Y
   obstacles.push({ mesh: group, lane: obsLane, type: 'ground', obstacleType: obsType, hitWidth });
 };
 
@@ -1876,7 +1879,8 @@ const spawnFloatingObstacle = () => {
   
   ufoGroup.position.set(laneX, 2.2, -50);
   scene.add(ufoGroup);
-  ufoGroup.baseY = ufoGroup.position.y;
+  ufoGroup.position.y += getSurfaceY(-50); // apply curve at spawn
+  ufoGroup.baseY = ufoGroup.position.y - getSurfaceY(-50); // store flat Y
   obstacles.push({ mesh: ufoGroup, lane, type: 'floating' });
 };
 
@@ -1895,7 +1899,8 @@ const spawnCoin = () => {
   coinObj.position.set(laneX, 1, -50);
   
   scene.add(coinObj);
-  coinObj.baseY = coinObj.position.y;
+  coinObj.position.y += getSurfaceY(-50); // apply curve at spawn
+  coinObj.baseY = coinObj.position.y - getSurfaceY(-50); // store flat Y
   coins.push({ mesh: coinObj, lane, collected: false });
 };
 
@@ -1952,8 +1957,9 @@ const spawnPowerup = () => {
     powerupGroup.add(wave2);
   }
   
-  powerupGroup.position.set(laneX, 1, -50);
+  powerupGroup.position.set(laneX, 1 + getSurfaceY(-50), -50);
   powerupGroup.userData = { type };
+  powerupGroup.baseY = 1; // flat Y without curve
   scene.add(powerupGroup);
   powerups.push({ mesh: powerupGroup, lane, type, collected: false });
 };
@@ -2053,7 +2059,7 @@ const animate = () => {
   if (bonusPortal) {
     bonusPortal.mesh.position.z += gameSpeed;
     // Curved earth
-    bonusPortal.mesh.position.y = (bonusPortal.baseY || 1.5) + getSurfaceY(bonusPortal.mesh.position.z);
+    bonusPortal.mesh.position.y = (bonusPortal.mesh.baseY || 1.5) + getSurfaceY(bonusPortal.mesh.position.z);
     bonusPortal.mesh.rotation.x = getSurfaceTilt(bonusPortal.mesh.position.z);
     // Spin and pulse portal
     const ring = bonusPortal.mesh.getObjectByName('portal-ring');
@@ -2111,14 +2117,41 @@ const animate = () => {
       // Hide buildings and trees
       buildings.forEach(b => b.visible = false);
       trees.forEach(t => t.visible = false);
-      // Rainbow road
+      // Rainbow road with left-to-right gradient
       const road = scene.getObjectByName('road');
       if (road) {
         originalRoadMaterial = road.material;
-        road.material = new THREE.MeshToonMaterial({
-          color: 0xff0000,
-          emissive: 0xff0000,
-          emissiveIntensity: 0.2,
+        road.material = new THREE.ShaderMaterial({
+          uniforms: {
+            uTime: { value: 0 },
+          },
+          vertexShader: `
+            varying vec2 vUv;
+            void main() {
+              vUv = uv;
+              gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+          `,
+          fragmentShader: `
+            uniform float uTime;
+            varying vec2 vUv;
+            void main() {
+              // Left side = different hue from right, cycling over time
+              float hue = fract(vUv.x * 2.0 + uTime * 0.3 + vUv.y * 0.5);
+              // RGB from HSL (simplified rainbow)
+              float h = hue * 6.0;
+              float c = 1.0;
+              float x = c * (1.0 - abs(mod(h, 2.0) - 1.0));
+              vec3 col;
+              if (h < 1.0) col = vec3(c, x, 0.0);
+              else if (h < 2.0) col = vec3(x, c, 0.0);
+              else if (h < 3.0) col = vec3(0.0, c, x);
+              else if (h < 4.0) col = vec3(0.0, x, c);
+              else if (h < 5.0) col = vec3(x, 0.0, c);
+              else col = vec3(c, 0.0, x);
+              gl_FragColor = vec4(col, 1.0);
+            }
+          `,
         });
       }
       // Set fixed bonus speed
@@ -2138,13 +2171,94 @@ const animate = () => {
         bonusCoins.push({ mesh: coinMesh, collected: false });
       }
       scene.userData.bonusEnvActive = true;
+      
+      // Nyan Cat flies across the sky!
+      const nyanCat = new THREE.Group();
+      // Body (poptart cat torso)
+      const bodyGeo = new THREE.BoxGeometry(1.2, 0.8, 0.6);
+      const poptartMat = new THREE.MeshToonMaterial({ color: 0xf5c06f }); // poptart color
+      const body = new THREE.Mesh(bodyGeo, poptartMat);
+      nyanCat.add(body);
+      // Sprinkles on poptart
+      const sprinkleColors = [0xff4444, 0x44ff44, 0x4444ff, 0xffff44, 0xff44ff];
+      for (let i = 0; i < 5; i++) {
+        const sprGeo = new THREE.SphereGeometry(0.06, 6, 6);
+        const sprMat = new THREE.MeshToonMaterial({ color: sprinkleColors[i] });
+        const spr = new THREE.Mesh(sprGeo, sprMat);
+        spr.position.set(-0.3 + i * 0.15, 0.1 + (i % 2) * 0.15, 0.31);
+        nyanCat.add(spr);
+      }
+      // Head
+      const headGeo = new THREE.BoxGeometry(0.6, 0.6, 0.6);
+      const head = new THREE.Mesh(headGeo, poptartMat);
+      head.position.set(0.9, 0.1, 0);
+      nyanCat.add(head);
+      // Ears
+      const earGeo = new THREE.ConeGeometry(0.15, 0.3, 4);
+      const earMat = new THREE.MeshToonMaterial({ color: 0xf5c06f });
+      const earL = new THREE.Mesh(earGeo, earMat);
+      earL.position.set(0.75, 0.5, 0);
+      earL.rotation.z = 0.3;
+      nyanCat.add(earL);
+      const earR = new THREE.Mesh(earGeo, earMat);
+      earR.position.set(1.05, 0.5, 0);
+      earR.rotation.z = -0.3;
+      nyanCat.add(earR);
+      // Eyes
+      const eyeGeo = new THREE.SphereGeometry(0.08, 6, 6);
+      const eyeMat = new THREE.MeshToonMaterial({ color: 0x000000 });
+      const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
+      eyeL.position.set(1.05, 0.2, 0.3);
+      nyanCat.add(eyeL);
+      const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
+      eyeR.position.set(1.05, 0.2, -0.3);
+      nyanCat.add(eyeR);
+      // Nose
+      const noseGeo = new THREE.SphereGeometry(0.05, 6, 6);
+      const noseMat = new THREE.MeshToonMaterial({ color: 0xff6666 });
+      const nose = new THREE.Mesh(noseGeo, noseMat);
+      nose.position.set(1.2, 0.1, 0);
+      nyanCat.add(nose);
+      // Legs
+      const legGeo = new THREE.BoxGeometry(0.2, 0.4, 0.2);
+      const legMat = new THREE.MeshToonMaterial({ color: 0xf5c06f });
+      [[-0.3, -0.6, 0.2], [-0.3, -0.6, -0.2], [0.3, -0.6, 0.2], [0.3, -0.6, -0.2]].forEach(p => {
+        const leg = new THREE.Mesh(legGeo, legMat);
+        leg.position.set(...p);
+        nyanCat.add(leg);
+      });
+      // Tail (rainbow trail)
+      const rainbowColors = [0xff0000, 0xff8800, 0xffff00, 0x00ff00, 0x0088ff, 0x8800ff];
+      for (let i = 0; i < 6; i++) {
+        const trailGeo = new THREE.BoxGeometry(0.4, 0.25, 0.25);
+        const trailMat = new THREE.MeshToonMaterial({ color: rainbowColors[i], emissive: rainbowColors[i], emissiveIntensity: 0.3 });
+        const trail = new THREE.Mesh(trailGeo, trailMat);
+        trail.position.set(-0.8 - i * 0.4, 0, 0);
+        nyanCat.add(trail);
+      }
+      nyanCat.position.set(30, 10, -20); // start off-screen right
+      nyanCat.rotation.y = Math.PI; // face left (flying left)
+      nyanCat.scale.setScalar(1.5);
+      scene.add(nyanCat);
+      scene.userData.nyanCat = nyanCat;
+      scene.userData.nyanCatTime = 0;
+    }
+    // Nyan Cat animation
+    if (scene.userData.nyanCat) {
+      scene.userData.nyanCatTime += delta * 8; // speed across sky
+      const nyanX = 30 - scene.userData.nyanCatTime; // fly left
+      scene.userData.nyanCat.position.x = nyanX;
+      scene.userData.nyanCat.position.y = 10 + Math.sin(scene.userData.nyanCatTime * 2) * 0.5; // gentle bob
+      // Loop: when off-screen left, restart from right
+      if (nyanX < -30) {
+        scene.userData.nyanCatTime = 0;
+        scene.userData.nyanCat.position.x = 30;
+      }
     }
     // Rainbow road animation
     const road = scene.getObjectByName('road');
-    if (road && road.material && road.material.color) {
-      const hue = (clock.getElapsedTime() * 0.2) % 1;
-      road.material.color.setHSL(hue, 1.0, 0.5);
-      road.material.emissive.setHSL(hue, 1.0, 0.15);
+    if (road && road.material && road.material.uniforms) {
+      road.material.uniforms.uTime.value = clock.getElapsedTime();
     }
     bonusTimer -= delta;
     bonusTimerRef.value = Math.ceil(bonusTimer);
@@ -2155,6 +2269,12 @@ const animate = () => {
       // Clear bonus coins
       bonusCoins.forEach(bc => scene.remove(bc.mesh));
       bonusCoins = [];
+      // Remove Nyan Cat
+      if (scene.userData.nyanCat) {
+        scene.remove(scene.userData.nyanCat);
+        scene.userData.nyanCat = null;
+        scene.userData.nyanCatTime = 0;
+      }
       // Restore all saved state
       if (savedSubstageState) {
         // Restore obstacles
@@ -2223,15 +2343,13 @@ const animate = () => {
 
   obstacles.forEach((obs, index) => {
     obs.mesh.position.z += gameSpeed;
-    // Curved earth: follow ground surface
-    obs.mesh.position.y = (obs.baseY || 0) + getSurfaceY(obs.mesh.position.z);
+    obs.mesh.position.y = (obs.mesh.baseY || 0) + getSurfaceY(obs.mesh.position.z);
     obs.mesh.rotation.x = getSurfaceTilt(obs.mesh.position.z);
     // Spin UFOs, ground obstacles gentle spin
     obs.mesh.rotation.y += obs.type === 'floating' ? 0.08 : (obs.obstacleType === 'fruit' ? 0.05 : 0);
     
     // UFO: sin wave + lateral sweep across road
     if (obs.type === 'floating') {
-      // Sine wave on Y axis (bob up and down) on curved surface
       obs.mesh.position.y = 2.2 + Math.sin(time * 3 + obs.mesh.position.z * 0.1) * 0.5 + getSurfaceY(obs.mesh.position.z);
       // Lateral sweep at higher difficulty
       if (difficultyMultiplier > 1.5) {
@@ -2418,8 +2536,7 @@ const animate = () => {
       coin.mesh.rotation.y += 0.1;
     }
     
-    // Curved earth: coins follow ground
-    coin.mesh.position.y = (coin.baseY || 0.5) + getSurfaceY(coin.mesh.position.z);
+    coin.mesh.position.y = (coin.mesh.baseY || 0.5) + getSurfaceY(coin.mesh.position.z);
     coin.mesh.rotation.x = getSurfaceTilt(coin.mesh.position.z);
     
     if (dist < 1.2) {
@@ -2451,7 +2568,6 @@ const animate = () => {
     if (bc.collected) return;
     bc.mesh.position.z += gameSpeed;
     bc.mesh.rotation.y += 0.1;
-    // Curved earth
     bc.mesh.position.y = 0.5 + getSurfaceY(bc.mesh.position.z);
     bc.mesh.rotation.x = getSurfaceTilt(bc.mesh.position.z);
     const dist = player.position.distanceTo(bc.mesh.position);
@@ -2481,7 +2597,7 @@ const animate = () => {
     pw.mesh.position.z += gameSpeed;
     pw.mesh.rotation.y += 0.15;
     // Curved earth
-    pw.mesh.position.y = (pw.baseY || 1.5) + getSurfaceY(pw.mesh.position.z);
+    pw.mesh.position.y = (pw.mesh.baseY || 1) + getSurfaceY(pw.mesh.position.z);
     pw.mesh.rotation.x = getSurfaceTilt(pw.mesh.position.z);
     
     // Animate rings
@@ -2579,9 +2695,7 @@ const animate = () => {
   // Animate trees moving
   trees.forEach((tree) => {
     tree.position.z += gameSpeed;
-    // Curved earth
     tree.position.y = (tree.baseY || 0) + getSurfaceY(tree.position.z);
-    tree.rotation.x = getSurfaceTilt(tree.position.z);
     if (tree.position.z > 10) {
       const side = tree.position.x > 0 ? 1 : -1;
       tree.position.z = -Math.random() * 80;
