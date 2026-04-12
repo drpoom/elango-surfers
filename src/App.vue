@@ -7,7 +7,7 @@
       <div id="combo" v-if="comboCount > 1">🔥 Combo x{{ comboCount }}</div>
       <div id="powerup-indicator" v-if="activePowerup">{{ powerupIcon }} {{ powerupName }} ({{ powerupTimeLeft }}s)</div>
       <div id="fly-indicator" v-if="micEnabledRef">&#x1F3A4;&#x2708;ï¸</div>
-      <div id="near-miss" v-if="nearMissTextRef" :class="{ 'near-miss-flash': nearMissCountRef >= 5 }">{{ nearMissTextRef }}</div>
+      <div id="near-miss" v-if="nearMissTextRef" :class="{ 'bullet-time-flash': bulletTimeActive }">{{ nearMissTextRef }}</div>
       <div id="event-alert" v-if="eventAlertTextRef">{{ eventAlertTextRef }}</div>
       <div id="bonus-zone" v-if="inBonusZoneRef">&#x1F308; BONUS ZONE! {{ Math.ceil(bonusTimerRef) }}s</div>
       <div id="mute-btn" @click="toggleMute">🔊</div>
@@ -78,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.5.3 Remove Crack and Lightning Events';
+const VERSION = 'v3.6.0 Bullet Time + Texture Optimization';
 
 // Audio system
 let audioCtx = null;
@@ -475,11 +475,16 @@ let comboCount = 0;
 let lastCoinTime = 0;
 
 // Near-miss system
+// Near-miss / Bullet time system
 let nearMissTimer = 0;
 let nearMissCount = 0;
 let slowMoTimer = 0;
 let slowMoFactor = 1;
-let zoomTimer = 0;
+let bulletTimeActive = false;
+let bulletTimeWord = '';
+let bulletTimeWordMesh = null;
+let bulletTimeWordLife = 0;
+let bulletTimeCamSide = 0; // -1 left, 1 right
 let cameraShakeTimer = 0;
 let cameraShakeIntensity = 0;
 let originalRoadMaterial = null;
@@ -1887,6 +1892,63 @@ const createFloatingText = (text, position) => {
   floatingTexts.push(sprite);
 };
 
+// Comic-book word art for bullet time
+const createBulletTimeWord = (word) => {
+  // Remove previous word if any
+  if (bulletTimeWordMesh) {
+    scene.remove(bulletTimeWordMesh);
+    bulletTimeWordMesh = null;
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  // Comic-book style: star burst background
+  ctx.fillStyle = '#FFD700';
+  ctx.beginPath();
+  // Draw starburst shape
+  const cx = 256, cy = 128;
+  for (let i = 0; i < 16; i++) {
+    const angle = (i / 16) * Math.PI * 2 - Math.PI / 2;
+    const r = i % 2 === 0 ? 120 : 60;
+    if (i === 0) ctx.moveTo(cx + r * Math.cos(angle), cy + r * Math.sin(angle));
+    else ctx.lineTo(cx + r * Math.cos(angle), cy + r * Math.sin(angle));
+  }
+  ctx.closePath();
+  ctx.fill();
+  // Red outline
+  ctx.strokeStyle = '#FF0000';
+  ctx.lineWidth = 6;
+  ctx.stroke();
+  // Word text
+  ctx.font = 'bold 72px Impact, Arial Black, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  // Black outline
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 8;
+  ctx.strokeText(word, cx, cy);
+  // White fill with red shadow
+  ctx.fillStyle = '#FFF';
+  ctx.shadowColor = '#FF0000';
+  ctx.shadowBlur = 0;
+  ctx.fillText(word, cx, cy);
+  // Red inner highlight
+  ctx.fillStyle = '#FF4444';
+  ctx.globalAlpha = 0.3;
+  ctx.fillText(word, cx, cy - 2);
+  ctx.globalAlpha = 1.0;
+  
+  const texture = new THREE.CanvasTexture(canvas);
+  const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
+  const sprite = new THREE.Sprite(material);
+  // Position in front of player, slightly above
+  sprite.position.set(player.position.x, 3.5, player.position.z - 3);
+  sprite.scale.set(6, 3, 1);
+  scene.add(sprite);
+  bulletTimeWordMesh = sprite;
+};
+
 const animate = () => {
   requestAnimationFrame(animate);
 
@@ -2251,17 +2313,23 @@ const animate = () => {
     const isFloating = obs.type === 'floating';
     
     // Near-miss detection (only once per obstacle)
-    if (!obs.nearMissTriggered && horizDist < collisionDist + 0.5 && horizDist >= collisionDist && Math.abs(dz) < 1.0) {
+    // Wider band: within 1.2 units of collision edge
+    if (!obs.nearMissTriggered && horizDist < collisionDist + 1.2 && horizDist >= collisionDist && Math.abs(dz) < 1.5) {
       obs.nearMissTriggered = true;
       nearMissCount++;
       nearMissTextRef.value = 'CLOSE CALL! 🔥';
-      nearMissTimer = 0.8;
+      nearMissTimer = 1.0;
       
-      if (nearMissCount >= 5 && !slowMoTimer) {
-        nearMissTextRef.value = '🚀 ADRENALINE MODE! 🚀';
-        slowMoTimer = 0.5;
-        slowMoFactor = 0.3;
-        zoomTimer = 0.3;
+      // Bullet time on 2+ near-misses
+      if (nearMissCount >= 2 && !bulletTimeActive) {
+        bulletTimeActive = true;
+        slowMoTimer = 1.5;
+        slowMoFactor = 0.15;
+        bulletTimeCamSide = Math.random() < 0.5 ? -1 : 1;
+        bulletTimeWord = ['POW!', 'WHAM!', 'ZOOM!', 'BAM!'][Math.floor(Math.random() * 4)];
+        bulletTimeWordLife = 1.5;
+        createBulletTimeWord(bulletTimeWord);
+        nearMissTextRef.value = '💥 BULLET TIME! 💥';
         nearMissCount = 0;
         nearMissCountRef.value = 0;
       } else {
@@ -2289,6 +2357,10 @@ const animate = () => {
       } else {
         gameOver.value = true;
         if (bonusPortal) { scene.remove(bonusPortal.mesh); bonusPortal = null; }
+        // Clean up bullet time on game over
+        bulletTimeActive = false;
+        slowMoFactor = 1;
+        if (bulletTimeWordMesh) { scene.remove(bulletTimeWordMesh); bulletTimeWordMesh = null; }
         inBonusZone = false; inBonusZoneRef.value = false; bonusTimer = 0; bonusTimerRef.value = 0;
         // Clean up bonus zone state on game over
         bonusNoSpawn = false;
@@ -2744,29 +2816,75 @@ const animate = () => {
     }
   }
   
-  // === SLOW-MO (ADRENALINE MODE) ===
-  if (slowMoTimer > 0) {
+  // === BULLET TIME ===
+  if (slowMoTimer > 0 && bulletTimeActive) {
     slowMoTimer -= delta;
-    // Smoothly interpolate slowMoFactor from 0.3 back to 1
-    const slowMoProgress = 1 - (slowMoTimer / 0.5); // 0.5 was the initial timer
-    slowMoFactor = THREE.MathUtils.lerp(0.3, 1, Math.min(slowMoProgress, 1));
-    // Camera zoom: FOV lerps to 45 then back
-    const targetFov = THREE.MathUtils.lerp(45, 60, Math.min(slowMoProgress, 1));
-    camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, 0.1);
-    // Camera angle: lower Y to 4, increase Z to 8, then lerp back
-    const targetCamY = THREE.MathUtils.lerp(4, 6, Math.min(slowMoProgress, 1));
-    const targetCamZ = THREE.MathUtils.lerp(8, 12, Math.min(slowMoProgress, 1));
-    camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetCamY, 0.1);
-    camera.position.z = THREE.MathUtils.lerp(camera.position.z, targetCamZ, 0.1);
+    const totalTime = 1.5;
+    const progress = 1 - (slowMoTimer / totalTime); // 0→1 over duration
+    
+    // Slow-mo factor: sharp dip then smooth recovery
+    if (progress < 0.2) {
+      // Ramp into slow-mo
+      slowMoFactor = THREE.MathUtils.lerp(1, 0.15, progress / 0.2);
+    } else {
+      // Gradually speed back up
+      slowMoFactor = THREE.MathUtils.lerp(0.15, 1, (progress - 0.2) / 0.8);
+    }
+    
+    // Action camera: low angle from the side, facing character
+    const camTargetX = bulletTimeCamSide * 5; // 5 units left or right
+    const camTargetY = 2.0; // Low angle - below character
+    const camTargetZ = player.position.z + 4; // In front of player
+    
+    // Smooth camera transition
+    const camLerp = 0.05;
+    camera.position.x = THREE.MathUtils.lerp(camera.position.x, camTargetX, camLerp);
+    camera.position.y = THREE.MathUtils.lerp(camera.position.y, camTargetY, camLerp);
+    camera.position.z = THREE.MathUtils.lerp(camera.position.z, camTargetZ, camLerp);
+    
+    // Dramatic FOV zoom
+    const targetFov = THREE.MathUtils.lerp(35, 60, Math.min(progress / 0.5, 1));
+    camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, 0.08);
     camera.updateProjectionMatrix();
+    
+    // Look at the player
+    camera.lookAt(player.position.x, 1.5, player.position.z - 5);
+    
+    // Animate word art sprite
+    if (bulletTimeWordMesh) {
+      // Scale pulse: pop in then settle
+      const wordScale = progress < 0.15 
+        ? THREE.MathUtils.lerp(0.1, 7, progress / 0.15) 
+        : THREE.MathUtils.lerp(7, 5, (progress - 0.15) / 0.85);
+      bulletTimeWordMesh.scale.set(wordScale * 2, wordScale, 1);
+      // Follow player position
+      bulletTimeWordMesh.position.x = THREE.MathUtils.lerp(bulletTimeWordMesh.position.x, player.position.x, 0.1);
+      bulletTimeWordMesh.position.z = THREE.MathUtils.lerp(bulletTimeWordMesh.position.z, player.position.z - 3, 0.1);
+      bulletTimeWordMesh.position.y = 3.5;
+      // Fade out in last 30%
+      if (progress > 0.7) {
+        bulletTimeWordMesh.material.opacity = 1 - ((progress - 0.7) / 0.3);
+      }
+    }
+    
+    // Vignette-like effect via bloom intensity bump
+    if (composer && composer.passes[1]) {
+      composer.passes[1].strength = THREE.MathUtils.lerp(0.8, 0.35, Math.min(progress / 0.3, 1));
+    }
+    
     if (slowMoTimer <= 0) {
       slowMoFactor = 1;
+      bulletTimeActive = false;
+      // Remove word art
+      if (bulletTimeWordMesh) {
+        scene.remove(bulletTimeWordMesh);
+        bulletTimeWordMesh = null;
+      }
+      // Reset bloom
+      if (composer && composer.passes[1]) {
+        composer.passes[1].strength = 0.35;
+      }
     }
-  }
-  
-  // === ZOOM PULSE ===
-  if (zoomTimer > 0) {
-    zoomTimer -= delta;
   }
 
   // === CAMERA SHAKE (regular near-miss) ===
@@ -2785,10 +2903,11 @@ const animate = () => {
   }
 
   // Lerp camera back to default position when not in slow-mo
-  if (slowMoTimer <= 0 && cameraShakeTimer <= 0) {
+  if (!bulletTimeActive && slowMoTimer <= 0 && cameraShakeTimer <= 0) {
     camera.position.x = THREE.MathUtils.lerp(camera.position.x, 0, delta * 5);
     camera.position.y = THREE.MathUtils.lerp(camera.position.y, 6, delta * 5);
     camera.position.z = THREE.MathUtils.lerp(camera.position.z, 12, delta * 5);
+    camera.lookAt(0, 1, -8);
     if (!fovWarpEnabled) {
       camera.fov = THREE.MathUtils.lerp(camera.fov, 60, delta * 5);
       camera.updateProjectionMatrix();
@@ -2796,7 +2915,7 @@ const animate = () => {
   }
   
   // === FOV WARP ===
-  if (fovWarpEnabled) {
+  if (fovWarpEnabled && !bulletTimeActive) {
     camera.fov = 60 + difficultyMultiplier * 2;
     camera.updateProjectionMatrix();
   }
@@ -3079,7 +3198,8 @@ const restartGame = () => {
   nearMissCountRef.value = 0;
   slowMoTimer = 0;
   slowMoFactor = 1;
-  zoomTimer = 0;
+  bulletTimeActive = false;
+  if (bulletTimeWordMesh) { scene.remove(bulletTimeWordMesh); bulletTimeWordMesh = null; }
   eventTimer = 0;
   activeEvent = null;
   eventDuration = 0;
@@ -3510,11 +3630,11 @@ button {
   50% { transform: scale(1.1); }
 }
 #near-miss { position: absolute; top: 40%; left: 50%; transform: translateX(-50%); font-size: 24px; color: #ff0; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); pointer-events: none; animation: nearMissPop 0.5s ease-out; }
-#near-miss.near-miss-flash { font-size: 32px; color: #ff4400; animation: adrenalineFlash 0.3s ease-out; }
+#near-miss.bullet-time-flash { font-size: 48px; color: #ff4400; text-shadow: 0 0 20px #ff0000, 0 0 40px #ff4400, 2px 2px 4px rgba(0,0,0,0.9); animation: bulletTimeFlash 0.4s ease-out; }
 #event-alert { position: absolute; top: 25%; left: 50%; transform: translateX(-50%); font-size: 28px; color: #fff; font-weight: bold; text-shadow: 2px 2px 8px rgba(0,0,0,0.9); pointer-events: none; }
 #bonus-zone { position: absolute; top: 15%; left: 50%; transform: translateX(-50%); font-size: 36px; color: #ff0; font-weight: bold; text-shadow: 0 0 20px #f0f, 0 0 40px #0ff; animation: bonusPulse 0.5s ease-in-out infinite alternate; }
 #vignette-glow { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; transition: opacity 0.3s; box-shadow: inset 0 0 100px 40px rgba(255,0,0,0.4); }
 @keyframes nearMissPop { 0% { transform: translateX(-50%) scale(0.5); opacity: 0; } 50% { transform: translateX(-50%) scale(1.3); } 100% { transform: translateX(-50%) scale(1); opacity: 1; } }
-@keyframes adrenalineFlash { 0% { transform: translateX(-50%) scale(2); opacity: 0.5; } 100% { transform: translateX(-50%) scale(1); opacity: 1; } }
+@keyframes bulletTimeFlash { 0% { transform: translateX(-50%) scale(3); opacity: 0; } 30% { transform: translateX(-50%) scale(1.5); opacity: 1; } 50% { transform: translateX(-50%) scale(1.2); } 100% { transform: translateX(-50%) scale(1); opacity: 1; } }
 @keyframes bonusPulse { 0% { transform: translateX(-50%) scale(1); } 100% { transform: translateX(-50%) scale(1.1); } }
 </style>
