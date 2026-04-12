@@ -78,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.4.9 Fast Texture Loading';
+const VERSION = 'v3.5.0 Performance Optimization';
 
 // Audio system
 let audioCtx = null;
@@ -661,9 +661,10 @@ const initGame = () => {
 
   renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.enabled = isMobile ? false : true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  renderer.setPixelRatio(isMobile ? 1 : Math.min(window.devicePixelRatio, 2));
   document.getElementById('game-canvas').appendChild(renderer.domElement);
 
   // Post-processing for bloom effect
@@ -671,8 +672,9 @@ const initGame = () => {
   const renderPass = new RenderPass(scene, camera);
   composer.addPass(renderPass);
   
+  const bloomRes = isMobile ? 0.5 : 0.75;
   const bloomPass = new UnrealBloomPass(
-    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    new THREE.Vector2(window.innerWidth * bloomRes, window.innerHeight * bloomRes),
     0.35,  // strength (reduced for performance)
     0.4,   // radius
     0.85   // threshold
@@ -686,8 +688,9 @@ const initGame = () => {
   const directionalLight = new THREE.DirectionalLight(0xffd700, 1.0);
   directionalLight.position.set(10, 15, 10);
   directionalLight.castShadow = true;
-  directionalLight.shadow.mapSize.width = 2048;
-  directionalLight.shadow.mapSize.height = 2048;
+  const shadowRes = isMobile ? 512 : 1024;
+  directionalLight.shadow.mapSize.width = shadowRes;
+  directionalLight.shadow.mapSize.height = shadowRes;
   directionalLight.shadow.camera.near = 0.5;
   directionalLight.shadow.camera.far = 50;
   directionalLight.shadow.camera.left = -20;
@@ -921,7 +924,7 @@ const createGround = () => {
   const ground = new THREE.Mesh(groundGeo, groundMat);
   ground.rotation.x = -Math.PI / 2; // flat road - curve is via object positions
   ground.position.set(0, 0, -50);
-  ground.receiveShadow = true;
+  ground.receiveShadow = false;
   ground.name = 'road';
   scene.add(ground);
   
@@ -949,7 +952,7 @@ const createGround = () => {
   const grass = new THREE.Mesh(grassGeo, grassMat);
   grass.rotation.x = -Math.PI / 2;
   grass.position.set(0, -0.1, -50); // just below road
-  grass.receiveShadow = true;
+  grass.receiveShadow = false;
   scene.add(grass);
   
   // Road edge curbs (curved to match earth)
@@ -966,11 +969,11 @@ const createGround = () => {
   curbGeo.computeVertexNormals();
   const leftCurb = new THREE.Mesh(curbGeo, curbMat);
   leftCurb.position.set(-7.5, 0.07, -50);
-  leftCurb.receiveShadow = true;
+  leftCurb.receiveShadow = false;
   scene.add(leftCurb);
   const rightCurb = new THREE.Mesh(curbGeo, curbMat);
   rightCurb.position.set(7.5, 0.07, -50);
-  rightCurb.receiveShadow = true;
+  rightCurb.receiveShadow = false;
   scene.add(rightCurb);
 };
 
@@ -1521,7 +1524,7 @@ const spawnObstacle = () => {
       const fruitGeo = new THREE.SphereGeometry(1.2, 24, 24);
       const fruitMat = new THREE.MeshToonMaterial({ color: fruitColor });
       const fruit = new THREE.Mesh(fruitGeo, fruitMat);
-      fruit.castShadow = true;
+      fruit.castShadow = false;
       group.add(fruit);
       const stemGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.5, 8);
       const stemMat = new THREE.MeshToonMaterial({ color: 0x228b22 });
@@ -1546,7 +1549,7 @@ const spawnObstacle = () => {
       const carMat = new THREE.MeshToonMaterial({ color: carColors[Math.floor(Math.random() * carColors.length)] });
       const body = new THREE.Mesh(bodyGeo, carMat);
       body.position.y = 0.6;
-      body.castShadow = true;
+      body.castShadow = false;
       group.add(body);
       // Roof/cabin
       const roofGeo = new THREE.BoxGeometry(1.4, 0.6, 1.5);
@@ -1581,7 +1584,7 @@ const spawnObstacle = () => {
       const bodyMat = new THREE.MeshToonMaterial({ color: 0x111133 });
       const body = new THREE.Mesh(bodyGeo, bodyMat);
       body.position.y = 0.6;
-      body.castShadow = true;
+      body.castShadow = false;
       group.add(body);
       // White stripe
       const stripeGeo = new THREE.BoxGeometry(1.82, 0.2, 2.0);
@@ -1628,7 +1631,7 @@ const spawnObstacle = () => {
       const bodyMat = new THREE.MeshToonMaterial({ color: 0xcc0000 });
       const body = new THREE.Mesh(bodyGeo, bodyMat);
       body.position.y = 0.9;
-      body.castShadow = true;
+      body.castShadow = false;
       group.add(body);
       // Cabin
       const cabGeo = new THREE.BoxGeometry(1.6, 1.0, 1.5);
@@ -1679,7 +1682,7 @@ const spawnObstacle = () => {
       const busMat = new THREE.MeshToonMaterial({ color: 0xffaa00 });
       const body = new THREE.Mesh(bodyGeo, busMat);
       body.position.y = 1.1;
-      body.castShadow = true;
+      body.castShadow = false;
       group.add(body);
       // Windows row
       const winGeo = new THREE.BoxGeometry(0.5, 0.4, 0.05);
@@ -1718,7 +1721,7 @@ const spawnObstacle = () => {
       const stoneMat = new THREE.MeshToonMaterial({ color: 0x888888 });
       const stone = new THREE.Mesh(stoneGeo, stoneMat);
       stone.position.y = 0.7;
-      stone.castShadow = true;
+      stone.castShadow = false;
       // Random rotation for variety
       stone.rotation.set(Math.random() * 0.5, Math.random() * Math.PI, Math.random() * 0.3);
       group.add(stone);
@@ -1777,7 +1780,7 @@ const spawnObstacle = () => {
       const wallMat = new THREE.MeshToonMaterial({ color: 0xcc6633 });
       const wall = new THREE.Mesh(wallGeo, wallMat);
       wall.position.y = 1.0;
-      wall.castShadow = true;
+      wall.castShadow = false;
       group.add(wall);
       // Brick lines
       const lineGeo = new THREE.BoxGeometry(4.02, 0.04, 0.52);
@@ -1809,7 +1812,7 @@ const spawnObstacle = () => {
       const barrelMat = new THREE.MeshToonMaterial({ color: 0x336699 });
       const barrel = new THREE.Mesh(barrelGeo, barrelMat);
       barrel.position.y = 0.5;
-      barrel.castShadow = true;
+      barrel.castShadow = false;
       group.add(barrel);
       // Hazard stripes
       const stripeGeo2 = new THREE.CylinderGeometry(0.52, 0.52, 0.1, 12);
@@ -1849,14 +1852,14 @@ const spawnFloatingObstacle = () => {
   const domeMat = new THREE.MeshToonMaterial({ color: 0x88ff88, emissive: 0x22aa22, emissiveIntensity: 0.3 });
   const dome = new THREE.Mesh(domeGeo, domeMat);
   dome.position.y = 0.1;
-  dome.castShadow = true;
+  dome.castShadow = false;
   ufoGroup.add(dome);
   
   // UFO saucer body (flattened disc)
   const saucerGeo = new THREE.CylinderGeometry(1.0, 1.2, 0.3, 24);
   const saucerMat = new THREE.MeshToonMaterial({ color: 0xcccccc, emissive: 0x444444, emissiveIntensity: 0.2 });
   const saucer = new THREE.Mesh(saucerGeo, saucerMat);
-  saucer.castShadow = true;
+  saucer.castShadow = false;
   ufoGroup.add(saucer);
   
   // UFO bottom ring (glowing)
@@ -1895,18 +1898,24 @@ const spawnFloatingObstacle = () => {
   obstacles.push({ mesh: ufoGroup, lane, type: 'floating' });
 };
 
+// Shared geometry/material caches (avoid re-creating per spawn)
+let sharedCoinGeo, sharedCoinMat;
+let sharedShadowGeo, sharedShadowMat;
+
 const spawnCoin = () => {
   const lane = Math.floor(Math.random() * 3);
   const laneX = (lane - 1) * laneWidth;
   
-  const coinGeo = new THREE.TorusGeometry(0.3, 0.1, 8, 16);
-  const coinMat = new THREE.MeshToonMaterial({ 
-    color: 0xffd700,
-    emissive: 0xffaa00,
-    emissiveIntensity: 0.3
-  });
-  const coinObj = new THREE.Mesh(coinGeo, coinMat);
-  coinObj.castShadow = true;
+  if (!sharedCoinGeo) {
+    sharedCoinGeo = new THREE.TorusGeometry(0.3, 0.1, 8, 16);
+    sharedCoinMat = new THREE.MeshToonMaterial({ 
+      color: 0xffd700,
+      emissive: 0xffaa00,
+      emissiveIntensity: 0.3
+    });
+  }
+  const coinObj = new THREE.Mesh(sharedCoinGeo, sharedCoinMat);
+  coinObj.castShadow = false;
   coinObj.position.set(laneX, 1, -50);
   
   scene.add(coinObj);
@@ -2119,8 +2128,8 @@ const animate = () => {
         buildingVis: buildings.map(b => b.visible),
         treeVis: trees.map(t => t.visible),
       };
-      // Remove obstacle and coin meshes from scene, clear arrays
-      obstacles.forEach(obs => scene.remove(obs.mesh));
+      // Remove obstacle and coin meshes from scene, clear arrays, dispose geometry
+      obstacles.forEach(obs => { obs.mesh.traverse(c => { if (c.geometry && c.geometry !== sharedCoinGeo) c.geometry.dispose(); }); scene.remove(obs.mesh); });
       coins.forEach(coin => scene.remove(coin.mesh));
       obstacles.length = 0;
       coins.length = 0;
@@ -2412,6 +2421,7 @@ const animate = () => {
         playSound('shield_hit');
         createParticleEffect(obs.mesh.position, 0x00bfff, 15);
         deactivatePowerup();
+        obs.mesh.traverse(c => { if (c.geometry && c.geometry !== sharedCoinGeo) c.geometry.dispose(); });
         scene.remove(obs.mesh);
         obstacles.splice(index, 1);
       } else {
@@ -2472,6 +2482,7 @@ const animate = () => {
     }
 
     if (obs.mesh.position.z > 15) {
+      obs.mesh.traverse(c => { if (c.geometry && c.geometry !== sharedCoinGeo) c.geometry.dispose(); });
       scene.remove(obs.mesh);
       obstacles.splice(index, 1);
     }
@@ -3253,7 +3264,7 @@ const restartGame = () => {
   if (gameDuration > gameStats.maxTime) gameStats.maxTime = gameDuration;
   if (score.value > gameStats.bestRun) gameStats.bestRun = score.value;
   
-  obstacles.forEach(obs => scene.remove(obs.mesh));
+  obstacles.forEach(obs => { obs.mesh.traverse(c => { if (c.geometry && c.geometry !== sharedCoinGeo) c.geometry.dispose(); }); scene.remove(obs.mesh); });
   obstacles = [];
   
   coins.forEach(coin => scene.remove(coin.mesh));
