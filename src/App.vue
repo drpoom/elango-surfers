@@ -14,7 +14,7 @@
       <div id="tilt-btn" @click="toggleTilt">{{ tiltEnabledRef ? '📱' : '📱🔴' }}</div>
       <div id="mic-btn" @click="toggleMic">{{ micEnabledRef ? '🎤' : '🎤🔴' }}</div>
       <div id="settings-btn" @click="toggleSettings">⚙️</div>
-      <div id="instructions">A/D ←/→ Move | W/↑ Jump | S/↓ Slide | Space Restart<br>📱 Swipe | Tilt | 🎤 Blow to fly!<br>⚡ Speed increases over time!</div>
+      <div id="instructions" v-if="score < 1">A/D ←/→ Move | W/↑ Jump | S/↓ Slide | Space Restart<br>📱 Swipe | Tilt | 🎤 Blow to fly!<br>⚡ Speed increases over time!</div>
     </div>
     <div id="game-canvas"></div>
     <div id="vignette-glow"></div>
@@ -78,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.7.4 Bullet Time Removed';
+const VERSION = 'v3.7.5 Polish Fixes';
 
 // Audio system
 let audioCtx = null;
@@ -1230,8 +1230,8 @@ const spawnBonusPortal = () => {
 const triggerRandomEvent = () => {
   if (activeEvent) return;
   activeEvent = 'fog';
-  eventDuration = 8;
-  fogDensity = 5;
+  eventDuration = 6;
+  fogDensity = 2; // gentler fog (was 5 — too hard)
   eventAlertTextRef.value = '\u{1F32B}\u{FE0F} FOG!';
 };
 
@@ -1251,8 +1251,8 @@ const updateEvent = (delta) => {
     const baseNear = 20;
     const baseFar = 80;
     if (fogDensity > 0) {
-      scene.fog.near = THREE.MathUtils.lerp(scene.fog.near, baseNear * 0.2, delta * 2);
-      scene.fog.far = THREE.MathUtils.lerp(scene.fog.far, baseFar * 0.3, delta * 2);
+      scene.fog.near = THREE.MathUtils.lerp(scene.fog.near, baseNear * 0.5, delta * 2);
+      scene.fog.far = THREE.MathUtils.lerp(scene.fog.far, baseFar * 0.5, delta * 2);
       fogDensity = Math.max(0, fogDensity - delta * 0.5);
     } else {
       scene.fog.near = THREE.MathUtils.lerp(scene.fog.near, baseNear, delta * 2);
@@ -1302,14 +1302,15 @@ const createBackgroundElements = () => {
     
     const side = Math.random() > 0.5 ? 1 : -1;
     const treeZ = -10 - Math.random() * 30;
-    tree.position.set(
-      side * (8 + Math.random() * 10),
-      treeH / 2 + getSurfaceY(treeZ),
-      treeZ
-    );
     const treeScale = 0.7 + Math.random() * 0.3;
     tree.scale.setScalar(treeScale);
-    tree.baseY = treeH / 2;
+    const treeBaseY = (treeH / 2) * treeScale;
+    tree.position.set(
+      side * (8 + Math.random() * 10),
+      treeBaseY + getSurfaceY(treeZ),
+      treeZ
+    );
+    tree.baseY = treeBaseY;
     scene.add(tree);
     trees.push(tree);
   }
@@ -3266,6 +3267,7 @@ onUnmounted(() => {
   margin-top: 6px;
   line-height: 1.3;
   color: #fff;
+  max-width: 200px;
   text-shadow: 0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.5), 1px 1px 2px rgba(0,0,0,0.8);
 }
 #game-canvas {
@@ -3475,7 +3477,7 @@ button {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.1); }
 }
-#near-miss { position: absolute; top: 40%; left: 50%; transform: translateX(-50%); font-size: 24px; color: #ff0; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); pointer-events: none; animation: nearMissPop 0.5s ease-out; }
+#near-miss { position: absolute; top: 35%; left: 50%; transform: translateX(-50%); font-size: 24px; color: #ff0; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); pointer-events: none; animation: nearMissPop 0.5s ease-out; }
 #event-alert { position: absolute; top: 25%; left: 50%; transform: translateX(-50%); font-size: 28px; color: #fff; font-weight: bold; text-shadow: 2px 2px 8px rgba(0,0,0,0.9); pointer-events: none; }
 #bonus-zone { position: absolute; top: 15%; left: 50%; transform: translateX(-50%); font-size: 36px; color: #ff0; font-weight: bold; text-shadow: 0 0 20px #f0f, 0 0 40px #0ff; animation: bonusPulse 0.5s ease-in-out infinite alternate; }
 #vignette-glow { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; transition: opacity 0.3s; box-shadow: inset 0 0 100px 40px rgba(255,0,0,0.4); }
