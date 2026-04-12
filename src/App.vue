@@ -78,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.4.8 Bonus Zone Game Over Fix';
+const VERSION = 'v3.4.9 Fast Texture Loading';
 
 // Audio system
 let audioCtx = null;
@@ -927,7 +927,7 @@ const createGround = () => {
   
   // Add colorful grass borders with AI texture
   // Priority load: grass (large surface area)
-  const grassTileTex = textureLoader.load('assets/grass_tile.png');
+  const grassTileTex = textureLoader.load('assets/grass_tile.webp');
   grassTileTex.wrapS = THREE.RepeatWrapping;
   grassTileTex.wrapT = THREE.RepeatWrapping;
   grassTileTex.repeat.set(10, 25);
@@ -1400,9 +1400,9 @@ const createBackgroundElements = () => {
   // Priority texture loading: most visible objects first
   // 1. Building facades (most visible, darkest when missing)
   const buildingTextures = [
-    textureLoader.load('assets/building_pink.png'),
-    textureLoader.load('assets/building_blue.png'),
-    textureLoader.load('assets/building_green.png'),
+    textureLoader.load('assets/building_pink.webp'),
+    textureLoader.load('assets/building_blue.webp'),
+    textureLoader.load('assets/building_green.webp'),
   ];
   // Set dominant colors as fallback so buildings don't appear dark before texture loads
   const buildingDominantColors = [0xffb6c1, 0x87ceeb, 0x98fb98]; // pink, blue, green
