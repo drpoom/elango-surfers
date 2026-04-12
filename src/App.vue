@@ -82,7 +82,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.7.6 UI Layout Fix';
+const VERSION = 'v3.7.7 Polish Round 2';
 
 // Audio system
 let audioCtx = null;
@@ -1241,9 +1241,10 @@ const triggerRandomEvent = () => {
 
 const updateEvent = (delta) => {
   // Fog decay
-  if (activeEvent === 'fog' && fogDensity > 0) {
+  if (activeEvent === 'fog') {
     eventDuration -= delta;
-    if (eventDuration <= 0) {
+    fogDensity = Math.max(0, fogDensity - delta * 0.3);
+    if (eventDuration <= 0 || fogDensity <= 0) {
       fogDensity = 0;
       activeEvent = null;
       eventAlertTextRef.value = '';
@@ -1257,7 +1258,6 @@ const updateEvent = (delta) => {
     if (fogDensity > 0) {
       scene.fog.near = THREE.MathUtils.lerp(scene.fog.near, baseNear * 0.5, delta * 2);
       scene.fog.far = THREE.MathUtils.lerp(scene.fog.far, baseFar * 0.5, delta * 2);
-      fogDensity = Math.max(0, fogDensity - delta * 0.5);
     } else {
       scene.fog.near = THREE.MathUtils.lerp(scene.fog.near, baseNear, delta * 2);
       scene.fog.far = THREE.MathUtils.lerp(scene.fog.far, baseFar, delta * 2);
@@ -2074,7 +2074,7 @@ const animate = () => {
         depthWrite: false
       });
       const nyanCat = new THREE.Sprite(nyanSpriteMat);
-      nyanCat.scale.set(4, 2.5, 1); // wide aspect ratio matching the meme
+      nyanCat.scale.set(6, 2, 1); // wider for long rainbow trail
       nyanCat.position.set(-30, 10, -20); // start off-screen LEFT, fly RIGHT
       scene.add(nyanCat);
       scene.userData.nyanCat = nyanCat;
@@ -3447,9 +3447,9 @@ button {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.1); }
 }
-#near-miss { position: absolute; top: 35%; left: 50%; transform: translateX(-50%); font-size: 24px; color: #ff0; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); pointer-events: none; animation: nearMissPop 0.5s ease-out; }
-#event-alert { position: absolute; top: 25%; left: 50%; transform: translateX(-50%); font-size: 28px; color: #fff; font-weight: bold; text-shadow: 2px 2px 8px rgba(0,0,0,0.9); pointer-events: none; }
-#bonus-zone { position: absolute; top: 15%; left: 50%; transform: translateX(-50%); font-size: 36px; color: #ff0; font-weight: bold; text-shadow: 0 0 20px #f0f, 0 0 40px #0ff; animation: bonusPulse 0.5s ease-in-out infinite alternate; }
+#near-miss { position: absolute; top: 35%; left: 50%; transform: translateX(-50%); font-size: min(6vw, 22px); color: #ff0; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); pointer-events: none; animation: nearMissPop 0.5s ease-out; white-space: nowrap; }
+#event-alert { position: absolute; top: 25%; left: 50%; transform: translateX(-50%); font-size: min(7vw, 26px); color: #fff; font-weight: bold; text-shadow: 2px 2px 8px rgba(0,0,0,0.9); pointer-events: none; white-space: nowrap; }
+#bonus-zone { position: absolute; top: 12%; left: 50%; transform: translateX(-50%); font-size: min(8vw, 32px); color: #ff0; font-weight: bold; white-space: nowrap; text-shadow: 0 0 20px #f0f, 0 0 40px #0ff; animation: bonusPulse 0.5s ease-in-out infinite alternate; }
 #vignette-glow { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; transition: opacity 0.3s; box-shadow: inset 0 0 100px 40px rgba(255,0,0,0.4); }
 @keyframes nearMissPop { 0% { transform: translateX(-50%) scale(0.5); opacity: 0; } 50% { transform: translateX(-50%) scale(1.3); } 100% { transform: translateX(-50%) scale(1); opacity: 1; } }
 @keyframes bonusPulse { 0% { transform: translateX(-50%) scale(1); } 100% { transform: translateX(-50%) scale(1.1); } }
