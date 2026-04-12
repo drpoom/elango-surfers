@@ -78,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.4.5 Texture Priority + Nyan Sprite';
+const VERSION = 'v3.4.6 Black Screen Fix';
 
 // Audio system
 let audioCtx = null;
@@ -926,7 +926,12 @@ const createGround = () => {
   scene.add(ground);
   
   // Add colorful grass borders with AI texture
-  // grassTileTex loaded above with priority
+  // Priority load: grass (large surface area)
+  const grassTileTex = textureLoader.load('assets/grass_tile.png');
+  grassTileTex.wrapS = THREE.RepeatWrapping;
+  grassTileTex.wrapT = THREE.RepeatWrapping;
+  grassTileTex.repeat.set(10, 25);
+  grassTileTex.colorSpace = THREE.SRGBColorSpace;
   const grassGeo = new THREE.PlaneGeometry(80, 200, 1, 60); // curve match
   const gPosG = grassGeo.attributes.position;
   for (let i = 0; i < gPosG.count; i++) {
@@ -1406,10 +1411,7 @@ const createBackgroundElements = () => {
     tex.wrapT = THREE.RepeatWrapping;
     tex.colorSpace = THREE.SRGBColorSpace;
   });
-  // 2. Grass tile (large surface area)
-  // grassTileTex loaded above with priority
-  // Tree textures loaded above with priority
-  // 3. Trees (billboard sprites)
+  // 2. Trees (billboard sprites) — grass already loaded above
   const treeRoundTex = textureLoader.load('assets/tree_round_clean.png');
   const treePineTex = textureLoader.load('assets/tree_pine_clean.png');
   
@@ -1447,7 +1449,7 @@ const createBackgroundElements = () => {
     trees.push(tree);
   }
   
-  // buildingTextures loaded above with priority
+  // buildingTextures and buildingDominantColors loaded above
   const buildingColors = [0xffb6c1, 0x87ceeb, 0x98fb98, 0xffd700, 0xdda0dd, 0xffa07a, 0xadd8e6];
   
   for (let i = 0; i < 12; i++) {
