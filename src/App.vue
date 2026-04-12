@@ -78,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.6.5 Bullet Time Rewrite';
+const VERSION = 'v3.6.6 Bullet Time Slow gameSpeed';
 
 // Audio system
 let audioCtx = null;
@@ -1976,20 +1976,7 @@ const animate = () => {
   }
 
   const realDelta = clock.getDelta(); // unscaled real time
-  // Bullet time: slow down gameplay without affecting timers
-  let slowFactor = 1;
-  if (bulletTimeActive) {
-    const btElapsed = clock.getElapsedTime() - bulletTimeStartTime;
-    const btProgress = Math.min(btElapsed / BULLET_TIME_DURATION, 1);
-    if (btProgress < 0.7) {
-      slowFactor = BULLET_TIME_SLOW; // hold at 0.05x
-    } else {
-      // Smooth ramp from 0.05 back to 1 in last 30%
-      const rampT = (btProgress - 0.7) / 0.3;
-      slowFactor = BULLET_TIME_SLOW + (1 - BULLET_TIME_SLOW) * rampT * rampT; // quadratic ease
-    }
-  }
-  const delta = realDelta * slowFactor;
+  const delta = realDelta; // No slow-mo on delta - bullet time slows gameSpeed directly
   const time = clock.getElapsedTime();
   
   gameDuration += delta;
@@ -2003,6 +1990,20 @@ const animate = () => {
   const difficultyMultiplier = Math.min(1 + (gameDuration / 30), 3.5);
   const targetSpeed = 0.25 * difficultyMultiplier;
   gameSpeed = THREE.MathUtils.lerp(gameSpeed, targetSpeed, 0.01);
+  
+  // Bullet time: slow down gameSpeed (which controls ALL object movement)
+  if (bulletTimeActive) {
+    const btElapsed = clock.getElapsedTime() - bulletTimeStartTime;
+    const btProgress = Math.min(btElapsed / BULLET_TIME_DURATION, 1);
+    if (btProgress < 0.7) {
+      gameSpeed *= BULLET_TIME_SLOW; // 0.05x speed
+    } else {
+      // Smooth ramp back
+      const rampT = (btProgress - 0.7) / 0.3;
+      const slowFactor = BULLET_TIME_SLOW + (1 - BULLET_TIME_SLOW) * rampT * rampT;
+      gameSpeed *= slowFactor;
+    }
+  }
   
   // Spawn interval decreases over time (more obstacles)
   spawnInterval = Math.max(0.35, 1.2 - (gameDuration / 80));
@@ -2843,25 +2844,25 @@ const animate = () => {
       // Actually we need a smooth ramp. Let's use a global override.
     }
     
-    // Camera: position on the road AHEAD of the player, at ground level, looking UP at 45 degrees
-    // Default camera: (0, 6, 12) looking at (0, 1, -8)
-    // Bullet time: camera at (side, 0.3, -4) looking at (0, 2, 0) = player
-    // This puts camera on the road ahead, looking back and up at the character
-    const targetCamX = bulletTimeCamSide * 3.5;
-    const targetCamY = 0.3;
-    const targetCamZ = -4;
-    const camSpeed = 0.08; // fixed lerp per frame (frame-rate dependent but consistent feel)
+    // Camera: on the road AHEAD of the player, at ground level, looking UP at the character
+    // Player is at approximately (player.position.x, 0.5, 0)
+    // Camera goes to (side, 0.3, -6) looking back at the player = dramatic ground-up 45 degree angle
+    const targetCamX = bulletTimeCamSide * 4;
+    const targetCamY = 0.3; // ground level
+    const targetCamZ = -6; // ahead of player on the road
+    const camSpeed = 0.08;
     camera.position.x += (targetCamX - camera.position.x) * camSpeed;
     camera.position.y += (targetCamY - camera.position.y) * camSpeed;
     camera.position.z += (targetCamZ - camera.position.z) * camSpeed;
     
     // FOV zoom: start tight (30), gradually widen back to 60
-    const targetFov = 30 + 30 * Math.min(progress * 2, 1); // 30→60 over first 50%
+    const targetFov = 30 + 30 * Math.min(progress * 2, 1);
     camera.fov += (targetFov - camera.fov) * camSpeed;
     camera.updateProjectionMatrix();
     
-    // Look at the player character from our low position
-    camera.lookAt(0, 2, 0);
+    // Look at the PLAYER - this is the actual character position
+    // From z=-6 at y=0.3, looking at z=0, y=1.2 gives ~45 degree upward angle
+    camera.lookAt(player.position.x, 1.2, player.position.z);
     
     // Animate word art sprite
     if (bulletTimeWordMesh) {
