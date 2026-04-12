@@ -26,6 +26,12 @@
     <div v-if="showSettings" id="settings-panel">
       <h2>⚙️ Settings</h2>
       <button @click="toggleSettings">Close</button>
+      <div class="settings-section" style="border-bottom:1px solid #444;padding-bottom:1rem;margin-bottom:1rem">
+        <h3>🎮 Game Settings</h3>
+        <label style="color:#fff;font-size:16px;display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" v-model="fovWarpRef" @change="toggleFovWarp" style="width:20px;height:20px;cursor:pointer" /> FOV Warp Effect
+        </label>
+      </div>
       <div class="settings-section">
         <h3>🎨 Skins</h3>
         <div class="skin-selector">
@@ -58,11 +64,6 @@
             {{ ach.unlocked ? '✅' : '🔒' }} {{ ach.name }}
           </li>
         </ul>
-      </div>
-      <div class="settings-section" style="margin-top:1rem;border-top:1px solid #444;padding-top:1rem">
-        <label style="color:#fff;font-size:16px;display:flex;align-items:center;gap:8px;cursor:pointer">
-          <input type="checkbox" v-model="fovWarpRef" @change="toggleFovWarp" style="width:20px;height:20px;cursor:pointer" /> FOV Warp Effect
-        </label>
       </div>
     </div>
   </div>
