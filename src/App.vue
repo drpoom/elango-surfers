@@ -23,6 +23,7 @@
       <p>Your Score: {{ score }}</p>
       <p>Press SPACE or click to restart</p>
     </div>
+    <div v-if="countdownActive" id="countdown">{{ countdownText }}</div>
     <div v-if="showSettings" id="settings-panel">
       <h2>⚙️ Settings</h2>
       <button @click="toggleSettings">Close</button>
@@ -77,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.2.5 Bonus Substage';
+const VERSION = 'v3.3.0 Countdown + Bonus 5s';
 
 // Audio system
 let audioCtx = null;
@@ -391,6 +392,8 @@ const checkAchievements = () => {
 const score = ref(0);
 const highScore = ref(0);
 const gameOver = ref(false);
+const countdownActive = ref(false);
+const countdownText = ref('');
 const showSettings = ref(false);
 const tiltEnabledRef = ref(true);
 const micEnabledRef = ref(false);
@@ -1964,6 +1967,14 @@ const animate = () => {
     return;
   }
 
+  // Freeze game during countdown
+  if (countdownLocked) {
+    clock.getDelta(); // consume delta to prevent time jump
+    camera.lookAt(0, 1, -8);
+    composer.render();
+    return;
+  }
+
   const delta = clock.getDelta() * (slowMoFactor || 1);
   const time = clock.getElapsedTime();
   
@@ -2012,7 +2023,7 @@ const animate = () => {
     if (dist < 2.0) {
       // Enter bonus zone!
       inBonusZone = true;
-      bonusTimer = 7;
+      bonusTimer = 5;
       inBonusZoneRef.value = true;
       bonusTimerRef.value = 7;
       scene.remove(bonusPortal.mesh);
@@ -2765,7 +2776,7 @@ const animate = () => {
 };
 
 const handleSwipe = (direction) => {
-  if (gameOver.value) return;
+  if (gameOver.value || countdownLocked) return;
   
   if (direction === 'left') {
     if (currentLane > 0) currentLane--;
@@ -2795,7 +2806,7 @@ const handleTouchEnd = (e) => {
   
   // If game over, any tap restarts
   if (gameOver.value) {
-    restartGame();
+    startCountdown();
     return;
   }
   
@@ -2952,11 +2963,11 @@ const handleKeyDown = (e) => {
   
   // Restart on Space, Enter, or any key when game over
   if (gameOver.value) {
-    restartGame();
+    startCountdown();
     return;
   }
   
-  if (gameOver.value) return;
+  if (gameOver.value || countdownLocked) return;
   
   if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
     if (currentLane > 0) currentLane--;
@@ -2970,6 +2981,34 @@ const handleKeyDown = (e) => {
   if ((e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') && !isSliding) {
     handleSlide();
   }
+};
+
+let countdownLocked = false; // prevents input during countdown
+
+const startCountdown = () => {
+  // Reset game state immediately
+  restartGame();
+  countdownLocked = true;
+  countdownActive.value = true;
+  
+  let count = 3;
+  countdownText.value = count.toString();
+  
+  const tick = () => {
+    count--;
+    if (count > 0) {
+      countdownText.value = count.toString();
+      setTimeout(tick, 1000);
+    } else if (count === 0) {
+      countdownText.value = 'GO!';
+      setTimeout(() => {
+        countdownActive.value = false;
+        countdownLocked = false;
+      }, 500);
+    }
+  };
+  
+  setTimeout(tick, 1000);
 };
 
 const restartGame = () => {
@@ -3072,7 +3111,7 @@ onMounted(() => {
     if (e.target.closest('#settings-panel') || e.target.closest('#settings-btn') || e.target.closest('#mute-btn') || e.target.closest('#tilt-btn') || e.target.closest('#mic-btn')) {
       return;
     }
-    if (gameOver.value) restartGame();
+    if (gameOver.value) startCountdown();
     initAudio();
   });
   
@@ -3198,6 +3237,23 @@ onUnmounted(() => {
   text-align: center;
   border-radius: 1rem;
   z-index: 20;
+}
+#countdown {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 8rem;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 0 0 30px rgba(255,165,0,0.8), 0 0 60px rgba(255,100,0,0.4);
+  z-index: 25;
+  pointer-events: none;
+  animation: countPulse 0.5s ease-out;
+}
+@keyframes countPulse {
+  0% { transform: translate(-50%, -50%) scale(2); opacity: 0.5; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
 }
 button {
   padding: 0.7rem 1.5rem;
