@@ -78,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.6.8 Camera LookAt Fix';
+const VERSION = 'v3.6.9 Camera LookAt Override Fix';
 
 // Audio system
 let audioCtx = null;
@@ -1964,6 +1964,7 @@ const animate = () => {
     }
     // Still render scene when game over so background stays visible
     camera.lookAt(0, 1, -8);
+    bulletTimeActive = false; // cancel bullet time on game over
     composer.render();
     return;
   }
@@ -1972,6 +1973,7 @@ const animate = () => {
   if (countdownLocked) {
     clock.getDelta(); // consume delta to prevent time jump
     camera.lookAt(0, 1, -8);
+    bulletTimeActive = false; // cancel bullet time during countdown
     composer.render();
     return;
   }
@@ -2936,8 +2938,10 @@ const animate = () => {
     vignetteEl.style.opacity = edgeGlowIntensity * (0.5 + 0.5 * Math.sin(clock.getElapsedTime() * 3));
   }
 
-  // Ensure camera always looks at player
-  camera.lookAt(0, 1, -8);
+  // Ensure camera always looks at player (unless bullet time is controlling it)
+  if (!bulletTimeActive) {
+    camera.lookAt(0, 1, -8);
+  }
   composer.render();
 };
 
