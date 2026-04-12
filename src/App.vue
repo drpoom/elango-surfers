@@ -58,12 +58,11 @@
             {{ ach.unlocked ? '✅' : '🔒' }} {{ ach.name }}
           </li>
         </ul>
-        <div class="settings-section">
-          <h3>🛠️ Debug</h3>
-          <label style="color:#fff;font-size:12px">
-            <input type="checkbox" v-model="fovWarpRef" @change="toggleFovWarp" /> FOV Warp Effect
-          </label>
-        </div>
+      </div>
+      <div class="settings-section" style="margin-top:1rem;border-top:1px solid #444;padding-top:1rem">
+        <label style="color:#fff;font-size:16px;display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" v-model="fovWarpRef" @change="toggleFovWarp" style="width:20px;height:20px;cursor:pointer" /> FOV Warp Effect
+        </label>
       </div>
     </div>
   </div>
@@ -77,7 +76,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.2.0 Visual Overhaul';
+const VERSION = 'v3.2.1 Visual Fixes';
 
 // Audio system
 let audioCtx = null;
@@ -460,6 +459,9 @@ let nearMissCount = 0;
 let slowMoTimer = 0;
 let slowMoFactor = 1;
 let zoomTimer = 0;
+let cameraShakeTimer = 0;
+let cameraShakeIntensity = 0;
+let originalRoadMaterial = null;
 
 // Environmental events
 let eventTimer = 0;
@@ -1058,15 +1060,15 @@ const createClouds = () => {
   const cloudMat = new THREE.MeshToonMaterial({ 
     color: 0xffffff, 
     transparent: true, 
-    opacity: 0.85 
+    opacity: 0.75 
   });
   const shadowMat = new THREE.MeshToonMaterial({ 
-    color: 0xcccccc, 
+    color: 0xdddddd, 
     transparent: true, 
-    opacity: 0.6 
+    opacity: 0.5 
   });
   
-  for (let i = 0; i < 15; i++) {
+  for (let i = 0; i < 12; i++) {
     const cloud = new THREE.Group();
     // Cumulus cloud: larger center puff, smaller side puffs, arranged horizontally
     const mainSize = 1.0 + Math.random() * 0.8;
@@ -1118,10 +1120,10 @@ const createClouds = () => {
     cloud.scale.setScalar(scale);
     cloud.position.set(
       (Math.random() - 0.5) * 50,
-      8 + Math.random() * 6,
+      14 + Math.random() * 6,
       -Math.random() * 60
     );
-    cloud.castShadow = true;
+    cloud.castShadow = false;
     scene.add(cloud);
     clouds.push(cloud);
   }
@@ -1312,6 +1314,8 @@ const updateEvent = (delta) => {
           // Hit the crack!
           if (!isInvincible) {
             gameOver.value = true;
+            if (bonusPortal) { scene.remove(bonusPortal.mesh); bonusPortal = null; }
+            inBonusZone = false; inBonusZoneRef.value = false; bonusTimer = 0; bonusTimerRef.value = 0;
             saveHighScore();
             playSound('crash');
             createParticleEffect(player.position, 0xff0000, 20);
@@ -2022,12 +2026,39 @@ const animate = () => {
   
   // Bonus zone timer
   if (inBonusZone) {
+    // Hide buildings and trees, change road to rainbow
+    if (!scene.userData.bonusEnvActive) {
+      buildings.forEach(b => b.visible = false);
+      trees.forEach(t => t.visible = false);
+      const road = scene.getObjectByName('road');
+      if (road) {
+        originalRoadMaterial = road.material;
+        road.material = new THREE.MeshToonMaterial({
+          color: 0xff00ff,
+          emissive: 0x8800ff,
+          emissiveIntensity: 0.3,
+          opacity: 0.8,
+          transparent: true
+        });
+      }
+      scene.userData.bonusEnvActive = true;
+    }
     bonusTimer -= delta;
     bonusTimerRef.value = Math.ceil(bonusTimer);
     if (bonusTimer <= 0) {
       inBonusZone = false;
       inBonusZoneRef.value = false;
       bonusTimerRef.value = 0;
+      // Restore environment
+      buildings.forEach(b => b.visible = true);
+      trees.forEach(t => t.visible = true);
+      const road = scene.getObjectByName('road');
+      if (road && originalRoadMaterial) {
+        road.material.dispose();
+        road.material = originalRoadMaterial;
+        originalRoadMaterial = null;
+      }
+      scene.userData.bonusEnvActive = false;
       // Particle burst ejection
       createParticleEffect(player.position, 0xff00ff, 30);
       createParticleEffect(player.position, 0x00ffff, 30);
@@ -2161,6 +2192,10 @@ const animate = () => {
         zoomTimer = 0.3;
         nearMissCount = 0;
         nearMissCountRef.value = 0;
+      } else {
+        // Regular near-miss: subtle camera shake
+        cameraShakeTimer = 0.3;
+        cameraShakeIntensity = 0.15;
       }
       nearMissCountRef.value = nearMissCount;
     }
@@ -2180,6 +2215,8 @@ const animate = () => {
         obstacles.splice(index, 1);
       } else {
         gameOver.value = true;
+        if (bonusPortal) { scene.remove(bonusPortal.mesh); bonusPortal = null; }
+        inBonusZone = false; inBonusZoneRef.value = false; bonusTimer = 0; bonusTimerRef.value = 0;
         saveHighScore();
         playSound('crash');
         createParticleEffect(player.position, 0xff0000, 30);
@@ -2311,13 +2348,41 @@ const animate = () => {
     }
   });
 
-  // Animate clouds drifting
+  // Animate clouds drifting + sky-aware coloring
+  const cycleProgress = dayCycleTime / DAY_DURATION;
   clouds.forEach((cloud, i) => {
     cloud.position.z += 0.02;
     if (cloud.position.z > 10) {
       cloud.position.z = -60 - Math.random() * 20;
       cloud.position.x = (Math.random() - 0.5) * 40;
     }
+    // Tint clouds based on day/night cycle
+    const whiteColor = new THREE.Color(0xffffff);
+    const nightColor = new THREE.Color(0x667788);
+    const sunsetColor = new THREE.Color(0xff8866);
+    let targetColor;
+    if (cycleProgress > 0.35 && cycleProgress < 0.65) {
+      // Night: darker clouds
+      const nightT = Math.min((cycleProgress - 0.35) / 0.15, (0.65 - cycleProgress) / 0.15, 1);
+      targetColor = whiteColor.clone().lerp(nightColor, nightT);
+    } else if ((cycleProgress > 0.2 && cycleProgress < 0.35) || (cycleProgress > 0.85 && cycleProgress < 0.95)) {
+      // Sunset/sunrise: pinkish
+      const sunsetT = cycleProgress < 0.5
+        ? Math.min((cycleProgress - 0.2) / 0.1, (0.35 - cycleProgress) / 0.1, 1)
+        : Math.min((cycleProgress - 0.85) / 0.1, (0.95 - cycleProgress) / 0.1, 1);
+      targetColor = whiteColor.clone().lerp(sunsetColor, sunsetT);
+    } else {
+      targetColor = whiteColor;
+    }
+    // Apply color to main cloud puffs (children)
+    cloud.children.forEach(child => {
+      if (child.isMesh && child.material && child.material.color) {
+        // Only tint the main cloud material (not shadows)
+        if (child.material !== shadowMat) {
+          child.material.color.lerp(targetColor, 0.05);
+        }
+      }
+    });
   });
   
   // === DUST TRAIL PARTICLES behind player ===
@@ -2542,9 +2607,21 @@ const animate = () => {
     }
   }
   
-  // === SLOW-MO ===
+  // === SLOW-MO (ADRENALINE MODE) ===
   if (slowMoTimer > 0) {
     slowMoTimer -= delta;
+    // Smoothly interpolate slowMoFactor from 0.3 back to 1
+    const slowMoProgress = 1 - (slowMoTimer / 0.5); // 0.5 was the initial timer
+    slowMoFactor = THREE.MathUtils.lerp(0.3, 1, Math.min(slowMoProgress, 1));
+    // Camera zoom: FOV lerps to 45 then back
+    const targetFov = THREE.MathUtils.lerp(45, 60, Math.min(slowMoProgress, 1));
+    camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, 0.1);
+    // Camera angle: lower Y to 4, increase Z to 8, then lerp back
+    const targetCamY = THREE.MathUtils.lerp(4, 6, Math.min(slowMoProgress, 1));
+    const targetCamZ = THREE.MathUtils.lerp(8, 12, Math.min(slowMoProgress, 1));
+    camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetCamY, 0.1);
+    camera.position.z = THREE.MathUtils.lerp(camera.position.z, targetCamZ, 0.1);
+    camera.updateProjectionMatrix();
     if (slowMoTimer <= 0) {
       slowMoFactor = 1;
     }
@@ -2553,11 +2630,29 @@ const animate = () => {
   // === ZOOM PULSE ===
   if (zoomTimer > 0) {
     zoomTimer -= delta;
-    camera.fov = 60 + zoomTimer * 20;
-    camera.updateProjectionMatrix();
-  } else if (!fovWarpEnabled) {
-    camera.fov = THREE.MathUtils.lerp(camera.fov, 60, delta * 5);
-    camera.updateProjectionMatrix();
+  }
+
+  // === CAMERA SHAKE (regular near-miss) ===
+  if (cameraShakeTimer > 0) {
+    cameraShakeTimer -= delta;
+    const shakeX = (Math.random() - 0.5) * cameraShakeIntensity * 2;
+    const shakeY = (Math.random() - 0.5) * cameraShakeIntensity * 2;
+    camera.position.x += shakeX;
+    camera.position.y += shakeY;
+    cameraShakeIntensity *= 0.9; // decay
+    if (cameraShakeTimer <= 0) {
+      cameraShakeIntensity = 0;
+    }
+  }
+
+  // Lerp camera back to default position when not in slow-mo
+  if (slowMoTimer <= 0) {
+    camera.position.y = THREE.MathUtils.lerp(camera.position.y, 6, delta * 5);
+    camera.position.z = THREE.MathUtils.lerp(camera.position.z, 12, delta * 5);
+    if (!fovWarpEnabled) {
+      camera.fov = THREE.MathUtils.lerp(camera.fov, 60, delta * 5);
+      camera.updateProjectionMatrix();
+    }
   }
   
   // === FOV WARP ===
