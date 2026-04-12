@@ -7,7 +7,7 @@
       <div id="combo" v-if="comboCount > 1">🔥 Combo x{{ comboCount }}</div>
       <div id="powerup-indicator" v-if="activePowerup">{{ powerupIcon }} {{ powerupName }} ({{ powerupTimeLeft }}s)</div>
       <div id="fly-indicator" v-if="micEnabledRef">&#x1F3A4;&#x2708;ï¸</div>
-      <div id="near-miss" v-if="nearMissTextRef" :class="{ 'bullet-time-flash': bulletTimeActive }">{{ nearMissTextRef }}</div>
+      <div id="near-miss" v-if="nearMissTextRef" >{{ nearMissTextRef }}</div>
       <div id="event-alert" v-if="eventAlertTextRef">{{ eventAlertTextRef }}</div>
       <div id="bonus-zone" v-if="inBonusZoneRef">&#x1F308; BONUS ZONE! {{ Math.ceil(bonusTimerRef) }}s</div>
       <div id="mute-btn" @click="toggleMute">🔊</div>
@@ -18,7 +18,6 @@
     </div>
     <div id="game-canvas"></div>
     <div id="vignette-glow"></div>
-    <div id="bullet-time-word" v-if="bulletTimeActive && bulletTimeWord" :class="'bt-word-' + bulletTimeWord">{{ bulletTimeWord }}</div>
     <div v-if="gameOver" id="game-over">
       <h1>GAME OVER</h1>
       <p>Your Score: {{ score }}</p>
@@ -77,10 +76,9 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.7.3 WebGL Comic Shader';
+const VERSION = 'v3.7.4 Bullet Time Removed';
 
 // Audio system
 let audioCtx = null;
@@ -480,13 +478,6 @@ let lastCoinTime = 0;
 // Near-miss / Bullet time system
 let nearMissTimer = 0;
 let nearMissCount = 0;
-let bulletTimeActive = false;
-let bulletTimeStartTime = 0; // real clock time when bullet time started
-const BULLET_TIME_DURATION = 2.5; // real seconds
-const BULLET_TIME_SLOW = 0.05; // gameplay speed factor during bullet time
-const bulletTimeWord = ref('');
-let bulletTimeCamSide = 0; // -1 left, 1 right
-let savedGameSpeed = 0; // gameSpeed before bullet time
 let cameraShakeTimer = 0;
 let cameraShakeIntensity = 0;
 let originalRoadMaterial = null;
@@ -687,69 +678,6 @@ const initGame = () => {
   );
   composer.addPass(bloomPass);
 
-  // Comic-book post-processing shader (active during bullet time)
-  const ComicShader = {
-    uniforms: {
-      tDiffuse: { value: null },
-      uComicMix: { value: 0.0 }, // 0 = normal, 1 = full comic
-      uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
-      uTime: { value: 0.0 }
-    },
-    vertexShader: `
-      varying vec2 vUv;
-      void main() {
-        vUv = uv;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: `
-      uniform sampler2D tDiffuse;
-      uniform float uComicMix;
-      uniform vec2 uResolution;
-      uniform float uTime;
-      varying vec2 vUv;
-
-      float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
-
-      void main() {
-        vec4 color = texture2D(tDiffuse, vUv);
-        float lum = luma(color.rgb);
-
-        // Halftone dots - classic comic printing
-        vec2 dotUV = vUv * uResolution / 4.0;
-        float dotPattern = sin(dotUV.x * 3.14159) * sin(dotUV.y * 3.14159);
-        float halftone = step(0.0, dotPattern - (1.0 - lum) * 0.8);
-
-        // Ink outline via edge detection (Sobel)
-        vec2 texel = vec2(1.0) / uResolution;
-        float l = luma(texture2D(tDiffuse, vUv - vec2(texel.x, 0.0)).rgb);
-        float r = luma(texture2D(tDiffuse, vUv + vec2(texel.x, 0.0)).rgb);
-        float t = luma(texture2D(tDiffuse, vUv + vec2(0.0, texel.y)).rgb);
-        float b = luma(texture2D(tDiffuse, vUv - vec2(0.0, texel.y)).rgb);
-        float edge = abs(l - r) + abs(t - b);
-        float inkOutline = smoothstep(0.1, 0.3, edge);
-
-        // B&W with 3 levels of shading (comic ink wash)
-        float bw = smoothstep(0.25, 0.35, lum) * 0.5 + smoothstep(0.55, 0.65, lum) * 0.5;
-
-        // Combine: B&W base + halftone + ink outlines
-        vec3 comicColor = vec3(bw * halftone);
-        comicColor = mix(comicColor, vec3(0.0), inkOutline * 0.9);
-
-        // Vignette
-        vec2 vigUV = vUv * 2.0 - 1.0;
-        float vig = 1.0 - dot(vigUV * 0.7, vigUV * 0.7);
-        comicColor *= smoothstep(0.0, 0.5, vig);
-
-        // Mix normal vs comic
-        vec3 finalColor = mix(color.rgb, comicColor, uComicMix);
-        gl_FragColor = vec4(finalColor, 1.0);
-      }
-    `
-  };
-  const comicPass = new ShaderPass(ComicShader);
-  comicPass.renderToScreen = true;
-  composer.addPass(comicPass);
 
   // Enhanced cartoon lighting
   const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
@@ -1960,10 +1888,6 @@ const createFloatingText = (text, position) => {
 };
 
 // Comic-book word art for bullet time
-const createBulletTimeWord = (word) => {
-  // Word art is now rendered as HTML overlay, not 3D sprite
-  // Just make sure the ref is set (it should be already by the caller)
-};
 
 const animate = () => {
   requestAnimationFrame(animate);
@@ -1978,7 +1902,6 @@ const animate = () => {
     }
     // Still render scene when game over so background stays visible
     camera.lookAt(0, 1, -8);
-    bulletTimeActive = false; // cancel bullet time on game over
     composer.render();
     return;
   }
@@ -1987,13 +1910,12 @@ const animate = () => {
   if (countdownLocked) {
     clock.getDelta(); // consume delta to prevent time jump
     camera.lookAt(0, 1, -8);
-    bulletTimeActive = false; // cancel bullet time during countdown
     composer.render();
     return;
   }
 
   const realDelta = clock.getDelta(); // unscaled real time
-  const delta = realDelta; // No slow-mo on delta - bullet time slows gameSpeed directly
+  const delta = realDelta;
   const time = clock.getElapsedTime();
   
   gameDuration += delta;
@@ -2008,19 +1930,6 @@ const animate = () => {
   const targetSpeed = 0.25 * difficultyMultiplier;
   gameSpeed = THREE.MathUtils.lerp(gameSpeed, targetSpeed, 0.01);
   
-  // Bullet time: slow down gameSpeed (which controls ALL object movement)
-  if (bulletTimeActive) {
-    const btElapsed = clock.getElapsedTime() - bulletTimeStartTime;
-    const btProgress = Math.min(btElapsed / BULLET_TIME_DURATION, 1);
-    if (btProgress < 0.7) {
-      gameSpeed *= BULLET_TIME_SLOW; // 0.05x speed
-    } else {
-      // Smooth ramp back
-      const rampT = (btProgress - 0.7) / 0.3;
-      const slowFactor = BULLET_TIME_SLOW + (1 - BULLET_TIME_SLOW) * rampT * rampT;
-      gameSpeed *= slowFactor;
-    }
-  }
   
   // Spawn interval decreases over time (more obstacles)
   spawnInterval = Math.max(0.35, 1.2 - (gameDuration / 80));
@@ -2252,8 +2161,7 @@ const animate = () => {
   }
 
   // During bullet time, stretch spawn interval so objects don't pile up
-  const effectiveSpawnInterval = bulletTimeActive ? spawnInterval / BULLET_TIME_SLOW : spawnInterval;
-  if (time - lastSpawnTime > effectiveSpawnInterval && !bonusNoSpawn) {
+  if (time - lastSpawnTime > spawnInterval && !bonusNoSpawn) {
     if (Math.random() < 0.7) {
     if (Math.random() < 0.3) {
       spawnFloatingObstacle();
@@ -2354,18 +2262,6 @@ const animate = () => {
       nearMissCount++;
       nearMissTextRef.value = 'CLOSE CALL! \u{1F525}';
       nearMissTimer = 1.0;
-      
-      // Bullet time triggers after 2 near-misses
-      if (!bulletTimeActive && nearMissCount >= 2) {
-        bulletTimeActive = true;
-        bulletTimeStartTime = clock.getElapsedTime();
-        savedGameSpeed = gameSpeed;
-        nearMissCount = 0; // reset counter
-        bulletTimeCamSide = Math.random() < 0.5 ? -1 : 1;
-        bulletTimeWord.value = ['POW!', 'WHAM!', 'ZOOM!', 'BAM!'][Math.floor(Math.random() * 4)];
-        createBulletTimeWord(bulletTimeWord.value);
-        nearMissTextRef.value = '\u{1F4A5} BULLET TIME! \u{1F4A5}';
-      }
       nearMissCountRef.value = nearMissCount;
     }
     
@@ -2386,9 +2282,6 @@ const animate = () => {
       } else {
         gameOver.value = true;
         if (bonusPortal) { scene.remove(bonusPortal.mesh); bonusPortal = null; }
-        // Clean up bullet time on game over
-        bulletTimeActive = false;
-        bulletTimeWord.value = '';
         // Word art is HTML overlay
         inBonusZone = false; inBonusZoneRef.value = false; bonusTimer = 0; bonusTimerRef.value = 0;
         // Clean up bonus zone state on game over
@@ -2844,72 +2737,6 @@ const animate = () => {
       nearMissTextRef.value = '';
     }
   }
-  
-  // === BULLET TIME ===
-  if (bulletTimeActive) {
-    try {
-    const elapsed = clock.getElapsedTime() - bulletTimeStartTime;
-    const progress = Math.min(elapsed / BULLET_TIME_DURATION, 1); // 0→1
-
-    // Update comic shader intensity: snap on, fade out in last 30%
-    if (composer && composer.passes.length > 2) {
-      const comicMix = progress < 0.7 ? 1.0 : 1.0 - (progress - 0.7) / 0.3;
-      composer.passes[2].uniforms.uComicMix.value = comicMix;
-      composer.passes[2].uniforms.uTime.value = clock.getElapsedTime();
-      composer.passes[2].uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
-    }
-    
-    // Gradual ramp back to normal speed in last 30%
-    if (progress > 0.7) {
-      // Slow-mo factor transitions from SLOW to 1 in last 30%
-      // This is handled by the delta calculation above checking bulletTimeActive
-      // For the ramp, we temporarily set a transitional factor
-      // Override the delta slowFactor by adjusting gameDuration and speeds proportionally
-      // Actually simpler: just end bullet time early in the ramp
-      // The delta calc checks bulletTimeActive which is still true
-      // Let's use a ramp factor: 0.7-1.0 maps to slowFactor 0.05-1.0
-      const rampProgress = (progress - 0.7) / 0.3;
-      // We can't change delta after it's computed, so we'll use a different approach:
-      // just set bulletTimeActive = false early and let things speed up naturally
-      // Actually we need a smooth ramp. Let's use a global override.
-    }
-    
-    // Camera: on the road AHEAD of the player, at ground level, looking BACK at character's face
-    // Character runs toward -Z. Camera at z=-6 (ahead on road), looks BACK (+Z direction) at the character
-    const targetCamX = player.position.x + bulletTimeCamSide * 3; // side offset + lane tracking
-    const targetCamY = 0.3; // ground level
-    const targetCamZ = player.position.z - 6; // ahead on the road (lower z)
-    const camSpeed = 0.1;
-    camera.position.x += (targetCamX - camera.position.x) * camSpeed;
-    camera.position.y += (targetCamY - camera.position.y) * camSpeed;
-    camera.position.z += (targetCamZ - camera.position.z) * camSpeed;
-    
-    // FOV zoom: start tight (30), gradually widen back to 60
-    const targetFov = 30 + 30 * Math.min(progress * 2, 1);
-    camera.fov += (targetFov - camera.fov) * camSpeed;
-    camera.updateProjectionMatrix();
-    
-    // Look BACK at the character: from z=-6, look toward z=0 (player position)
-    // y=1.5 = character face/body level, x tracks lane
-    camera.lookAt(player.position.x, 1.5, player.position.z);
-    
-
-    
-    // End bullet time when duration expires
-    if (progress >= 1) {
-      bulletTimeActive = false;
-      bulletTimeWord.value = '';
-      gameSpeed = savedGameSpeed; // restore original speed immediately
-      if (composer && composer.passes.length > 1) {
-        composer.passes[1].strength = 0.35;
-      }
-      if (composer && composer.passes.length > 2) {
-        composer.passes[2].uniforms.uComicMix.value = 0.0;
-      }
-    }
-    } catch(e) { console.error('Bullet time error:', e); bulletTimeActive = false; bulletTimeWord.value = ''; }
-  }
-
   // === CAMERA SHAKE (regular near-miss) ===
   if (cameraShakeTimer > 0) {
     cameraShakeTimer -= delta;
@@ -2925,20 +2752,18 @@ const animate = () => {
     }
   }
 
-  // Lerp camera back to default position when not in bullet time
-  if (!bulletTimeActive && cameraShakeTimer <= 0) {
-    camera.position.x += (0 - camera.position.x) * 0.05;
-    camera.position.y += (6 - camera.position.y) * 0.05;
-    camera.position.z += (12 - camera.position.z) * 0.05;
-    camera.lookAt(0, 1, -8);
-    if (!fovWarpEnabled) {
-      camera.fov += (60 - camera.fov) * 0.05;
-      camera.updateProjectionMatrix();
-    }
+  // Camera: always lerp back to default
+  camera.position.x += (0 - camera.position.x) * 0.05;
+  camera.position.y += (6 - camera.position.y) * 0.05;
+  camera.position.z += (12 - camera.position.z) * 0.05;
+  camera.lookAt(0, 1, -8);
+  if (!fovWarpEnabled) {
+    camera.fov += (60 - camera.fov) * 0.05;
+    camera.updateProjectionMatrix();
   }
   
   // === FOV WARP ===
-  if (fovWarpEnabled && !bulletTimeActive && cameraShakeTimer <= 0) {
+  if (fovWarpEnabled) {
     camera.fov = 60 + difficultyMultiplier * 2;
     camera.updateProjectionMatrix();
   }
@@ -2955,9 +2780,7 @@ const animate = () => {
   }
 
   // Ensure camera always looks at player (unless bullet time is controlling it)
-  if (!bulletTimeActive) {
-    camera.lookAt(0, 1, -8);
-  }
+  camera.lookAt(0, 1, -8);
   composer.render();
 };
 
@@ -3221,7 +3044,6 @@ const restartGame = () => {
   nearMissCount = 0;
   nearMissTextRef.value = '';
   nearMissCountRef.value = 0;
-  bulletTimeActive = false;
   // Word art is HTML overlay
   eventTimer = 0;
   activeEvent = null;
@@ -3654,44 +3476,9 @@ button {
   50% { transform: scale(1.1); }
 }
 #near-miss { position: absolute; top: 40%; left: 50%; transform: translateX(-50%); font-size: 24px; color: #ff0; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); pointer-events: none; animation: nearMissPop 0.5s ease-out; }
-#near-miss.bullet-time-flash { font-size: 48px; color: #ff4400; text-shadow: 0 0 20px #ff0000, 0 0 40px #ff4400, 2px 2px 4px rgba(0,0,0,0.9); animation: bulletTimeFlash 0.4s ease-out; }
-
-/* Bullet time word art - COMIC EXPLOSION starburst background */
-#bullet-time-word {
-  position: absolute; z-index: 20; pointer-events: none;
-  top: 22%; left: 50%; transform: translate(-50%, -50%);
-  font-family: "Arial Black", Impact, sans-serif;
-  font-size: min(12vw, 72px);
-  font-weight: 900;
-  color: #FFF;
-  letter-spacing: 2px;
-  padding: 0.4em 0.8em;
-  /* Starburst explosion background - yellow/red burst */
-  background: radial-gradient(circle, #FFEE00 0%, #FFAA00 25%, #FF4400 50%, #CC0000 75%, transparent 100%);
-  border-radius: 0;
-  clip-path: polygon(
-    50% 0%, 63% 12%, 80% 0%, 74% 18%, 98% 12%, 82% 28%,
-    100% 42%, 84% 42%, 98% 62%, 78% 54%, 88% 82%, 68% 66%,
-    50% 100%, 32% 66%, 12% 82%, 22% 54%, 2% 62%, 16% 42%,
-    0% 42%, 18% 28%, 2% 12%, 26% 18%, 20% 0%, 37% 12%
-  );
-  /* Thick black comic outline via drop-shadow */
-  -webkit-text-stroke: 3px #000;
-  text-shadow:
-    3px 3px 0 #000, -3px -3px 0 #000, 3px -3px 0 #000, -3px 3px 0 #000,
-    0 0 15px #FF4400, 0 0 30px #FF0000;
-  animation: comicBurst 0.25s ease-out;
-  filter: drop-shadow(4px 4px 0 #000);
-}
-@keyframes comicBurst {
-  0% { transform: translate(-50%, -50%) scale(0.2) rotate(-15deg); opacity: 0; }
-  40% { transform: translate(-50%, -50%) scale(1.3) rotate(5deg); opacity: 1; }
-  100% { transform: translate(-50%, -50%) scale(1) rotate(0deg); opacity: 1; }
-}
 #event-alert { position: absolute; top: 25%; left: 50%; transform: translateX(-50%); font-size: 28px; color: #fff; font-weight: bold; text-shadow: 2px 2px 8px rgba(0,0,0,0.9); pointer-events: none; }
 #bonus-zone { position: absolute; top: 15%; left: 50%; transform: translateX(-50%); font-size: 36px; color: #ff0; font-weight: bold; text-shadow: 0 0 20px #f0f, 0 0 40px #0ff; animation: bonusPulse 0.5s ease-in-out infinite alternate; }
 #vignette-glow { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; transition: opacity 0.3s; box-shadow: inset 0 0 100px 40px rgba(255,0,0,0.4); }
 @keyframes nearMissPop { 0% { transform: translateX(-50%) scale(0.5); opacity: 0; } 50% { transform: translateX(-50%) scale(1.3); } 100% { transform: translateX(-50%) scale(1); opacity: 1; } }
-@keyframes bulletTimeFlash { 0% { transform: translateX(-50%) scale(3); opacity: 0; } 30% { transform: translateX(-50%) scale(1.5); opacity: 1; } 50% { transform: translateX(-50%) scale(1.2); } 100% { transform: translateX(-50%) scale(1); opacity: 1; } }
 @keyframes bonusPulse { 0% { transform: translateX(-50%) scale(1); } 100% { transform: translateX(-50%) scale(1.1); } }
 </style>
