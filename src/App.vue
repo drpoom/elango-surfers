@@ -76,7 +76,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.2.4 Cloud Tint Fix';
+const VERSION = 'v3.2.5 Bonus Substage';
 
 // Audio system
 let audioCtx = null;
@@ -462,6 +462,9 @@ let zoomTimer = 0;
 let cameraShakeTimer = 0;
 let cameraShakeIntensity = 0;
 let originalRoadMaterial = null;
+let savedSubstageState = null;
+let bonusNoSpawn = false;
+let bonusCoins = [];
 
 // Cloud tint colors (module-level to avoid allocation per frame)
 const cloudWhiteColor = new THREE.Color(0xffffff);
@@ -2013,18 +2016,7 @@ const animate = () => {
       bonusTimerRef.value = 7;
       scene.remove(bonusPortal.mesh);
       bonusPortal = null;
-      // Spawn lots of coins in bonus zone
-      for (let i = 0; i < 20; i++) {
-        const bLane = Math.floor(Math.random() * 3);
-        const bLaneX = (bLane - 1) * laneWidth;
-        const coinGeo = new THREE.TorusGeometry(0.3, 0.1, 8, 16);
-        const coinMat = new THREE.MeshToonMaterial({ color: 0xffd700, emissive: 0xffaa00, emissiveIntensity: 0.5 });
-        const coinObj = new THREE.Mesh(coinGeo, coinMat);
-        coinObj.position.set(bLaneX, 1 + Math.random() * 2, -10 - i * 3);
-        coinObj.name = 'bonus-coin';
-        scene.add(coinObj);
-        coins.push({ mesh: coinObj, lane: bLane, collected: false });
-      }
+
       playSound('powerup');
     } else if (bonusPortal.mesh.position.z > 15) {
       scene.remove(bonusPortal.mesh);
@@ -2036,20 +2028,59 @@ const animate = () => {
   if (inBonusZone) {
     // Hide buildings and trees, change road to rainbow
     if (!scene.userData.bonusEnvActive) {
+      // Save all current game state
+      savedSubstageState = {
+        obstacles: obstacles.slice(),
+        coins: coins.slice(),
+        gameSpeed,
+        spawnInterval,
+        dayCycleTime,
+        buildingVis: buildings.map(b => b.visible),
+        treeVis: trees.map(t => t.visible),
+      };
+      // Remove obstacle and coin meshes from scene, clear arrays
+      obstacles.forEach(obs => scene.remove(obs.mesh));
+      coins.forEach(coin => scene.remove(coin.mesh));
+      obstacles.length = 0;
+      coins.length = 0;
+      bonusNoSpawn = true;
+      // Hide buildings and trees
       buildings.forEach(b => b.visible = false);
       trees.forEach(t => t.visible = false);
+      // Rainbow road
       const road = scene.getObjectByName('road');
       if (road) {
         originalRoadMaterial = road.material;
         road.material = new THREE.MeshToonMaterial({
-          color: 0xff00ff,
-          emissive: 0x8800ff,
-          emissiveIntensity: 0.3,
-          opacity: 0.8,
-          transparent: true
+          color: 0xff0000,
+          emissive: 0xff0000,
+          emissiveIntensity: 0.2,
         });
       }
+      // Set fixed bonus speed
+      savedSubstageState.savedGameSpeed = gameSpeed;
+      gameSpeed = 0.3;
+      // Spawn bonus coins at ground level
+      bonusCoins = [];
+      for (let i = 0; i < 40; i++) {
+        const lane = Math.floor(Math.random() * 3) - 1;
+        const z = -i * 2.5 - 5;
+        const coinGeo = new THREE.TorusGeometry(0.3, 0.1, 8, 16);
+        const coinMat = new THREE.MeshToonMaterial({ color: 0xffd700, emissive: 0xffa500, emissiveIntensity: 0.3 });
+        const coinMesh = new THREE.Mesh(coinGeo, coinMat);
+        coinMesh.position.set(lane * laneWidth, 0.5, z);
+        coinMesh.rotation.x = Math.PI / 2;
+        scene.add(coinMesh);
+        bonusCoins.push({ mesh: coinMesh, collected: false });
+      }
       scene.userData.bonusEnvActive = true;
+    }
+    // Rainbow road animation
+    const road = scene.getObjectByName('road');
+    if (road && road.material && road.material.color) {
+      const hue = (clock.getElapsedTime() * 0.2) % 1;
+      road.material.color.setHSL(hue, 1.0, 0.5);
+      road.material.emissive.setHSL(hue, 1.0, 0.15);
     }
     bonusTimer -= delta;
     bonusTimerRef.value = Math.ceil(bonusTimer);
@@ -2057,9 +2088,28 @@ const animate = () => {
       inBonusZone = false;
       inBonusZoneRef.value = false;
       bonusTimerRef.value = 0;
-      // Restore environment
-      buildings.forEach(b => b.visible = true);
-      trees.forEach(t => t.visible = true);
+      // Clear bonus coins
+      bonusCoins.forEach(bc => scene.remove(bc.mesh));
+      bonusCoins = [];
+      // Restore all saved state
+      if (savedSubstageState) {
+        // Restore obstacles
+        obstacles.length = 0;
+        savedSubstageState.obstacles.forEach(obs => { scene.add(obs.mesh); obstacles.push(obs); });
+        // Restore coins
+        coins.length = 0;
+        savedSubstageState.coins.forEach(coin => { scene.add(coin.mesh); coins.push(coin); });
+        // Restore speed and timing
+        gameSpeed = savedSubstageState.savedGameSpeed || savedSubstageState.gameSpeed;
+        spawnInterval = savedSubstageState.spawnInterval;
+        dayCycleTime = savedSubstageState.dayCycleTime;
+        // Restore buildings/trees visibility
+        buildings.forEach((b, i) => { if (savedSubstageState.buildingVis[i] !== undefined) b.visible = savedSubstageState.buildingVis[i]; });
+        trees.forEach((t, i) => { if (savedSubstageState.treeVis[i] !== undefined) t.visible = savedSubstageState.treeVis[i]; });
+        savedSubstageState = null;
+      }
+      bonusNoSpawn = false;
+      // Restore road
       const road = scene.getObjectByName('road');
       if (road && originalRoadMaterial) {
         road.material.dispose();
@@ -2094,7 +2144,7 @@ const animate = () => {
     scene.userData.eventAlertTimer = 0;
   }
 
-  if (time - lastSpawnTime > spawnInterval) {
+  if (time - lastSpawnTime > spawnInterval && !bonusNoSpawn) {
     if (Math.random() < 0.7) {
     if (Math.random() < 0.3) {
       spawnFloatingObstacle();
@@ -2322,6 +2372,32 @@ const animate = () => {
     } else if (coin.mesh.position.z > 15) {
       scene.remove(coin.mesh);
       coins.splice(index, 1);
+    }
+  });
+
+  // Bonus coins movement and collection
+  bonusCoins.forEach((bc, index) => {
+    if (bc.collected) return;
+    bc.mesh.position.z += gameSpeed;
+    bc.mesh.rotation.y += 0.1;
+    const dist = player.position.distanceTo(bc.mesh.position);
+    if (dist < 1.2) {
+      bc.collected = true;
+      comboCount++;
+      if (comboCount > gameStats.maxCombo) gameStats.maxCombo = comboCount;
+      const now = Date.now();
+      const comboBonus = comboCount > 1 && (now - lastCoinTime) < 1000 ? comboCount * 10 : 0;
+      score.value += (100 + comboBonus) * scoreMultiplier;
+      lastCoinTime = now;
+      gameStats.totalCoins++;
+      createParticleEffect(bc.mesh.position, 0xffd700, 15);
+      createFloatingText('+' + Math.floor((100 + comboBonus) * scoreMultiplier), bc.mesh.position.clone().add(new THREE.Vector3(0, 1, 0)));
+      playSound('coin', 0.9 + Math.random() * 0.2);
+      scene.remove(bc.mesh);
+      bonusCoins.splice(index, 1);
+    } else if (bc.mesh.position.z > 15) {
+      scene.remove(bc.mesh);
+      bonusCoins.splice(index, 1);
     }
   });
 
