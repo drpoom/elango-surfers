@@ -1,21 +1,25 @@
 <template>
   <div id="game-container">
-    <div id="ui">
+    <div id="game-info">
       <div id="version">{{ VERSION }}</div>
       <div id="score">Score: {{ score }}</div>
       <div id="highscore">High Score: {{ highScore }}</div>
-      <div id="combo" v-if="comboCount > 1">🔥 Combo x{{ comboCount }}</div>
-      <div id="powerup-indicator" v-if="activePowerup">{{ powerupIcon }} {{ powerupName }} ({{ powerupTimeLeft }}s)</div>
+      <div id="combo" v-if="comboCount > 1">🔥 x{{ comboCount }}</div>
+      <div id="powerup-indicator" v-if="activePowerup">{{ powerupIcon }} {{ powerupName }} {{ powerupTimeLeft }}s</div>
       <div id="fly-indicator" v-if="micEnabledRef">&#x1F3A4;&#x2708;ï¸</div>
-      <div id="near-miss" v-if="nearMissTextRef" >{{ nearMissTextRef }}</div>
+    </div>
+    <div id="floating-texts">
+      <div id="near-miss" v-if="nearMissTextRef">{{ nearMissTextRef }}</div>
       <div id="event-alert" v-if="eventAlertTextRef">{{ eventAlertTextRef }}</div>
       <div id="bonus-zone" v-if="inBonusZoneRef">&#x1F308; BONUS ZONE! {{ Math.ceil(bonusTimerRef) }}s</div>
-      <div id="mute-btn" @click="toggleMute">🔊</div>
-      <div id="tilt-btn" @click="toggleTilt">{{ tiltEnabledRef ? '📱' : '📱🔴' }}</div>
-      <div id="mic-btn" @click="toggleMic">{{ micEnabledRef ? '🎤' : '🎤🔴' }}</div>
-      <div id="settings-btn" @click="toggleSettings">⚙️</div>
-      <div id="instructions" v-if="score < 1">A/D ←/→ Move | W/↑ Jump | S/↓ Slide | Space Restart<br>📱 Swipe | Tilt | 🎤 Blow to fly!<br>⚡ Speed increases over time!</div>
     </div>
+    <div id="top-buttons">
+      <div id="mic-btn" @click="toggleMic">{{ micEnabledRef ? '🎤' : '🎤🔴' }}</div>
+      <div id="tilt-btn" @click="toggleTilt">{{ tiltEnabledRef ? '📱' : '📱🔴' }}</div>
+      <div id="mute-btn" @click="toggleMute">🔊</div>
+      <div id="settings-btn" @click="toggleSettings">⚙️</div>
+    </div>
+    <div id="instructions" v-if="score < 1 && !gameOver">A/D ←/→ Move | W/↑ Jump | S/↓ Slide<br>📱 Swipe | Tilt | 🎤 Blow to fly!</div>
     <div id="game-canvas"></div>
     <div id="vignette-glow"></div>
     <div v-if="gameOver" id="game-over">
@@ -78,7 +82,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.7.5 Polish Fixes';
+const VERSION = 'v3.7.6 UI Layout Fix';
 
 // Audio system
 let audioCtx = null;
@@ -3236,7 +3240,7 @@ onUnmounted(() => {
   -webkit-touch-callout: none;
   user-select: none;
 }
-#ui {
+#game-info {
   position: absolute;
   top: 10px;
   left: 10px;
@@ -3245,30 +3249,51 @@ onUnmounted(() => {
   pointer-events: none;
 }
 #version {
-  font-size: 0.6rem;
-  opacity: 0.6;
-  margin-bottom: 2px;
+  font-size: 0.55rem;
+  opacity: 0.5;
+  margin-bottom: 1px;
   font-family: monospace;
   text-shadow: 1px 1px 3px rgba(0,0,0,0.8);
 }
 #score {
-  font-size: 1.4rem;
+  font-size: 1.2rem;
   font-weight: bold;
   text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+  line-height: 1.2;
 }
 #highscore {
-  font-size: 0.85rem;
+  font-size: 0.75rem;
   color: #ffd700;
   text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+  line-height: 1.2;
+}
+#floating-texts {
+  position: absolute;
+  top: 0; left: 0; width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 11;
+}
+#top-buttons {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  gap: 6px;
+  z-index: 10;
 }
 #instructions {
-  font-size: 0.65rem;
-  opacity: 0.9;
-  margin-top: 6px;
+  position: absolute;
+  bottom: 15px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.6rem;
+  opacity: 0.8;
   line-height: 1.3;
   color: #fff;
-  max-width: 200px;
+  text-align: center;
+  pointer-events: none;
   text-shadow: 0 0 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.5), 1px 1px 2px rgba(0,0,0,0.8);
+  z-index: 10;
 }
 #game-canvas {
   width: 100%;
@@ -3314,76 +3339,21 @@ button {
   margin-top: 1rem;
   transition: transform 0.2s;
 }
-#settings-btn {
-  position: absolute;
-  top: 10px;
-  right: 20px;
-  font-size: 1.5rem;
+#settings-btn, #mute-btn, #tilt-btn, #mic-btn {
+  font-size: 1.2rem;
   cursor: pointer;
-  z-index: 10;
   pointer-events: auto;
   background: rgba(0,0,0,0.5);
   border-radius: 50%;
-  width: 44px;
-  height: 44px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: transform 0.2s;
 }
-#settings-btn:hover {
+#settings-btn:hover, #mute-btn:hover, #tilt-btn:hover, #mic-btn:hover {
   transform: scale(1.1);
-}
-#mute-btn {
-  position: absolute;
-  top: 10px;
-  right: 70px;
-  font-size: 1.3rem;
-  cursor: pointer;
-  z-index: 10;
-  pointer-events: auto;
-  background: rgba(0,0,0,0.5);
-  border-radius: 50%;
-  width: 44px;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: transform 0.2s;
-}
-#tilt-btn {
-  position: absolute;
-  top: 10px;
-  right: 120px;
-  font-size: 1.3rem;
-  cursor: pointer;
-  z-index: 10;
-  pointer-events: auto;
-  background: rgba(0,0,0,0.5);
-  border-radius: 50%;
-  width: 44px;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: transform 0.2s;
-}
-#mic-btn {
-  position: absolute;
-  top: 10px;
-  right: 170px;
-  font-size: 1.3rem;
-  cursor: pointer;
-  z-index: 10;
-  pointer-events: auto;
-  background: rgba(0,0,0,0.5);
-  border-radius: 50%;
-  width: 44px;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: transform 0.2s;
 }
 #settings-panel {
   position: absolute;
