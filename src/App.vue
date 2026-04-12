@@ -78,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.6.4 Bullet Time Error Handling';
+const VERSION = 'v3.6.5 Bullet Time Rewrite';
 
 // Audio system
 let audioCtx = null;
@@ -478,12 +478,12 @@ let lastCoinTime = 0;
 // Near-miss / Bullet time system
 let nearMissTimer = 0;
 let nearMissCount = 0;
-let slowMoTimer = 0;
-let slowMoFactor = 1;
 let bulletTimeActive = false;
+let bulletTimeStartTime = 0; // real clock time when bullet time started
+const BULLET_TIME_DURATION = 2.5; // real seconds
+const BULLET_TIME_SLOW = 0.05; // gameplay speed factor during bullet time
 let bulletTimeWord = '';
 let bulletTimeWordMesh = null;
-let bulletTimeWordLife = 0;
 let bulletTimeCamSide = 0; // -1 left, 1 right
 let cameraShakeTimer = 0;
 let cameraShakeIntensity = 0;
@@ -1975,8 +1975,21 @@ const animate = () => {
     return;
   }
 
-  const realDelta = clock.getDelta(); // unscaled time for timers
-  const delta = realDelta * (slowMoFactor || 1); // scaled time for gameplay
+  const realDelta = clock.getDelta(); // unscaled real time
+  // Bullet time: slow down gameplay without affecting timers
+  let slowFactor = 1;
+  if (bulletTimeActive) {
+    const btElapsed = clock.getElapsedTime() - bulletTimeStartTime;
+    const btProgress = Math.min(btElapsed / BULLET_TIME_DURATION, 1);
+    if (btProgress < 0.7) {
+      slowFactor = BULLET_TIME_SLOW; // hold at 0.05x
+    } else {
+      // Smooth ramp from 0.05 back to 1 in last 30%
+      const rampT = (btProgress - 0.7) / 0.3;
+      slowFactor = BULLET_TIME_SLOW + (1 - BULLET_TIME_SLOW) * rampT * rampT; // quadratic ease
+    }
+  }
+  const delta = realDelta * slowFactor;
   const time = clock.getElapsedTime();
   
   gameDuration += delta;
@@ -2325,13 +2338,11 @@ const animate = () => {
       // Every near-miss triggers bullet time!
       if (!bulletTimeActive) {
         bulletTimeActive = true;
-        slowMoTimer = 2.5; // 2.5 seconds of slow-mo
-        slowMoFactor = 0.08; // Very slow — doesn't affect gameplay
+        bulletTimeStartTime = clock.getElapsedTime(); // use elapsed real time
         bulletTimeCamSide = Math.random() < 0.5 ? -1 : 1;
         bulletTimeWord = ['POW!', 'WHAM!', 'ZOOM!', 'BAM!'][Math.floor(Math.random() * 4)];
-        bulletTimeWordLife = 2.5;
         createBulletTimeWord(bulletTimeWord);
-        nearMissTextRef.value = '💥 BULLET TIME! 💥';
+        nearMissTextRef.value = '\u{1F4A5} BULLET TIME! \u{1F4A5}';
       }
       nearMissCountRef.value = nearMissCount;
     }
@@ -2355,7 +2366,6 @@ const animate = () => {
         if (bonusPortal) { scene.remove(bonusPortal.mesh); bonusPortal = null; }
         // Clean up bullet time on game over
         bulletTimeActive = false;
-        slowMoFactor = 1;
         if (bulletTimeWordMesh) { scene.remove(bulletTimeWordMesh); bulletTimeWordMesh = null; }
         inBonusZone = false; inBonusZoneRef.value = false; bonusTimer = 0; bonusTimerRef.value = 0;
         // Clean up bonus zone state on game over
@@ -2813,82 +2823,70 @@ const animate = () => {
   }
   
   // === BULLET TIME ===
-  if (slowMoTimer > 0 && bulletTimeActive) {
+  if (bulletTimeActive) {
     try {
-    slowMoTimer -= realDelta; // Use UNSCALED delta so timer counts in real time
-    const totalTime = 2.5;
-    const progress = Math.min(1 - (slowMoTimer / totalTime), 1); // 0→1 over duration
+    const elapsed = clock.getElapsedTime() - bulletTimeStartTime;
+    const progress = Math.min(elapsed / BULLET_TIME_DURATION, 1); // 0→1
     
-    // Slow-mo factor: instant dip, hold, then smooth recovery
-    if (progress < 0.05) {
-      // Snap into slow-mo
-      slowMoFactor = THREE.MathUtils.lerp(1, 0.05, progress / 0.05);
-    } else if (progress < 0.65) {
-      // Hold slow-mo — very slow, doesn't affect gameplay
-      slowMoFactor = 0.05;
-    } else {
-      // Smooth ramp back to normal over last 35%
-      slowMoFactor = THREE.MathUtils.lerp(0.05, 1, (progress - 0.65) / 0.35);
+    // Gradual ramp back to normal speed in last 30%
+    if (progress > 0.7) {
+      // Slow-mo factor transitions from SLOW to 1 in last 30%
+      // This is handled by the delta calculation above checking bulletTimeActive
+      // For the ramp, we temporarily set a transitional factor
+      // Override the delta slowFactor by adjusting gameDuration and speeds proportionally
+      // Actually simpler: just end bullet time early in the ramp
+      // The delta calc checks bulletTimeActive which is still true
+      // Let's use a ramp factor: 0.7-1.0 maps to slowFactor 0.05-1.0
+      const rampProgress = (progress - 0.7) / 0.3;
+      // We can't change delta after it's computed, so we'll use a different approach:
+      // just set bulletTimeActive = false early and let things speed up naturally
+      // Actually we need a smooth ramp. Let's use a global override.
     }
     
-    // Action camera: ground level, IN FRONT of player on the road ahead
-    // Player at z=0, road stretches toward -z, default camera at z=12 (behind)
-    // Place camera at z=-5 (on the road ahead), ground level, looking BACK at the player
-    const camTargetX = bulletTimeCamSide * 3; // Offset to left or right
-    const camTargetY = 0.3; // Near ground level
-    const camTargetZ = -5; // On the road ahead of the player
+    // Camera: position on the road AHEAD of the player, at ground level, looking UP at 45 degrees
+    // Default camera: (0, 6, 12) looking at (0, 1, -8)
+    // Bullet time: camera at (side, 0.3, -4) looking at (0, 2, 0) = player
+    // This puts camera on the road ahead, looking back and up at the character
+    const targetCamX = bulletTimeCamSide * 3.5;
+    const targetCamY = 0.3;
+    const targetCamZ = -4;
+    const camSpeed = 0.08; // fixed lerp per frame (frame-rate dependent but consistent feel)
+    camera.position.x += (targetCamX - camera.position.x) * camSpeed;
+    camera.position.y += (targetCamY - camera.position.y) * camSpeed;
+    camera.position.z += (targetCamZ - camera.position.z) * camSpeed;
     
-    // Smooth camera transition (use realDelta so it's consistent regardless of slowMo)
-    const camLerp = 1 - Math.pow(0.03, realDelta);
-    camera.position.x = THREE.MathUtils.lerp(camera.position.x, camTargetX, camLerp);
-    camera.position.y = THREE.MathUtils.lerp(camera.position.y, camTargetY, camLerp);
-    camera.position.z = THREE.MathUtils.lerp(camera.position.z, camTargetZ, camLerp);
-    
-    // Dramatic FOV zoom — tight at start, gradually widen
-    const targetFov = THREE.MathUtils.lerp(30, 60, Math.min(progress / 0.5, 1));
-    camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, camLerp);
+    // FOV zoom: start tight (30), gradually widen back to 60
+    const targetFov = 30 + 30 * Math.min(progress * 2, 1); // 30→60 over first 50%
+    camera.fov += (targetFov - camera.fov) * camSpeed;
     camera.updateProjectionMatrix();
     
-    // Look directly UP at the character from ground level (~45° angle)
-    // Camera at z=-5, looking at z=0 (where player is), y=1.5 = character center
-    camera.lookAt(player.position.x, 1.5, 0);
+    // Look at the player character from our low position
+    camera.lookAt(0, 2, 0);
     
     // Animate word art sprite
     if (bulletTimeWordMesh) {
-      // Scale pulse: pop in then settle
-      const wordScale = progress < 0.08 
-        ? THREE.MathUtils.lerp(0.1, 7, progress / 0.08) 
-        : THREE.MathUtils.lerp(7, 4, (progress - 0.08) / 0.92);
+      const wordScale = progress < 0.1 
+        ? 0.1 + 6.9 * (progress / 0.1)  // pop in
+        : 7 - 3 * ((progress - 0.1) / 0.9); // settle to 4
       bulletTimeWordMesh.scale.set(wordScale * 2, wordScale, 1);
-      // Stay in front of player
-      bulletTimeWordMesh.position.x = player.position.x;
-      bulletTimeWordMesh.position.y = 3.5;
-      bulletTimeWordMesh.position.z = player.position.z - 3;
-      // Fade out in last 20%
+      bulletTimeWordMesh.position.set(0, 3.5, -3);
       if (progress > 0.8) {
-        bulletTimeWordMesh.material.opacity = 1 - ((progress - 0.8) / 0.2);
+        bulletTimeWordMesh.material.opacity = Math.max(0, 1 - (progress - 0.8) / 0.2);
       }
     }
     
-    // Vignette-like effect via bloom intensity bump
-    if (composer && composer.passes.length > 1 && composer.passes[1].strength !== undefined) {
-      composer.passes[1].strength = THREE.MathUtils.lerp(0.8, 0.35, Math.min(progress / 0.3, 1));
-    }
-    
-    if (slowMoTimer <= 0) {
-      slowMoFactor = 1;
+    // End bullet time when duration expires
+    if (progress >= 1) {
       bulletTimeActive = false;
-      // Remove word art
       if (bulletTimeWordMesh) {
         scene.remove(bulletTimeWordMesh);
         bulletTimeWordMesh = null;
       }
-      // Reset bloom
-      if (composer && composer.passes.length > 1 && composer.passes[1].strength !== undefined) {
+      if (composer && composer.passes.length > 1) {
         composer.passes[1].strength = 0.35;
       }
     }
-    } catch(e) { console.error('Bullet time error:', e); slowMoFactor = 1; bulletTimeActive = false; if (bulletTimeWordMesh) { scene.remove(bulletTimeWordMesh); bulletTimeWordMesh = null; } }
+    } catch(e) { console.error('Bullet time error:', e); bulletTimeActive = false; if (bulletTimeWordMesh) { scene.remove(bulletTimeWordMesh); bulletTimeWordMesh = null; } }
   }
 
   // === CAMERA SHAKE (regular near-miss) ===
@@ -2907,20 +2905,19 @@ const animate = () => {
   }
 
   // Lerp camera back to default position when not in bullet time
-  if (!bulletTimeActive && slowMoTimer <= 0 && cameraShakeTimer <= 0) {
-    const returnLerp = 1 - Math.pow(0.01, realDelta); // Smooth return using real time
-    camera.position.x = THREE.MathUtils.lerp(camera.position.x, 0, returnLerp);
-    camera.position.y = THREE.MathUtils.lerp(camera.position.y, 6, returnLerp);
-    camera.position.z = THREE.MathUtils.lerp(camera.position.z, 12, returnLerp);
+  if (!bulletTimeActive && cameraShakeTimer <= 0) {
+    camera.position.x += (0 - camera.position.x) * 0.05;
+    camera.position.y += (6 - camera.position.y) * 0.05;
+    camera.position.z += (12 - camera.position.z) * 0.05;
     camera.lookAt(0, 1, -8);
     if (!fovWarpEnabled) {
-      camera.fov = THREE.MathUtils.lerp(camera.fov, 60, returnLerp);
+      camera.fov += (60 - camera.fov) * 0.05;
       camera.updateProjectionMatrix();
     }
   }
   
   // === FOV WARP ===
-  if (fovWarpEnabled && !bulletTimeActive) {
+  if (fovWarpEnabled && !bulletTimeActive && cameraShakeTimer <= 0) {
     camera.fov = 60 + difficultyMultiplier * 2;
     camera.updateProjectionMatrix();
   }
@@ -3201,8 +3198,6 @@ const restartGame = () => {
   nearMissCount = 0;
   nearMissTextRef.value = '';
   nearMissCountRef.value = 0;
-  slowMoTimer = 0;
-  slowMoFactor = 1;
   bulletTimeActive = false;
   if (bulletTimeWordMesh) { scene.remove(bulletTimeWordMesh); bulletTimeWordMesh = null; }
   eventTimer = 0;
