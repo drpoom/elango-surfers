@@ -6,7 +6,10 @@
       <div id="highscore">High Score: {{ highScore }}</div>
       <div id="combo" v-if="comboCount > 1">🔥 Combo x{{ comboCount }}</div>
       <div id="powerup-indicator" v-if="activePowerup">{{ powerupIcon }} {{ powerupName }} ({{ powerupTimeLeft }}s)</div>
-      <div id="fly-indicator" v-if="micEnabledRef">🎤✈️</div>
+      <div id="fly-indicator" v-if="micEnabledRef">&#x1F3A4;&#x2708;ï¸</div>
+      <div id="near-miss" v-if="nearMissTextRef" :class="{ 'near-miss-flash': nearMissCountRef >= 5 }">{{ nearMissTextRef }}</div>
+      <div id="event-alert" v-if="eventAlertTextRef">{{ eventAlertTextRef }}</div>
+      <div id="bonus-zone" v-if="inBonusZoneRef">&#x1F308; BONUS ZONE! {{ Math.ceil(bonusTimerRef) }}s</div>
       <div id="mute-btn" @click="toggleMute">🔊</div>
       <div id="tilt-btn" @click="toggleTilt">{{ tiltEnabledRef ? '📱' : '📱🔴' }}</div>
       <div id="mic-btn" @click="toggleMic">{{ micEnabledRef ? '🎤' : '🎤🔴' }}</div>
@@ -14,6 +17,7 @@
       <div id="instructions">A/D ←/→ Move | W/↑ Jump | S/↓ Slide | Space Restart<br>📱 Swipe | Tilt | 🎤 Blow to fly!<br>⚡ Speed increases over time!</div>
     </div>
     <div id="game-canvas"></div>
+    <div id="vignette-glow"></div>
     <div v-if="gameOver" id="game-over">
       <h1>GAME OVER</h1>
       <p>Your Score: {{ score }}</p>
@@ -54,6 +58,12 @@
             {{ ach.unlocked ? '✅' : '🔒' }} {{ ach.name }}
           </li>
         </ul>
+        <div class="settings-section">
+          <h3>🛠️ Debug</h3>
+          <label style="color:#fff;font-size:12px">
+            <input type="checkbox" v-model="fovWarpRef" @change="toggleFovWarp" /> FOV Warp Effect
+          </label>
+        </div>
       </div>
     </div>
   </div>
@@ -67,7 +77,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.1.2 Obstacle AI';
+const VERSION = 'v3.2.0 Visual Overhaul';
 
 // Audio system
 let audioCtx = null;
@@ -389,6 +399,7 @@ const unlockedSkins = ref([0]);
 const currentSkin = ref(0);
 const unlockedHats = ref([]);
 const currentHat = ref(null);
+const fovWarpRef = ref(false);
 
 // Power-up state
 let activePowerup = null;
@@ -396,13 +407,18 @@ let powerupEndTime = 0;
 let powerupIcon = '';
 let powerupName = '';
 let powerupTimeLeft = ref(0);
+let nearMissTextRef = ref('');
+let nearMissCountRef = ref(0);
+let eventAlertTextRef = ref('');
+let inBonusZoneRef = ref(false);
+let bonusTimerRef = ref(0);
 let scoreMultiplier = 1;
 let magnetRange = 0;
 let isInvincible = false;
 
 // Day/night cycle
 let dayCycleTime = 0;
-const DAY_DURATION = 60; // seconds per full cycle
+const DAY_DURATION = 120; // 120s per full cycle (4 stages × 30s)
 let scene, camera, renderer, player, clock;
 let obstacles = [];
 let coins = [];
@@ -438,6 +454,38 @@ let gameDuration = 0;
 let comboCount = 0;
 let lastCoinTime = 0;
 
+// Near-miss system
+let nearMissTimer = 0;
+let nearMissCount = 0;
+let slowMoTimer = 0;
+let slowMoFactor = 1;
+let zoomTimer = 0;
+
+// Environmental events
+let eventTimer = 0;
+let activeEvent = null; // 'lightning', 'fog', 'crack'
+let eventDuration = 0;
+let fogDensity = 0;
+let lightningFlash = 0;
+let crackObjects = [];
+
+// Bonus portal
+let bonusPortal = null;
+let inBonusZone = false;
+let bonusTimer = 0;
+let bonusPortalSpawned = false;
+
+// Edge glow (red vignette at max difficulty)
+let edgeGlowIntensity = 0;
+
+// FOV warp (settings toggle)
+let fovWarpEnabled = false;
+
+// Dynamic sky crossfade
+let skyBlendFactor = 0;
+let prevSkyTex = null;
+let currentSkyTex = null;
+
 // Touch/swipe controls
 let touchStartX = 0;
 let touchStartY = 0;
@@ -454,7 +502,15 @@ const TILT_LANE_COOLDOWN = 300; // ms between lane changes from tilt
 const toggleTilt = () => {
   tiltEnabled = !tiltEnabled;
   tiltEnabledRef.value = tiltEnabled;
-  tiltInitialBeta = null; // Re-calibrate when re-enabling
+  tiltInitialBeta = null;
+};
+
+const toggleFovWarp = () => {
+  fovWarpEnabled = fovWarpRef.value;
+  if (!fovWarpEnabled) {
+    camera.fov = 60;
+    camera.updateProjectionMatrix();
+  }
 };
 
 // Voice/fly - mic input
@@ -866,54 +922,92 @@ const createLaneMarkers = () => {
 const updateDayNightCycle = (delta) => {
   const cycleProgress = dayCycleTime / DAY_DURATION; // 0 to 1
   
-  // Sky color interpolation: day (blue) -> sunset (orange) -> night (dark) -> sunrise (pink) -> day
+  // 4 stages: sunny(0-0.25), sunset(0.25-0.5), night(0.5-0.75), sunrise(0.75-1.0)
+  // Each stage 30s, 5s transition blend between stages
+  const TRANSITION = 5 / DAY_DURATION; // 5s as fraction of cycle
+  
+  // Sky color interpolation with smooth blending
   let skyColor, fogColor;
   const dayColor = new THREE.Color(0x87ceeb);
   const sunsetColor = new THREE.Color(0xff7f50);
   const nightColor = new THREE.Color(0x0a0a2e);
   const sunriseColor = new THREE.Color(0xffb6c1);
   
-  if (cycleProgress < 0.25) {
-    // Day -> Sunset
-    const t = cycleProgress / 0.25;
-    skyColor = dayColor.clone().lerp(sunsetColor, t);
-    fogColor = skyColor.clone();
-  } else if (cycleProgress < 0.5) {
-    // Sunset -> Night
-    const t = (cycleProgress - 0.25) / 0.25;
-    skyColor = sunsetColor.clone().lerp(nightColor, t);
-    fogColor = skyColor.clone();
-  } else if (cycleProgress < 0.75) {
-    // Night -> Sunrise
-    const t = (cycleProgress - 0.5) / 0.25;
-    skyColor = nightColor.clone().lerp(sunriseColor, t);
-    fogColor = skyColor.clone();
-  } else {
-    // Sunrise -> Day
-    const t = (cycleProgress - 0.75) / 0.25;
-    skyColor = sunriseColor.clone().lerp(dayColor, t);
-    fogColor = skyColor.clone();
-  }
+  // Helper: get stage colors at progress within stage
+  const getStageBlend = (progress) => {
+    if (progress < 0.25) {
+      // Sunny -> Sunset
+      const t = progress / 0.25;
+      const blendT = Math.min(1, t / (0.25 * TRANSITION * 4));
+      return { skyColor: dayColor.clone().lerp(sunsetColor, t), fogColor: null };
+    } else if (progress < 0.5) {
+      const t = (progress - 0.25) / 0.25;
+      return { skyColor: sunsetColor.clone().lerp(nightColor, t), fogColor: null };
+    } else if (progress < 0.75) {
+      const t = (progress - 0.5) / 0.25;
+      return { skyColor: nightColor.clone().lerp(sunriseColor, t), fogColor: null };
+    } else {
+      const t = (progress - 0.75) / 0.25;
+      return { skyColor: sunriseColor.clone().lerp(dayColor, t), fogColor: null };
+    }
+  };
+  
+  const stageInfo = getStageBlend(cycleProgress);
+  skyColor = stageInfo.skyColor;
+  fogColor = skyColor.clone();
   
   scene.background = skyColor;
   scene.fog.color = fogColor;
   
-  // Update sky texture background based on time of day
-  if (skyTextures.sunny || skyTextures.sunset || skyTextures.night) {
-    let skyTex;
-    if (cycleProgress < 0.2) {
-      skyTex = skyTextures.sunny;
-    } else if (cycleProgress < 0.35) {
-      skyTex = skyTextures.sunset;
-    } else if (cycleProgress < 0.7) {
-      skyTex = skyTextures.night;
-    } else if (cycleProgress < 0.85) {
-      skyTex = skyTextures.sunset;
-    } else {
-      skyTex = skyTextures.sunny;
+  // Sky texture crossfade using skyBlendFactor
+  // Determine current and next sky textures based on cycle progress
+  let currentSkyStage, nextSkyStage, blendT;
+  const stageKeys = ['sunny', 'sunset', 'night', 'sunset']; // sunrise reuses sunset texture
+  const stageBoundaries = [0, 0.25, 0.5, 0.75];
+  
+  let stageIdx = 0;
+  for (let i = stageBoundaries.length - 1; i >= 0; i--) {
+    if (cycleProgress >= stageBoundaries[i]) {
+      stageIdx = i;
+      break;
     }
-    if (skyTex) scene.background = skyTex;
   }
+  
+  const stageStart = stageBoundaries[stageIdx];
+  const stageEnd = stageIdx < 3 ? stageBoundaries[stageIdx + 1] : 1.0;
+  const stageLen = stageEnd - stageStart;
+  const stageProgress = (cycleProgress - stageStart) / stageLen;
+  
+  // Blend factor: smooth transition in last 5s of each stage
+  const transitionFraction = 5 / 30; // 5s out of 30s stage
+  if (stageProgress > (1 - transitionFraction)) {
+    skyBlendFactor = (stageProgress - (1 - transitionFraction)) / transitionFraction;
+    skyBlendFactor = skyBlendFactor * skyBlendFactor * (3 - 2 * skyBlendFactor); // smoothstep
+  } else {
+    skyBlendFactor = 0;
+  }
+  
+  currentSkyTex = skyTextures[stageKeys[stageIdx]] || null;
+  nextSkyStage = stageKeys[(stageIdx + 1) % 4];
+  // Map sunrise stage (0.75-1.0) back to sunny texture at the end
+  if (stageIdx === 3) nextSkyStage = 'sunny';
+  prevSkyTex = skyTextures[nextSkyStage] || null;
+  
+  // If we have sky textures and blend is active, mix them
+  if (currentSkyTex && prevSkyTex && skyBlendFactor > 0) {
+    // Create a blended background using scene background color mixed with textures
+    // We'll use a fullscreen overlay approach via scene.background
+    // Since Three.js doesn't support texture blending natively in scene.background,
+    // we blend the sky colors (which we already do) and just set the dominant texture
+    const dominantTex = skyBlendFactor > 0.5 ? prevSkyTex : currentSkyTex;
+    scene.background = dominantTex;
+  } else if (currentSkyTex) {
+    scene.background = currentSkyTex;
+  } else {
+    scene.background = skyColor;
+  }
+  
+  scene.fog.color = fogColor;
   
   // Track night time for achievements
   if (cycleProgress > 0.35 && cycleProgress < 0.65) {
@@ -932,7 +1026,6 @@ const updateDayNightCycle = (delta) => {
     createStars();
     scene.userData.starsCreated = true;
   } else if (scene.userData.starsCreated && cycleProgress >= 0.15 && cycleProgress <= 0.35) {
-    // Remove stars during day
     const stars = scene.getObjectByName('stars');
     if (stars) {
       scene.remove(stars);
@@ -962,37 +1055,283 @@ const createStars = () => {
 };
 
 const createClouds = () => {
-  const cloudGeo = new THREE.SphereGeometry(1, 8, 8);
   const cloudMat = new THREE.MeshToonMaterial({ 
     color: 0xffffff, 
     transparent: true, 
-    opacity: 0.9 
+    opacity: 0.85 
+  });
+  const shadowMat = new THREE.MeshToonMaterial({ 
+    color: 0xcccccc, 
+    transparent: true, 
+    opacity: 0.6 
   });
   
   for (let i = 0; i < 15; i++) {
     const cloud = new THREE.Group();
-    const puffCount = 3 + Math.floor(Math.random() * 3);
+    // Cumulus cloud: larger center puff, smaller side puffs, arranged horizontally
+    const mainSize = 1.0 + Math.random() * 0.8;
+    const puffCount = 4 + Math.floor(Math.random() * 4);
     
-    for (let j = 0; j < puffCount; j++) {
-      const puff = new THREE.Mesh(cloudGeo, cloudMat);
-      puff.position.set(
-        (Math.random() - 0.5) * 3,
-        (Math.random() - 0.5) * 0.5,
-        (Math.random() - 0.5) * 2
-      );
-      puff.scale.setScalar(0.8 + Math.random() * 0.6);
-      cloud.add(puff);
+    // Main large center puff
+    const mainGeo = new THREE.SphereGeometry(mainSize, 10, 8);
+    const main = new THREE.Mesh(mainGeo, cloudMat);
+    main.position.set(0, 0, 0);
+    main.scale.set(1.4, 0.9, 1.0);
+    cloud.add(main);
+    
+    // Bottom shadow puff
+    const shadowGeo = new THREE.SphereGeometry(mainSize * 0.9, 8, 6);
+    const shadow = new THREE.Mesh(shadowGeo, shadowMat);
+    shadow.position.set(0, -mainSize * 0.3, 0);
+    shadow.scale.set(1.5, 0.4, 1.1);
+    cloud.add(shadow);
+    
+    // Side puffs arranged horizontally
+    for (let j = 1; j < puffCount; j++) {
+      const sideSize = mainSize * (0.4 + Math.random() * 0.5);
+      const sideGeo = new THREE.SphereGeometry(sideSize, 8, 6);
+      const side = new THREE.Mesh(sideGeo, cloudMat);
+      const direction = j % 2 === 0 ? 1 : -1;
+      const xOffset = direction * (mainSize * 0.6 + (j * 0.5) + Math.random() * 0.5);
+      const yOffset = (Math.random() - 0.5) * mainSize * 0.4;
+      const zOffset = (Math.random() - 0.5) * mainSize * 0.5;
+      side.position.set(xOffset, yOffset, zOffset);
+      side.scale.set(1.2, 0.8, 1.0);
+      cloud.add(side);
     }
     
+    // Top bumps for fluffy look
+    for (let k = 0; k < 2; k++) {
+      const bumpSize = mainSize * (0.3 + Math.random() * 0.3);
+      const bumpGeo = new THREE.SphereGeometry(bumpSize, 8, 6);
+      const bump = new THREE.Mesh(bumpGeo, cloudMat);
+      bump.position.set(
+        (Math.random() - 0.5) * mainSize,
+        mainSize * 0.5 + Math.random() * mainSize * 0.3,
+        (Math.random() - 0.5) * mainSize * 0.4
+      );
+      bump.scale.set(1.0, 0.8, 1.0);
+      cloud.add(bump);
+    }
+    
+    const scale = 1.0 + Math.random() * 1.5;
+    cloud.scale.setScalar(scale);
     cloud.position.set(
-      (Math.random() - 0.5) * 40,
-      8 + Math.random() * 4,
+      (Math.random() - 0.5) * 50,
+      8 + Math.random() * 6,
       -Math.random() * 60
     );
     cloud.castShadow = true;
     scene.add(cloud);
     clouds.push(cloud);
   }
+};
+
+const spawnBonusPortal = () => {
+  if (bonusPortal || inBonusZone) return;
+  const lane = Math.floor(Math.random() * 3);
+  const laneX = (lane - 1) * laneWidth;
+  
+  const portalGroup = new THREE.Group();
+  
+  // Golden ring
+  const ringGeo = new THREE.TorusGeometry(1.5, 0.15, 16, 32);
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0xffd700 });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.name = 'portal-ring';
+  portalGroup.add(ring);
+  
+  // Inner shimmer
+  const innerGeo = new THREE.CircleGeometry(1.4, 32);
+  const innerMat = new THREE.MeshBasicMaterial({ color: 0xff00ff, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
+  const inner = new THREE.Mesh(innerGeo, innerMat);
+  inner.name = 'portal-inner';
+  portalGroup.add(inner);
+  
+  // Rainbow particles around portal
+  for (let i = 0; i < 8; i++) {
+    const sparkGeo = new THREE.SphereGeometry(0.1, 4, 4);
+    const colors = [0xff0000, 0xff8800, 0xffff00, 0x00ff00, 0x0088ff, 0x0000ff, 0x8800ff, 0xff00ff];
+    const sparkMat = new THREE.MeshBasicMaterial({ color: colors[i] });
+    const spark = new THREE.Mesh(sparkGeo, sparkMat);
+    const angle = (i / 8) * Math.PI * 2;
+    spark.position.set(Math.cos(angle) * 1.8, Math.sin(angle) * 1.8, 0);
+    spark.name = 'spark-' + i;
+    portalGroup.add(spark);
+  }
+  
+  portalGroup.position.set(laneX, 1.5, -50);
+  portalGroup.userData = { lane };
+  scene.add(portalGroup);
+  bonusPortal = { mesh: portalGroup, lane };
+};
+
+const triggerRandomEvent = () => {
+  if (activeEvent) return;
+  const events = ['lightning', 'fog', 'crack'];
+  activeEvent = events[Math.floor(Math.random() * events.length)];
+  eventDuration = activeEvent === 'fog' ? 8 : (activeEvent === 'lightning' ? 0.5 : 4);
+  
+  if (activeEvent === 'lightning') {
+    lightningFlash = 0.1;
+    // Create bolt visual
+    const lane = Math.floor(Math.random() * 3);
+    const laneX = (lane - 1) * laneWidth;
+    const boltGroup = new THREE.Group();
+    const boltMat = new THREE.MeshBasicMaterial({ color: 0xffffcc });
+    // Main bolt
+    const mainBoltGeo = new THREE.CylinderGeometry(0.05, 0.15, 8, 6);
+    const mainBolt = new THREE.Mesh(mainBoltGeo, boltMat);
+    mainBolt.position.set(laneX, 4, -10);
+    boltGroup.add(mainBolt);
+    // Branch
+    const branchGeo = new THREE.CylinderGeometry(0.03, 0.08, 3, 4);
+    const branch = new THREE.Mesh(branchGeo, boltMat);
+    branch.position.set(laneX + 0.5, 2, -10);
+    branch.rotation.z = 0.5;
+    boltGroup.add(branch);
+    // Ground flash
+    const flashGeo = new THREE.PlaneGeometry(3, 3);
+    const flashMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
+    const flash = new THREE.Mesh(flashGeo, flashMat);
+    flash.position.set(laneX, 0.05, -10);
+    flash.rotation.x = -Math.PI / 2;
+    flash.name = 'lightning-flash';
+    boltGroup.add(flash);
+    scene.add(boltGroup);
+    crackObjects.push({ mesh: boltGroup, type: 'lightning-bolt', timer: 0.3 });
+    eventAlertTextRef.value = '⚡ LIGHTNING!';
+    playSound('crash');
+  } else if (activeEvent === 'fog') {
+    fogDensity = 5;
+    eventAlertTextRef.value = '🌫️ FOG!';
+  } else if (activeEvent === 'crack') {
+    const lane = Math.floor(Math.random() * 3);
+    const laneX = (lane - 1) * laneWidth;
+    const crackGroup = new THREE.Group();
+    // Crack line across lane
+    const lineGeo = new THREE.BoxGeometry(2.5, 0.02, 0.15);
+    const lineMat = new THREE.MeshBasicMaterial({ color: 0x333333 });
+    const line = new THREE.Mesh(lineGeo, lineMat);
+    line.position.set(laneX, 0.01, -15);
+    crackGroup.add(line);
+    // Cracks branching out
+    for (let c = 0; c < 5; c++) {
+      const crackGeo = new THREE.BoxGeometry(0.8 + Math.random(), 0.01, 0.05);
+      const crack = new THREE.Mesh(crackGeo, lineMat);
+      crack.position.set(
+        laneX + (Math.random() - 0.5) * 2,
+        0.01,
+        -15 + (Math.random() - 0.5) * 0.5
+      );
+      crack.rotation.y = Math.random() * Math.PI;
+      crackGroup.add(crack);
+    }
+    // Warning glow
+    const glowGeo = new THREE.PlaneGeometry(3, 0.5);
+    const glowMat = new THREE.MeshBasicMaterial({ color: 0xff4400, transparent: true, opacity: 0.4, side: THREE.DoubleSide });
+    const glow = new THREE.Mesh(glowGeo, glowMat);
+    glow.position.set(laneX, 0.02, -15);
+    glow.rotation.x = -Math.PI / 2;
+    glow.name = 'crack-glow';
+    crackGroup.add(glow);
+    scene.add(crackGroup);
+    crackObjects.push({ mesh: crackGroup, type: 'road-crack', lane, timer: 4, laneX });
+    eventAlertTextRef.value = '⚠️ ROAD CRACK!';
+  }
+};
+
+const updateEvent = (delta) => {
+  // Lightning flash
+  if (lightningFlash > 0) {
+    lightningFlash -= delta;
+  }
+  
+  // Fog decay
+  if (activeEvent === 'fog' && fogDensity > 0) {
+    eventDuration -= delta;
+    if (eventDuration <= 0) {
+      fogDensity = 0;
+      activeEvent = null;
+    }
+  }
+  
+  // Fog effect on scene fog
+  if (scene.fog) {
+    const baseNear = 20;
+    const baseFar = 80;
+    if (fogDensity > 0) {
+      scene.fog.near = THREE.MathUtils.lerp(scene.fog.near, baseNear * 0.2, delta * 2);
+      scene.fog.far = THREE.MathUtils.lerp(scene.fog.far, baseFar * 0.3, delta * 2);
+      fogDensity = Math.max(0, fogDensity - delta * 0.5);
+    } else {
+      scene.fog.near = THREE.MathUtils.lerp(scene.fog.near, baseNear, delta * 2);
+      scene.fog.far = THREE.MathUtils.lerp(scene.fog.far, baseFar, delta * 2);
+    }
+  }
+  
+  // Clear event alert after duration
+  if (activeEvent && activeEvent !== 'fog' && activeEvent !== 'crack') {
+    eventDuration -= delta;
+    if (eventDuration <= 0) {
+      activeEvent = null;
+      eventAlertTextRef.value = '';
+    }
+  }
+  
+  // Update crack objects
+  crackObjects.forEach((crack, index) => {
+    crack.timer -= delta;
+    if (crack.type === 'lightning-bolt') {
+      const flash = crack.mesh.getObjectByName('lightning-flash');
+      if (flash) {
+        flash.material.opacity = Math.max(0, crack.timer / 0.3);
+      }
+      // Move toward player
+      crack.mesh.children.forEach(child => {
+        if (child.name !== 'lightning-flash') {
+          child.position.z += gameSpeed;
+        } else {
+          child.position.z += gameSpeed;
+        }
+      });
+    } else if (crack.type === 'road-crack') {
+      // Move crack toward player
+      crack.mesh.children.forEach(child => {
+        child.position.z += gameSpeed;
+      });
+      
+      // Collision check for crack
+      const crackZ = -15; // crack moves with gameSpeed so track actual position
+      const crackCurrentZ = crack.mesh.children[0].position.z;
+      const dz = Math.abs(player.position.z - crackCurrentZ);
+      const dx = Math.abs(player.position.x - crack.laneX);
+      if (dx < laneWidth * 0.6 && dz < 0.5) {
+        // Must jump over crack
+        if (player.position.y < 1.0 && !isJumping && !isFlying) {
+          // Hit the crack!
+          if (!isInvincible) {
+            gameOver.value = true;
+            saveHighScore();
+            playSound('crash');
+            createParticleEffect(player.position, 0xff0000, 20);
+          }
+        }
+      }
+      
+      // Glow pulse
+      const glow = crack.mesh.getObjectByName('crack-glow');
+      if (glow) {
+        glow.material.opacity = 0.2 + Math.sin(clock.getElapsedTime() * 8) * 0.2;
+      }
+    }
+    
+    // Remove expired or passed crack objects
+    if (crack.timer <= 0 || (crack.mesh.children[0] && crack.mesh.children[0].position.z > 15)) {
+      scene.remove(crack.mesh);
+      crackObjects.splice(index, 1);
+    }
+  });
 };
 
 const createBackgroundElements = () => {
@@ -1609,7 +1948,7 @@ const animate = () => {
     return;
   }
 
-  const delta = clock.getDelta();
+  const delta = clock.getDelta() * (slowMoFactor || 1);
   const time = clock.getElapsedTime();
   
   gameDuration += delta;
@@ -1628,6 +1967,93 @@ const animate = () => {
   spawnInterval = Math.max(0.35, 1.2 - (gameDuration / 80));
   
   score.value += Math.floor(delta * 50 * difficultyMultiplier);
+
+  // === BONUS PORTAL SPAWN ===
+  if (!bonusPortal && !inBonusZone && Math.random() < 0.001) {
+    spawnBonusPortal();
+  }
+  
+  // Bonus portal animation & collection
+  if (bonusPortal) {
+    bonusPortal.mesh.position.z += gameSpeed;
+    // Spin and pulse portal
+    const ring = bonusPortal.mesh.getObjectByName('portal-ring');
+    if (ring) ring.rotation.z += 0.05;
+    const inner = bonusPortal.mesh.getObjectByName('portal-inner');
+    if (inner) {
+      inner.material.color.setHSL((clock.getElapsedTime() * 0.5) % 1, 1, 0.5);
+    }
+    // Sparkle animation
+    for (let i = 0; i < 8; i++) {
+      const spark = bonusPortal.mesh.getObjectByName('spark-' + i);
+      if (spark) {
+        const angle = (i / 8) * Math.PI * 2 + clock.getElapsedTime() * 2;
+        spark.position.set(Math.cos(angle) * 1.8, Math.sin(angle) * 1.8, 0);
+      }
+    }
+    // Collision check
+    const dist = player.position.distanceTo(bonusPortal.mesh.position);
+    if (dist < 2.0) {
+      // Enter bonus zone!
+      inBonusZone = true;
+      bonusTimer = 7;
+      inBonusZoneRef.value = true;
+      bonusTimerRef.value = 7;
+      scene.remove(bonusPortal.mesh);
+      bonusPortal = null;
+      // Spawn lots of coins in bonus zone
+      for (let i = 0; i < 20; i++) {
+        const bLane = Math.floor(Math.random() * 3);
+        const bLaneX = (bLane - 1) * laneWidth;
+        const coinGeo = new THREE.TorusGeometry(0.3, 0.1, 8, 16);
+        const coinMat = new THREE.MeshToonMaterial({ color: 0xffd700, emissive: 0xffaa00, emissiveIntensity: 0.5 });
+        const coinObj = new THREE.Mesh(coinGeo, coinMat);
+        coinObj.position.set(bLaneX, 1 + Math.random() * 2, -10 - i * 3);
+        coinObj.name = 'bonus-coin';
+        scene.add(coinObj);
+        coins.push({ mesh: coinObj, lane: bLane, collected: false });
+      }
+      playSound('powerup');
+    } else if (bonusPortal.mesh.position.z > 15) {
+      scene.remove(bonusPortal.mesh);
+      bonusPortal = null;
+    }
+  }
+  
+  // Bonus zone timer
+  if (inBonusZone) {
+    bonusTimer -= delta;
+    bonusTimerRef.value = Math.ceil(bonusTimer);
+    if (bonusTimer <= 0) {
+      inBonusZone = false;
+      inBonusZoneRef.value = false;
+      bonusTimerRef.value = 0;
+      // Particle burst ejection
+      createParticleEffect(player.position, 0xff00ff, 30);
+      createParticleEffect(player.position, 0x00ffff, 30);
+      playSound('achievement');
+    }
+  }
+  
+  // === ENVIRONMENTAL EVENTS ===
+  eventTimer += delta;
+  if (eventTimer > 30 + Math.random() * 15 && !activeEvent) {
+    triggerRandomEvent();
+    eventTimer = 0;
+  }
+  updateEvent(delta);
+  
+  // Clear event alert text after a delay
+  if (eventAlertTextRef.value && !activeEvent) {
+    if (!scene.userData.eventAlertTimer) scene.userData.eventAlertTimer = 0;
+    scene.userData.eventAlertTimer += delta;
+    if (scene.userData.eventAlertTimer > 1.5) {
+      eventAlertTextRef.value = '';
+      scene.userData.eventAlertTimer = 0;
+    }
+  } else {
+    scene.userData.eventAlertTimer = 0;
+  }
 
   if (time - lastSpawnTime > spawnInterval) {
     if (Math.random() < 0.7) {
@@ -1721,6 +2147,23 @@ const animate = () => {
     const horizDist = Math.sqrt(dx * dx + dz * dz);
     const collisionDist = obs.hitWidth || 1.5;
     const isFloating = obs.type === 'floating';
+    
+    // Near-miss detection
+    if (horizDist < collisionDist + 0.5 && horizDist >= collisionDist && Math.abs(dz) < 1.0) {
+      nearMissCount++;
+      nearMissTextRef.value = 'CLOSE CALL! 🔥';
+      nearMissTimer = 0.8;
+      
+      if (nearMissCount >= 5 && !slowMoTimer) {
+        nearMissTextRef.value = '🚀 ADRENALINE MODE! 🚀';
+        slowMoTimer = 0.5;
+        slowMoFactor = 0.3;
+        zoomTimer = 0.3;
+        nearMissCount = 0;
+        nearMissCountRef.value = 0;
+      }
+      nearMissCountRef.value = nearMissCount;
+    }
     
     // Ground obstacles: hit if player is on ground level and not flying
     const hitGroundObs = !isFloating && player.position.y < 1.0 && !isFlying;
@@ -2090,6 +2533,49 @@ const animate = () => {
       deactivatePowerup();
     }
   }
+  
+  // === NEAR-MISS TIMER ===
+  if (nearMissTimer > 0) {
+    nearMissTimer -= delta;
+    if (nearMissTimer <= 0) {
+      nearMissTextRef.value = '';
+    }
+  }
+  
+  // === SLOW-MO ===
+  if (slowMoTimer > 0) {
+    slowMoTimer -= delta;
+    if (slowMoTimer <= 0) {
+      slowMoFactor = 1;
+    }
+  }
+  
+  // === ZOOM PULSE ===
+  if (zoomTimer > 0) {
+    zoomTimer -= delta;
+    camera.fov = 60 + zoomTimer * 20;
+    camera.updateProjectionMatrix();
+  } else if (!fovWarpEnabled) {
+    camera.fov = THREE.MathUtils.lerp(camera.fov, 60, delta * 5);
+    camera.updateProjectionMatrix();
+  }
+  
+  // === FOV WARP ===
+  if (fovWarpEnabled) {
+    camera.fov = 60 + difficultyMultiplier * 2;
+    camera.updateProjectionMatrix();
+  }
+  
+  // === RED VIGNETTE (edge glow at max difficulty) ===
+  if (difficultyMultiplier > 2.5) {
+    edgeGlowIntensity = Math.min(1, (difficultyMultiplier - 2.5) / 1.0);
+  } else {
+    edgeGlowIntensity = 0;
+  }
+  const vignetteEl = document.getElementById('vignette-glow');
+  if (vignetteEl) {
+    vignetteEl.style.opacity = edgeGlowIntensity * (0.5 + 0.5 * Math.sin(clock.getElapsedTime() * 3));
+  }
 
   composer.render();
 };
@@ -2322,6 +2808,29 @@ const restartGame = () => {
   isInvincible = false;
   activePowerup = null;
   dayCycleTime = 0;
+  nearMissTimer = 0;
+  nearMissCount = 0;
+  nearMissTextRef.value = '';
+  nearMissCountRef.value = 0;
+  slowMoTimer = 0;
+  slowMoFactor = 1;
+  zoomTimer = 0;
+  eventTimer = 0;
+  activeEvent = null;
+  eventDuration = 0;
+  fogDensity = 0;
+  lightningFlash = 0;
+  edgeGlowIntensity = 0;
+  bonusPortal = null;
+  inBonusZone = false;
+  bonusTimer = 0;
+  inBonusZoneRef.value = false;
+  bonusTimerRef.value = 0;
+  eventAlertTextRef.value = '';
+  
+  // Clear crack objects
+  crackObjects.forEach(c => scene.remove(c.mesh));
+  crackObjects = [];
   
   // Update stats
   if (score.value > gameStats.maxScore) gameStats.maxScore = score.value;
@@ -2680,4 +3189,12 @@ button {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.1); }
 }
+#near-miss { position: absolute; top: 40%; left: 50%; transform: translateX(-50%); font-size: 24px; color: #ff0; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); pointer-events: none; animation: nearMissPop 0.5s ease-out; }
+#near-miss.near-miss-flash { font-size: 32px; color: #ff4400; animation: adrenalineFlash 0.3s ease-out; }
+#event-alert { position: absolute; top: 25%; left: 50%; transform: translateX(-50%); font-size: 28px; color: #fff; font-weight: bold; text-shadow: 2px 2px 8px rgba(0,0,0,0.9); pointer-events: none; }
+#bonus-zone { position: absolute; top: 15%; left: 50%; transform: translateX(-50%); font-size: 36px; color: #ff0; font-weight: bold; text-shadow: 0 0 20px #f0f, 0 0 40px #0ff; animation: bonusPulse 0.5s ease-in-out infinite alternate; }
+#vignette-glow { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; transition: opacity 0.3s; box-shadow: inset 0 0 100px 40px rgba(255,0,0,0.4); }
+@keyframes nearMissPop { 0% { transform: translateX(-50%) scale(0.5); opacity: 0; } 50% { transform: translateX(-50%) scale(1.3); } 100% { transform: translateX(-50%) scale(1); opacity: 1; } }
+@keyframes adrenalineFlash { 0% { transform: translateX(-50%) scale(2); opacity: 0.5; } 100% { transform: translateX(-50%) scale(1); opacity: 1; } }
+@keyframes bonusPulse { 0% { transform: translateX(-50%) scale(1); } 100% { transform: translateX(-50%) scale(1.1); } }
 </style>
