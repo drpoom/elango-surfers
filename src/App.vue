@@ -78,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.6.6 Bullet Time Slow gameSpeed';
+const VERSION = 'v3.6.7 Bullet Time Fixes';
 
 // Audio system
 let audioCtx = null;
@@ -485,6 +485,7 @@ const BULLET_TIME_SLOW = 0.05; // gameplay speed factor during bullet time
 let bulletTimeWord = '';
 let bulletTimeWordMesh = null;
 let bulletTimeCamSide = 0; // -1 left, 1 right
+let savedGameSpeed = 0; // gameSpeed before bullet time
 let cameraShakeTimer = 0;
 let cameraShakeIntensity = 0;
 let originalRoadMaterial = null;
@@ -2339,7 +2340,8 @@ const animate = () => {
       // Every near-miss triggers bullet time!
       if (!bulletTimeActive) {
         bulletTimeActive = true;
-        bulletTimeStartTime = clock.getElapsedTime(); // use elapsed real time
+        bulletTimeStartTime = clock.getElapsedTime();
+        savedGameSpeed = gameSpeed; // save current speed
         bulletTimeCamSide = Math.random() < 0.5 ? -1 : 1;
         bulletTimeWord = ['POW!', 'WHAM!', 'ZOOM!', 'BAM!'][Math.floor(Math.random() * 4)];
         createBulletTimeWord(bulletTimeWord);
@@ -2845,12 +2847,11 @@ const animate = () => {
     }
     
     // Camera: on the road AHEAD of the player, at ground level, looking UP at the character
-    // Player is at approximately (player.position.x, 0.5, 0)
-    // Camera goes to (side, 0.3, -6) looking back at the player = dramatic ground-up 45 degree angle
-    const targetCamX = bulletTimeCamSide * 4;
+    // Camera offset to the side + tracks player's lane position
+    const targetCamX = player.position.x + bulletTimeCamSide * 4; // side offset + follows lane
     const targetCamY = 0.3; // ground level
-    const targetCamZ = -6; // ahead of player on the road
-    const camSpeed = 0.08;
+    const targetCamZ = player.position.z - 6; // ahead of player on the road
+    const camSpeed = 0.1;
     camera.position.x += (targetCamX - camera.position.x) * camSpeed;
     camera.position.y += (targetCamY - camera.position.y) * camSpeed;
     camera.position.z += (targetCamZ - camera.position.z) * camSpeed;
@@ -2860,9 +2861,9 @@ const animate = () => {
     camera.fov += (targetFov - camera.fov) * camSpeed;
     camera.updateProjectionMatrix();
     
-    // Look at the PLAYER - this is the actual character position
-    // From z=-6 at y=0.3, looking at z=0, y=1.2 gives ~45 degree upward angle
-    camera.lookAt(player.position.x, 1.2, player.position.z);
+    // Look at the PLAYER - tracks lane movement
+    // From z-6 at y=0.3, looking at player z, y=1.5 = character body center = 45 degree upward angle
+    camera.lookAt(player.position.x, 1.5, player.position.z + 1);
     
     // Animate word art sprite
     if (bulletTimeWordMesh) {
@@ -2879,6 +2880,7 @@ const animate = () => {
     // End bullet time when duration expires
     if (progress >= 1) {
       bulletTimeActive = false;
+      gameSpeed = savedGameSpeed; // restore original speed immediately
       if (bulletTimeWordMesh) {
         scene.remove(bulletTimeWordMesh);
         bulletTimeWordMesh = null;
