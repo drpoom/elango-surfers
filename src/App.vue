@@ -78,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.6.2 Bullet Time Fix';
+const VERSION = 'v3.6.3 Bullet Time TDZ Fix + Camera';
 
 // Audio system
 let audioCtx = null;
@@ -2815,9 +2815,9 @@ const animate = () => {
   // === BULLET TIME ===
   if (slowMoTimer > 0 && bulletTimeActive) {
     slowMoTimer -= realDelta; // Use UNSCALED delta so timer counts in real time
-    if (progress < 0.02) console.log('BT animate: slowMo=', slowMoFactor, 'timer=', slowMoTimer, 'progress=', progress, 'camPos=', camera.position.x.toFixed(1), camera.position.y.toFixed(1), camera.position.z.toFixed(1));
     const totalTime = 2.5;
     const progress = Math.min(1 - (slowMoTimer / totalTime), 1); // 0→1 over duration
+    if (progress < 0.02) console.log('BT animate: slowMo=', slowMoFactor, 'timer=', slowMoTimer, 'progress=', progress, 'camPos=', camera.position.x.toFixed(1), camera.position.y.toFixed(1), camera.position.z.toFixed(1));
     
     // Slow-mo factor: instant dip, hold, then smooth recovery
     if (progress < 0.05) {
@@ -2831,11 +2831,12 @@ const animate = () => {
       slowMoFactor = THREE.MathUtils.lerp(0.05, 1, (progress - 0.65) / 0.35);
     }
     
-    // Action camera: ground level, in FRONT of player on the road, looking back UP at character
-    // Player runs toward -Z, so "in front" = lower Z values
+    // Action camera: ground level, IN FRONT of player on the road ahead
+    // Player at z=0, road stretches toward -z, default camera at z=12 (behind)
+    // Place camera at z=-5 (on the road ahead), ground level, looking BACK at the player
     const camTargetX = bulletTimeCamSide * 3; // Offset to left or right
     const camTargetY = 0.3; // Near ground level
-    const camTargetZ = player.position.z - 5; // In front of player (further down the road)
+    const camTargetZ = -5; // On the road ahead of the player
     
     // Smooth camera transition (use realDelta so it's consistent regardless of slowMo)
     const camLerp = 1 - Math.pow(0.03, realDelta);
@@ -2848,8 +2849,9 @@ const animate = () => {
     camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, camLerp);
     camera.updateProjectionMatrix();
     
-    // Look UP at the character from ground level (~45° angle)
-    camera.lookAt(player.position.x, 2.5, player.position.z + 2);
+    // Look directly UP at the character from ground level (~45° angle)
+    // Camera at z=-5, looking at z=0 (where player is), y=1.5 = character center
+    camera.lookAt(player.position.x, 1.5, 0);
     
     // Animate word art sprite
     if (bulletTimeWordMesh) {
