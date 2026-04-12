@@ -78,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.5.3 Remove Crack const VERSION = 'v3.5.2 Bonus Zone Black Wall Fix' Lightning Events';
+const VERSION = 'v3.5.3 Remove Crack and Lightning Events';
 
 // Audio system
 let audioCtx = null;
