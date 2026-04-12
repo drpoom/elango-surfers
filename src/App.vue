@@ -78,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.5.1 Black Screen Fix';
+const VERSION = 'v3.5.2 Bonus Zone Black Wall Fix';
 
 // Audio system
 let audioCtx = null;
@@ -2103,7 +2103,7 @@ const animate = () => {
       inBonusZone = true;
       bonusTimer = 5;
       inBonusZoneRef.value = true;
-      bonusTimerRef.value = 7;
+      bonusTimerRef.value = 5;
       scene.remove(bonusPortal.mesh);
       bonusPortal = null;
 
@@ -2128,8 +2128,8 @@ const animate = () => {
         buildingVis: buildings.map(b => b.visible),
         treeVis: trees.map(t => t.visible),
       };
-      // Remove obstacle and coin meshes from scene, clear arrays, dispose geometry
-      obstacles.forEach(obs => { obs.mesh.traverse(c => { if (c.geometry && c.geometry !== sharedCoinGeo) c.geometry.dispose(); }); scene.remove(obs.mesh); });
+      // Remove obstacle and coin meshes from scene, clear arrays (but don't dispose — we restore them!)
+      obstacles.forEach(obs => scene.remove(obs.mesh));
       coins.forEach(coin => scene.remove(coin.mesh));
       obstacles.length = 0;
       coins.length = 0;
