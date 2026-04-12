@@ -78,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.5.2 Bonus Zone Black Wall Fix';
+const VERSION = 'v3.5.3 Remove Crack const VERSION = 'v3.5.2 Bonus Zone Black Wall Fix' Lightning Events';
 
 // Audio system
 let audioCtx = null;
@@ -494,11 +494,9 @@ const cloudSunsetColor = new THREE.Color(0xff8866);
 
 // Environmental events
 let eventTimer = 0;
-let activeEvent = null; // 'lightning', 'fog', 'crack'
+let activeEvent = null; // 'fog'
 let eventDuration = 0;
 let fogDensity = 0;
-let lightningFlash = 0;
-let crackObjects = [];
 
 // Bonus portal
 let bonusPortal = null;
@@ -1231,91 +1229,20 @@ const spawnBonusPortal = () => {
 
 const triggerRandomEvent = () => {
   if (activeEvent) return;
-  const events = ['lightning', 'fog', 'crack'];
-  activeEvent = events[Math.floor(Math.random() * events.length)];
-  eventDuration = activeEvent === 'fog' ? 8 : (activeEvent === 'lightning' ? 0.5 : 4);
-  
-  if (activeEvent === 'lightning') {
-    lightningFlash = 0.1;
-    // Create bolt visual
-    const lane = Math.floor(Math.random() * 3);
-    const laneX = (lane - 1) * laneWidth;
-    const boltGroup = new THREE.Group();
-    const boltMat = new THREE.MeshBasicMaterial({ color: 0xffffcc });
-    // Main bolt
-    const mainBoltGeo = new THREE.CylinderGeometry(0.05, 0.15, 8, 6);
-    const mainBolt = new THREE.Mesh(mainBoltGeo, boltMat);
-    mainBolt.position.set(laneX, 4, -10);
-    boltGroup.add(mainBolt);
-    // Branch
-    const branchGeo = new THREE.CylinderGeometry(0.03, 0.08, 3, 4);
-    const branch = new THREE.Mesh(branchGeo, boltMat);
-    branch.position.set(laneX + 0.5, 2, -10);
-    branch.rotation.z = 0.5;
-    boltGroup.add(branch);
-    // Ground flash
-    const flashGeo = new THREE.PlaneGeometry(3, 3);
-    const flashMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
-    const flash = new THREE.Mesh(flashGeo, flashMat);
-    flash.position.set(laneX, 0.05, -10);
-    flash.rotation.x = -Math.PI / 2;
-    flash.name = 'lightning-flash';
-    boltGroup.add(flash);
-    scene.add(boltGroup);
-    crackObjects.push({ mesh: boltGroup, type: 'lightning-bolt', timer: 0.3 });
-    eventAlertTextRef.value = '⚡ LIGHTNING!';
-    playSound('crash');
-  } else if (activeEvent === 'fog') {
-    fogDensity = 5;
-    eventAlertTextRef.value = '🌫️ FOG!';
-  } else if (activeEvent === 'crack') {
-    const lane = Math.floor(Math.random() * 3);
-    const laneX = (lane - 1) * laneWidth;
-    const crackGroup = new THREE.Group();
-    // Crack line across lane
-    const lineGeo = new THREE.BoxGeometry(2.5, 0.02, 0.15);
-    const lineMat = new THREE.MeshBasicMaterial({ color: 0x333333 });
-    const line = new THREE.Mesh(lineGeo, lineMat);
-    line.position.set(laneX, 0.01, -15);
-    crackGroup.add(line);
-    // Cracks branching out
-    for (let c = 0; c < 5; c++) {
-      const crackGeo = new THREE.BoxGeometry(0.8 + Math.random(), 0.01, 0.05);
-      const crack = new THREE.Mesh(crackGeo, lineMat);
-      crack.position.set(
-        laneX + (Math.random() - 0.5) * 2,
-        0.01,
-        -15 + (Math.random() - 0.5) * 0.5
-      );
-      crack.rotation.y = Math.random() * Math.PI;
-      crackGroup.add(crack);
-    }
-    // Warning glow
-    const glowGeo = new THREE.PlaneGeometry(3, 0.5);
-    const glowMat = new THREE.MeshBasicMaterial({ color: 0xff4400, transparent: true, opacity: 0.4, side: THREE.DoubleSide });
-    const glow = new THREE.Mesh(glowGeo, glowMat);
-    glow.position.set(laneX, 0.02, -15);
-    glow.rotation.x = -Math.PI / 2;
-    glow.name = 'crack-glow';
-    crackGroup.add(glow);
-    scene.add(crackGroup);
-    crackObjects.push({ mesh: crackGroup, type: 'road-crack', lane, timer: 4, laneX });
-    eventAlertTextRef.value = '⚠️ ROAD CRACK!';
-  }
+  activeEvent = 'fog';
+  eventDuration = 8;
+  fogDensity = 5;
+  eventAlertTextRef.value = '\u{1F32B}\u{FE0F} FOG!';
 };
 
 const updateEvent = (delta) => {
-  // Lightning flash
-  if (lightningFlash > 0) {
-    lightningFlash -= delta;
-  }
-  
   // Fog decay
   if (activeEvent === 'fog' && fogDensity > 0) {
     eventDuration -= delta;
     if (eventDuration <= 0) {
       fogDensity = 0;
       activeEvent = null;
+      eventAlertTextRef.value = '';
     }
   }
   
@@ -1332,71 +1259,6 @@ const updateEvent = (delta) => {
       scene.fog.far = THREE.MathUtils.lerp(scene.fog.far, baseFar, delta * 2);
     }
   }
-  
-  // Clear event alert after duration
-  if (activeEvent && activeEvent !== 'fog' && activeEvent !== 'crack') {
-    eventDuration -= delta;
-    if (eventDuration <= 0) {
-      activeEvent = null;
-      eventAlertTextRef.value = '';
-    }
-  }
-  
-  // Update crack objects
-  crackObjects.forEach((crack, index) => {
-    crack.timer -= delta;
-    if (crack.type === 'lightning-bolt') {
-      const flash = crack.mesh.getObjectByName('lightning-flash');
-      if (flash) {
-        flash.material.opacity = Math.max(0, crack.timer / 0.3);
-      }
-      // Move toward player
-      crack.mesh.children.forEach(child => {
-        if (child.name !== 'lightning-flash') {
-          child.position.z += gameSpeed;
-        } else {
-          child.position.z += gameSpeed;
-        }
-      });
-    } else if (crack.type === 'road-crack') {
-      // Move crack toward player
-      crack.mesh.children.forEach(child => {
-        child.position.z += gameSpeed;
-      });
-      
-      // Collision check for crack
-      const crackZ = -15; // crack moves with gameSpeed so track actual position
-      const crackCurrentZ = crack.mesh.children[0].position.z;
-      const dz = Math.abs(player.position.z - crackCurrentZ);
-      const dx = Math.abs(player.position.x - crack.laneX);
-      if (dx < laneWidth * 0.6 && dz < 0.5) {
-        // Must jump over crack
-        if (player.position.y < 1.0 && !isJumping && !isFlying) {
-          // Hit the crack!
-          if (!isInvincible) {
-            gameOver.value = true;
-            if (bonusPortal) { scene.remove(bonusPortal.mesh); bonusPortal = null; }
-            inBonusZone = false; inBonusZoneRef.value = false; bonusTimer = 0; bonusTimerRef.value = 0;
-            saveHighScore();
-            playSound('crash');
-            createParticleEffect(player.position, 0xff0000, 20);
-          }
-        }
-      }
-      
-      // Glow pulse
-      const glow = crack.mesh.getObjectByName('crack-glow');
-      if (glow) {
-        glow.material.opacity = 0.2 + Math.sin(clock.getElapsedTime() * 8) * 0.2;
-      }
-    }
-    
-    // Remove expired or passed crack objects
-    if (crack.timer <= 0 || (crack.mesh.children[0] && crack.mesh.children[0].position.z > 15)) {
-      scene.remove(crack.mesh);
-      crackObjects.splice(index, 1);
-    }
-  });
 };
 
 const createBackgroundElements = () => {
@@ -3222,7 +3084,6 @@ const restartGame = () => {
   activeEvent = null;
   eventDuration = 0;
   fogDensity = 0;
-  lightningFlash = 0;
   edgeGlowIntensity = 0;
   bonusPortal = null;
   inBonusZone = false;
@@ -3254,10 +3115,6 @@ const restartGame = () => {
   buildings.forEach(b => { b.visible = true; });
   trees.forEach(t => { t.visible = true; });
   eventAlertTextRef.value = '';
-  
-  // Clear crack objects
-  crackObjects.forEach(c => scene.remove(c.mesh));
-  crackObjects = [];
   
   // Update stats
   if (score.value > gameStats.maxScore) gameStats.maxScore = score.value;
