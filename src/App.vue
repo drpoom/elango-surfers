@@ -76,7 +76,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.2.2 Camera Fix';
+const VERSION = 'v3.2.3 Render Fix';
 
 // Audio system
 let audioCtx = null;
@@ -628,7 +628,6 @@ const initGame = () => {
 
   camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.set(0, 6, 12);
-  camera.lookAt(0, 0, -5);
   camera.lookAt(0, 0, -5);
 
   renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -1950,6 +1949,9 @@ const animate = () => {
         deactivatePowerup();
       }
     }
+    // Still render scene when game over so background stays visible
+    camera.lookAt(0, 1, -8);
+    composer.render();
     return;
   }
 
@@ -2678,7 +2680,7 @@ const animate = () => {
   }
 
   // Ensure camera always looks at player
-  camera.lookAt(player.position.x * 0.3, 1, player.position.z - 8);
+  camera.lookAt(0, 1, -8);
   composer.render();
 };
 
