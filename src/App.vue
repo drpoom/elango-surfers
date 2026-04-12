@@ -76,7 +76,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.2.1 Visual Fixes';
+const VERSION = 'v3.2.2 Camera Fix';
 
 // Audio system
 let audioCtx = null;
@@ -628,6 +628,7 @@ const initGame = () => {
 
   camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
   camera.position.set(0, 6, 12);
+  camera.lookAt(0, 0, -5);
   camera.lookAt(0, 0, -5);
 
   renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -2179,8 +2180,9 @@ const animate = () => {
     const collisionDist = obs.hitWidth || 1.5;
     const isFloating = obs.type === 'floating';
     
-    // Near-miss detection
-    if (horizDist < collisionDist + 0.5 && horizDist >= collisionDist && Math.abs(dz) < 1.0) {
+    // Near-miss detection (only once per obstacle)
+    if (!obs.nearMissTriggered && horizDist < collisionDist + 0.5 && horizDist >= collisionDist && Math.abs(dz) < 1.0) {
+      obs.nearMissTriggered = true;
       nearMissCount++;
       nearMissTextRef.value = 'CLOSE CALL! 🔥';
       nearMissTimer = 0.8;
@@ -2637,16 +2639,19 @@ const animate = () => {
     cameraShakeTimer -= delta;
     const shakeX = (Math.random() - 0.5) * cameraShakeIntensity * 2;
     const shakeY = (Math.random() - 0.5) * cameraShakeIntensity * 2;
-    camera.position.x += shakeX;
-    camera.position.y += shakeY;
+    camera.position.x = shakeX; // Set, don't accumulate
+    camera.position.y = 6 + shakeY;
     cameraShakeIntensity *= 0.9; // decay
     if (cameraShakeTimer <= 0) {
       cameraShakeIntensity = 0;
+      camera.position.x = 0;
+      camera.position.y = 6;
     }
   }
 
   // Lerp camera back to default position when not in slow-mo
-  if (slowMoTimer <= 0) {
+  if (slowMoTimer <= 0 && cameraShakeTimer <= 0) {
+    camera.position.x = THREE.MathUtils.lerp(camera.position.x, 0, delta * 5);
     camera.position.y = THREE.MathUtils.lerp(camera.position.y, 6, delta * 5);
     camera.position.z = THREE.MathUtils.lerp(camera.position.z, 12, delta * 5);
     if (!fovWarpEnabled) {
@@ -2672,6 +2677,8 @@ const animate = () => {
     vignetteEl.style.opacity = edgeGlowIntensity * (0.5 + 0.5 * Math.sin(clock.getElapsedTime() * 3));
   }
 
+  // Ensure camera always looks at player
+  camera.lookAt(player.position.x * 0.3, 1, player.position.z - 8);
   composer.render();
 };
 
