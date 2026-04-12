@@ -78,7 +78,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.3.0 Countdown + Bonus 5s';
+const VERSION = 'v3.3.1 Curved Earth + Countdown Fix';
 
 // Audio system
 let audioCtx = null;
@@ -437,6 +437,20 @@ let slideTimer = 0;
 const slideDuration = 0.6;
 const gravity = 0.015;
 const laneWidth = 3;
+
+// Fake curved earth: objects rise from horizon
+const CURVE_RADIUS = 80; // virtual planet radius (larger = less curve)
+const getCurveOffset = (z) => {
+  // z is negative (ahead of player). Farther = more below horizon.
+  // At z=0 (player): no offset. At z=-80: fully below horizon.
+  const dist = Math.max(0, -z); // distance ahead
+  if (dist < 5) return { yOff: 0, tilt: 0 }; // no curve near player
+  // y offset: objects drop below and rise as they approach
+  const yOff = -Math.pow(dist / CURVE_RADIUS, 2) * 4; // quadratic drop
+  // tilt: objects lean back as if on a sphere surface
+  const tilt = -Math.atan2(dist, CURVE_RADIUS) * 0.5;
+  return { yOff, tilt };
+};
 
 // Voice/fly controls
 let micStream = null;
@@ -892,8 +906,8 @@ const createGround = () => {
     color: 0x555555
   });
   const ground = new THREE.Mesh(groundGeo, groundMat);
-  ground.rotation.x = -Math.PI / 2;
-  ground.position.z = -50;
+  ground.rotation.x = -Math.PI / 2 + 0.03; // slight tilt for earth curve illusion
+  ground.position.set(0, -0.1, -50);
   ground.receiveShadow = true;
   ground.name = 'road';
   scene.add(ground);
@@ -1382,6 +1396,7 @@ const createBackgroundElements = () => {
     );
     const treeScale = 0.8 + Math.random() * 0.4;
     tree.scale.setScalar(treeScale);
+    tree.baseY = tree.position.y;
     scene.add(tree);
     trees.push(tree);
   }
@@ -1435,6 +1450,7 @@ const createBackgroundElements = () => {
       -20 - Math.random() * 60
     );
     scene.add(buildingGroup);
+    buildingGroup.baseY = buildingGroup.position.y;
     buildings.push(buildingGroup);
   }
 };
@@ -1774,6 +1790,7 @@ const spawnObstacle = () => {
   }
   
   scene.add(group);
+  group.baseY = group.position.y;
   obstacles.push({ mesh: group, lane: obsLane, type: 'ground', obstacleType: obsType, hitWidth });
 };
 
@@ -1847,6 +1864,7 @@ const spawnCoin = () => {
   coinObj.position.set(laneX, 1, -50);
   
   scene.add(coinObj);
+  coinObj.baseY = coinObj.position.y;
   coins.push({ mesh: coinObj, lane, collected: false });
 };
 
@@ -2003,6 +2021,10 @@ const animate = () => {
   // Bonus portal animation & collection
   if (bonusPortal) {
     bonusPortal.mesh.position.z += gameSpeed;
+    // Fake earth curve for portal
+    const portalCurve = getCurveOffset(bonusPortal.mesh.position.z);
+    bonusPortal.mesh.position.y = (bonusPortal.baseY || 1.5) + portalCurve.yOff;
+    bonusPortal.mesh.rotation.x = portalCurve.tilt;
     // Spin and pulse portal
     const ring = bonusPortal.mesh.getObjectByName('portal-ring');
     if (ring) ring.rotation.z += 0.05;
@@ -2171,6 +2193,12 @@ const animate = () => {
 
   obstacles.forEach((obs, index) => {
     obs.mesh.position.z += gameSpeed;
+    // Fake earth curve: objects rise from horizon
+    const curve = getCurveOffset(obs.mesh.position.z);
+    if (obs.type !== 'floating') {
+      obs.mesh.position.y = (obs.baseY || 0) + curve.yOff;
+      obs.mesh.rotation.x = curve.tilt;
+    }
     // Spin UFOs, ground obstacles gentle spin
     obs.mesh.rotation.y += obs.type === 'floating' ? 0.08 : (obs.obstacleType === 'fruit' ? 0.05 : 0);
     
@@ -2363,6 +2391,10 @@ const animate = () => {
       coin.mesh.rotation.y += 0.1;
     }
     
+    // Fake earth curve: coins rise from horizon
+    const coinCurve = getCurveOffset(coin.mesh.position.z);
+    coin.mesh.position.y = (coin.baseY || 0.5) + coinCurve.yOff;
+    
     if (dist < 1.2) {
       coin.collected = true;
       comboCount++;
@@ -2392,6 +2424,9 @@ const animate = () => {
     if (bc.collected) return;
     bc.mesh.position.z += gameSpeed;
     bc.mesh.rotation.y += 0.1;
+    // Fake earth curve
+    const bcCurve = getCurveOffset(bc.mesh.position.z);
+    bc.mesh.position.y = 0.5 + bcCurve.yOff;
     const dist = player.position.distanceTo(bc.mesh.position);
     if (dist < 1.2) {
       bc.collected = true;
@@ -2418,6 +2453,10 @@ const animate = () => {
     
     pw.mesh.position.z += gameSpeed;
     pw.mesh.rotation.y += 0.15;
+    // Fake earth curve
+    const pwCurve = getCurveOffset(pw.mesh.position.z);
+    pw.mesh.position.y = (pw.baseY || 1.5) + pwCurve.yOff;
+    pw.mesh.rotation.x = pwCurve.tilt;
     
     // Animate rings
     if (pw.type === 'shield') {
@@ -2514,6 +2553,10 @@ const animate = () => {
   // Animate trees moving
   trees.forEach((tree) => {
     tree.position.z += gameSpeed;
+    // Fake earth curve
+    const treeCurve = getCurveOffset(tree.position.z);
+    tree.position.y = (tree.baseY || 0) + treeCurve.yOff;
+    tree.rotation.x = treeCurve.tilt;
     if (tree.position.z > 10) {
       const side = tree.position.x > 0 ? 1 : -1;
       tree.position.z = -Math.random() * 80;
@@ -2524,6 +2567,10 @@ const animate = () => {
   // Animate buildings moving
   buildings.forEach((building) => {
     building.position.z += gameSpeed;
+    // Fake earth curve
+    const bldCurve = getCurveOffset(building.position.z);
+    building.position.y = (building.baseY || 0) + bldCurve.yOff;
+    building.rotation.x = bldCurve.tilt;
     if (building.position.z > 20) {
       const side = building.position.x > 0 ? 1 : -1;
       building.position.z = -20 - Math.random() * 60;
@@ -3099,6 +3146,25 @@ onMounted(() => {
   const saved = localStorage.getItem('elangoSurfersHighScore');
   if (saved) highScore.value = parseInt(saved, 10);
   initGame();
+  // Start with countdown on initial load
+  countdownLocked = true;
+  countdownActive.value = true;
+  let initCount = 3;
+  countdownText.value = initCount.toString();
+  const initTick = () => {
+    initCount--;
+    if (initCount > 0) {
+      countdownText.value = initCount.toString();
+      setTimeout(initTick, 1000);
+    } else if (initCount === 0) {
+      countdownText.value = 'GO!';
+      setTimeout(() => {
+        countdownActive.value = false;
+        countdownLocked = false;
+      }, 500);
+    }
+  };
+  setTimeout(initTick, 1000);
   window.addEventListener('keydown', handleKeyDown);
   window.addEventListener('touchstart', handleTouchStart, { passive: false });
   window.addEventListener('touchend', handleTouchEnd, { passive: false });
