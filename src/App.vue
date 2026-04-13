@@ -82,7 +82,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.7.8 Real Nyan + BGM';
+const VERSION = 'v3.7.9 Nyan Cat + Music v2';
 
 // Audio system
 let audioCtx = null;
