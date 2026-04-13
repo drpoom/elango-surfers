@@ -82,14 +82,15 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.7.7 Polish Round 2';
+const VERSION = 'v3.7.8 Real Nyan + BGM';
 
 // Audio system
 let audioCtx = null;
 let isMuted = false;
 let audioInitialized = false;
-let bgmOscillators = [];
+let bgmAudio = null;
 let bgmGain = null;
+let bgmSource = null;
 let isBGMPlaying = false;
 let bgmInterval = null;
 
@@ -223,89 +224,33 @@ const startBGM = () => {
   
   isBGMPlaying = true;
   bgmGain = audioCtx.createGain();
-  bgmGain.gain.value = 0.15; // Quieter background level
+  bgmGain.gain.value = 0.35;
   bgmGain.connect(audioCtx.destination);
   
-  // Play one bar of music
-  const playBar = () => {
-    if (!isBGMPlaying || !audioCtx || audioCtx.state !== 'running') return;
-    
-    const now = audioCtx.currentTime;
-    
-    // Bass: 4 notes (A-C-G-A)
-    const bassFreqs = [110, 130, 98, 110];
-    bassFreqs.forEach((freq, i) => {
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.value = freq;
-      
-      const filter = audioCtx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.value = 500;
-      
-      osc.connect(filter);
-      filter.connect(gain);
-      gain.connect(bgmGain);
-      
-      const startTime = now + (i * 0.25);
-      gain.gain.setValueAtTime(0.5, startTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.2);
-      
-      osc.start(startTime);
-      osc.stop(startTime + 0.25);
-      bgmOscillators.push(osc);
-    });
-    
-    // Hi-hats: 8 notes
-    for (let i = 0; i < 8; i++) {
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'square';
-      osc.frequency.value = 1500;
-      
-      const filter = audioCtx.createBiquadFilter();
-      filter.type = 'highpass';
-      filter.frequency.value = 5000;
-      
-      osc.connect(filter);
-      filter.connect(gain);
-      gain.connect(bgmGain);
-      
-      const startTime = now + (i * 0.125);
-      const vol = (i % 2 === 0) ? 0.15 : 0.08;
-      gain.gain.setValueAtTime(vol, startTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.06);
-      
-      osc.start(startTime);
-      osc.stop(startTime + 0.1);
-      bgmOscillators.push(osc);
-    }
-  };
-  
-  // Play first bar immediately
-  playBar();
-  
-  // Loop every 1 second using setInterval (more reliable than setTimeout)
-  bgmInterval = setInterval(() => {
-    if (isBGMPlaying && !isMuted && audioCtx && audioCtx.state === 'running') {
-      playBar();
-    }
-  }, 1000);
+  // Load and play OGG music file
+  if (!bgmAudio) {
+    bgmAudio = new Audio('assets/game_music.ogg');
+    bgmAudio.loop = true;
+    bgmAudio.volume = 1;
+    const src = audioCtx.createMediaElementSource(bgmAudio);
+    src.connect(bgmGain);
+  }
+  bgmAudio.currentTime = 0;
+  bgmAudio.play().catch(() => {});
 };
 
 const stopBGM = () => {
   isBGMPlaying = false;
-  bgmOscillators.forEach(osc => {
-    try { osc.stop(); } catch(e) {}
-  });
-  bgmOscillators = [];
+  if (bgmAudio) {
+    bgmAudio.pause();
+    bgmAudio.currentTime = 0;
+  }
   if (bgmGain) {
-    bgmGain.disconnect();
+    try { bgmGain.disconnect(); } catch(e) {}
     bgmGain = null;
   }
   if (bgmInterval) {
-    clearInterval(bgmInterval);
+    clearTimeout(bgmInterval);
     bgmInterval = null;
   }
 };
@@ -2074,7 +2019,7 @@ const animate = () => {
         depthWrite: false
       });
       const nyanCat = new THREE.Sprite(nyanSpriteMat);
-      nyanCat.scale.set(6, 2, 1); // wider for long rainbow trail
+      nyanCat.scale.set(5, 5.5, 1); // scale to match real nyan cat proportions
       nyanCat.position.set(-30, 10, -20); // start off-screen LEFT, fly RIGHT
       scene.add(nyanCat);
       scene.userData.nyanCat = nyanCat;
