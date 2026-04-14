@@ -111,7 +111,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v4.1.4';
+const VERSION = 'v4.1.5';
 
 // Audio system
 let audioCtx = null;
@@ -567,20 +567,19 @@ const getSurfaceTilt = (z) => {
 // Road curvature: returns X offset at a given Z depth based on current roadCurve
 // The curve has a 'front' that propagates from far away toward the player,
 // so you can SEE the curve approaching before it reaches you.
-let curveFrontZ = -200 // where the curve starts (far away, negative Z)
-let curveFrontTarget = -200
+let curveFrontZ = 0 // Z position of the curve front (0 = at player, negative = far ahead)
+let curveFrontTarget = 0
 
 const getCurveX = (z) => {
   if (!roadCurveEnabled.value) return 0;
   const depth = Math.max(0, -z); // how far ahead (positive)
-  const frontDepth = Math.max(0, -curveFrontZ); // where curve starts
-  // If this vertex is BEHIND the curve front (closer to player than the front), no curve
-  if (depth < frontDepth) return 0;
-  // If this vertex is PAST the curve front, apply quadratic curve
-  const curveDepth = depth - frontDepth; // depth past the front
-  const maxDepth = 80 - frontDepth;
-  const t = Math.max(0, maxDepth > 0 ? curveDepth / maxDepth : 0);
-  return roadCurve.value * t * t * 12;
+  const frontDepth = Math.max(0, -curveFrontZ); // depth where curve begins
+  // Smooth transition: curve is zero at frontDepth, grows quadratically beyond
+  if (depth <= frontDepth) return 0; // straight ahead of the front
+  const pastFront = depth - frontDepth;
+  const maxCurveDepth = 80; // max depth we care about
+  const t = Math.min(pastFront / maxCurveDepth, 1);
+  return roadCurve.value * t * t * 14;
 };
 
 // Voice/fly controls
@@ -2245,14 +2244,15 @@ function spawnBoss(bossType) {
 
 function spawnBossProjectile(type) {
   if (type === 'truck') {
-    // Truck charges — sometimes straight, sometimes from side
+    // Truck charges — locks onto player's lane at charge start (no retargeting)
     bossCharging = true
     bossChargeTimer = 0
     bossChargeTarget = -5
-    // Randomly start charge from a side lane
+    // Lock target lane X at charge start — straight line charge
     if (boss) {
-      boss.position.x = (Math.random() - 0.5) * 6 + getCurveX(boss.position.z)
-      if (boss.userData) boss.userData.chargeMissTriggered = false
+      boss.userData = boss.userData || {}
+      boss.userData.chargeTargetX = (currentLane - 1) * laneWidth
+      boss.userData.chargeMissTriggered = false
     }
   } else {
     // Dragon fires 2-3 fireballs at different lanes & heights
@@ -2325,32 +2325,35 @@ const animate = () => {
   }
 
   // === CURVE OSCILLATION (not during boss, or disabled) ===
+  // The curve front propagates from far away toward the player, creating a "curve approaching" effect.
+  // When a curve starts, the front is set to z=-80 (far horizon) and moves toward z=0 (player).
+  // You see the road bending at a distance BEFORE it reaches you.
   if (!bossActive.value && roadCurveEnabled.value) {
     curveChangeTimer.value += realDelta
     if (curveChangeTimer.value >= nextCurveChange.value) {
       if (Math.abs(roadCurveTarget.value) < 0.1) {
-        // Start a new curve — set front far away, it'll propagate toward player
+        // Start a new curve — front starts at far horizon
         roadCurveTarget.value = (Math.random() > 0.5 ? 1 : -1) * (0.8 + Math.random() * 0.5)
-        curveFrontTarget = -100 // curve starts far away
-        nextCurveChange.value = 2 + Math.random() * 1.5
+        curveFrontTarget = -80 // front starts at horizon
+        curveFrontZ = -80 // immediately set front position
+        nextCurveChange.value = 2.5 + Math.random() * 1.5
       } else {
-        // Straighten out
+        // Straighten out — front stays, curve value drops to 0
         roadCurveTarget.value = 0
         nextCurveChange.value = 5 + Math.random() * 5
       }
       curveChangeTimer.value = 0
     }
-    // Lerp curve value
-    const lerpSpeed = Math.abs(roadCurveTarget.value) > 0.1 ? Math.min(realDelta * 2.5, 0.15) : Math.min(realDelta * 1.5, 0.08)
+    // Lerp curve value — slow enough to see it develop
+    const lerpSpeed = Math.abs(roadCurveTarget.value) > 0.1 ? Math.min(realDelta * 1.2, 0.08) : Math.min(realDelta * 0.8, 0.05)
     roadCurve.value += (roadCurveTarget.value - roadCurve.value) * lerpSpeed
-    // Propagate curve front toward player (0 = right at player position)
-    // The front moves at the same speed as the road, so the curve "approaches"
-    if (curveFrontTarget < 0) {
-      curveFrontTarget += gameSpeed * 8 // front approaches faster than road scrolls
-      curveFrontTarget = Math.max(0, curveFrontTarget)
+    // Propagate curve front toward player at road scroll speed
+    // This makes the curve visually "approach" from the horizon
+    if (curveFrontZ < -2) {
+      curveFrontZ += gameSpeed * 60 * realDelta // front moves toward player
+    } else {
+      curveFrontZ = 0 // front has reached the player — full curve everywhere
     }
-    // Lerp actual front position toward target
-    curveFrontZ += (curveFrontTarget - curveFrontZ) * Math.min(realDelta * 3, 0.2)
   } else {
     roadCurve.value += (0 - roadCurve.value) * Math.min(realDelta * 1.0, 0.06)
   }
@@ -2437,39 +2440,39 @@ const animate = () => {
     const bossType = STAGES[currentStage.value].bossType
     
     if (bossCharging) {
-      // Truck charge — aim at player's lane, with some swerve
+      // Truck charge — locked target lane at charge start, straight line charge
       bossChargeTimer += realDelta
       const chargeSpeed = gameSpeed * 1.2
       boss.position.z += chargeSpeed
-      // Target X: player's lane + road curve offset
-      const playerLaneX = (currentLane - 1) * laneWidth + getCurveX(boss.position.z)
-      // Converge toward player lane (strong pull)
-      boss.position.x += (playerLaneX - boss.position.x) * 0.08
-      // Add swerve as SET (not accumulate)
-      boss.position.x += Math.sin(bossChargeTimer * 5) * 0.15
+      // Use locked target X from charge start (no retargeting)
+      const targetX = boss.userData.chargeTargetX + getCurveX(boss.position.z)
+      boss.position.x += (targetX - boss.position.x) * 0.15
       // Clamp X to road width
       boss.position.x = Math.max(-laneWidth * 1.5, Math.min(laneWidth * 1.5, boss.position.x))
       if (bossType === 'truck') boss.position.y = getSurfaceY(boss.position.z)
       
-      // Charge past player but not off screen
+      // Charge past player then retreat
       if (boss.position.z > 5 || bossChargeTimer > 4) {
         bossCharging = false
         boss.userData = boss.userData || {}
         boss.userData.retreatPhase = true
         boss.userData.retreatTimer = 0
         boss.userData.retreatStartX = boss.position.x
+        boss.userData.retreatStartZ = boss.position.z
         boss.userData.chargeMissTriggered = false
       }
     } else if (boss.userData?.retreatPhase) {
-      // Slow swervy retreat back to z=-50 (further back for longer break)
+      // Retreat back to z=-50 (far away)
       boss.userData.retreatTimer += realDelta
-      const retreatDuration = 4.0 // seconds to retreat (longer)
+      const retreatDuration = 3.5
       const t = Math.min(boss.userData.retreatTimer / retreatDuration, 1)
-      boss.position.z = 5 + (-50 - 5) * t // lerp from z=5 back to z=-50
-      // Swerve: sine oscillation that dampens as it retreats
-      boss.position.x = boss.userData.retreatStartX + Math.sin(t * Math.PI * 3) * 2.5 * (1 - t)
-      // Clamp
-      boss.position.x = Math.max(-laneWidth * 1.5, Math.min(laneWidth * 1.5, boss.position.x))
+      // Ease-out retreat
+      const easeT = 1 - Math.pow(1 - t, 3)
+      const startZ = boss.userData.retreatStartZ || 5
+      boss.position.z = startZ + (-50 - startZ) * easeT
+      // Straighten X back to center as it retreats
+      const targetX = getCurveX(boss.position.z)
+      boss.position.x += (targetX - boss.position.x) * 0.1
       if (bossType === 'truck') boss.position.y = getSurfaceY(boss.position.z)
       if (t >= 1) {
         boss.userData.retreatPhase = false
@@ -2567,23 +2570,19 @@ const animate = () => {
     }
   }
   
-  // Truck charge collision (use horizontal distance for better feel)
+  // Boss collision: any touch = game over for both truck and dragon
   if (bossCharging && boss) {
     const dx = player.position.x - boss.position.x
     const dz = player.position.z - boss.position.z
-    const horizDist = Math.sqrt(dx * dx + dz * dz)
-    // Must be close in Z (truck passing through player's Z range) AND close in X
     const inZRange = Math.abs(dz) < 3
-    if (inZRange && Math.abs(dx) < 1.5 && !isInvincible) {
-      // Truck hit!
-      bossHealth.value = Math.min(100, bossHealth.value + 15)
+    if (inZRange && Math.abs(dx) < 2.0 && !isInvincible) {
+      // Boss hit — instant kill
+      gameOver.value = true
       createFloatingText('HIT!', player.position.clone().add(new THREE.Vector3(0, 2, 0)), '#ff4444')
-      cameraShakeTimer = 0.8; cameraShakeIntensity = 0.4
-      isInvincible = true
-      setTimeout(() => { isInvincible = false }, 1500)
+      cameraShakeTimer = 1.0; cameraShakeIntensity = 0.5
     }
-    // Near-miss: in Z range but X just barely missed
-    if (inZRange && !boss.userData?.chargeMissTriggered && Math.abs(dx) >= 1.5 && Math.abs(dx) < 3.0) {
+    // Near-miss dodge: close but escaped
+    if (inZRange && !boss.userData?.chargeMissTriggered && Math.abs(dx) >= 2.0 && Math.abs(dx) < 4.0) {
       if (!boss.userData) boss.userData = {}
       boss.userData.chargeMissTriggered = true
       bossHealth.value -= 12
@@ -3743,8 +3742,8 @@ const restartGame = () => {
   roadCurveTarget.value = 0
   curveChangeTimer.value = 0
   nextCurveChange.value = 3
-  curveFrontZ = -200
-  curveFrontTarget = -200
+  curveFrontZ = 0
+  curveFrontTarget = 0
   currentStage.value = debugStartStage.value >= 0 ? debugStartStage.value : 0
   stageTime.value = debugStartStage.value >= 0 ? Math.max(0, STAGES[debugStartStage.value].stageDuration - 20) : 0
   bossWarning.value = false
