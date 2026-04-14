@@ -107,7 +107,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v4.0.6';
+const VERSION = 'v4.0.7';
 
 // Audio system
 let audioCtx = null;
@@ -425,7 +425,7 @@ const STAGES = [
   },
   {
     id: 'medieval',
-    name: 'The Ancient Path',
+    name: 'The Medieval Path',
     roadTexture: 'cobblestone',
     difficultyMultiplier: 1.3,
     bossType: 'dragon',
@@ -2333,8 +2333,18 @@ const animate = () => {
         currentStage.value = nextStage
         applyStageVisuals(nextStage)
         createFloatingText(`STAGE ${nextStage + 1}: ${STAGES[nextStage].name}`, player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#ffffff')
+        // Reset for new stage — like a new game but score continues
+        gameDuration = 0 // reset speed/difficulty to base
+        stageTime.value = 0
+        // Clear remaining obstacles + coins
+        obstacles.forEach(obs => scene.remove(obs.mesh))
+        obstacles = []
+        coins.forEach(coin => scene.remove(coin.mesh))
+        coins = []
+        powerups.forEach(pw => scene.remove(pw.mesh))
+        powerups = []
+        spawnInterval = 1.2
         setTimeout(() => {
-          stageTime.value = 0
           bossActive.value = false
           bossDefeated.value = false
           stageTransitioning.value = false
@@ -2351,20 +2361,34 @@ const animate = () => {
     const sway = Math.sin(Date.now() * 0.001) * 3
     
     if (bossCharging) {
-      // Truck charge attack — rush forward and swerve
+      // Truck charge attack — rush toward player with wide swerves
       bossChargeTimer += realDelta
-      const chargeSpeed = gameSpeed * 3
+      const chargeSpeed = gameSpeed * 1.5 // slower charge so player can dodge
       boss.position.z += chargeSpeed
-      // Swerve left/right during charge
-      boss.position.x += Math.sin(bossChargeTimer * 8) * 0.3
-      boss.position.x = boss.position.x + getCurveX(boss.position.z) - boss.position.x // follow curve
+      // Wide swerve during charge
+      boss.position.x += Math.sin(bossChargeTimer * 6) * 0.5
+      // Converge toward player's lane
+      const targetX = currentLane * laneWidth + getCurveX(boss.position.z)
+      boss.position.x += (targetX - boss.position.x) * 0.03
       if (bossType === 'truck') boss.position.y = getSurfaceY(boss.position.z)
       
-      // Check if charge reached player
-      if (boss.position.z > -5 || bossChargeTimer > 2.5) {
+      // Check if charge reached player area
+      if (boss.position.z > -5 || bossChargeTimer > 3) {
         bossCharging = false
-        boss.position.z = -40 // retreat
+        // Slow swervy retreat
+        boss.userData.retreatPhase = true
+        boss.userData.retreatTimer = 0
         if (boss && boss.userData) boss.userData.chargeMissTriggered = false
+      }
+    } else if (boss.userData?.retreatPhase) {
+      // Slow swervy retreat back to z=-40
+      boss.userData.retreatTimer += realDelta
+      boss.position.z -= gameSpeed * 0.5 // slow retreat
+      boss.position.x += Math.sin(boss.userData.retreatTimer * 4) * 0.4 // wide swerves
+      if (bossType === 'truck') boss.position.y = getSurfaceY(boss.position.z)
+      if (boss.position.z <= -40) {
+        boss.userData.retreatPhase = false
+        boss.position.z = -40
       }
     } else {
       // Non-charge: truck dodges left/right quickly
@@ -2376,6 +2400,7 @@ const animate = () => {
         boss.position.y = getSurfaceY(boss.position.z)
         boss.rotation.y = 0 // face player
       } else {
+        boss.position.x = getCurveX(boss.position.z)
         boss.position.y = 5 + Math.sin(Date.now() * 0.002) * 1.5 + getSurfaceY(boss.position.z)
         boss.rotation.y += 0.02
       }
@@ -2709,9 +2734,11 @@ const animate = () => {
   obstacles.forEach((obs, index) => {
     obs.mesh.position.z += gameSpeed;
     // Road curvature: shift obstacles laterally based on depth
-    {
-      obs.mesh.position.x = (obs.mesh.userData.baseX !== undefined ? obs.mesh.userData.baseX : ((obs.lane - 1) * laneWidth)) + getCurveX(obs.mesh.position.z)
-    }
+    const baseX = obs.mesh.userData.baseX !== undefined ? obs.mesh.userData.baseX : ((obs.lane - 1) * laneWidth)
+    const laneX = baseX + getCurveX(obs.mesh.position.z)
+    // For police/UFO: add accumulated drift offset
+    const driftOffset = obs.mesh.userData.driftX || 0
+    obs.mesh.position.x = laneX + driftOffset
     obs.mesh.position.y = (obs.mesh.baseY || 0) + getSurfaceY(obs.mesh.position.z);
     obs.mesh.rotation.x = getSurfaceTilt(obs.mesh.position.z);
     // Spin UFOs, ground obstacles gentle spin
@@ -2725,24 +2752,27 @@ const animate = () => {
         obs.mesh.userData.ufoSwayDir = Math.random() > 0.5 ? 1 : -1;
         obs.mesh.userData.ufoSwaySpeed = 0.04 + Math.random() * 0.02;
         obs.mesh.userData.ufoSwayDist = 0;
-        obs.mesh.userData.ufoSwayMaxDist = 1.5 + Math.random() * 2; // 1.5-3.5 units before turning
+        obs.mesh.userData.ufoSwayMaxDist = 1.5 + Math.random() * 2;
+        obs.mesh.userData.driftX = 0;
       }
-      obs.mesh.position.x += obs.mesh.userData.ufoSwayDir * obs.mesh.userData.ufoSwaySpeed;
+      obs.mesh.userData.driftX += obs.mesh.userData.ufoSwayDir * obs.mesh.userData.ufoSwaySpeed;
       obs.mesh.userData.ufoSwayDist += obs.mesh.userData.ufoSwaySpeed;
       if (obs.mesh.userData.ufoSwayDist >= obs.mesh.userData.ufoSwayMaxDist) {
         obs.mesh.userData.ufoSwayDir *= -1;
         obs.mesh.userData.ufoSwayDist = 0;
-        obs.mesh.userData.ufoSwayMaxDist = 1.5 + Math.random() * 2; // new random distance
+        obs.mesh.userData.ufoSwayMaxDist = 1.5 + Math.random() * 2;
       }
       // Keep within road boundaries
-      if (obs.mesh.position.x < -laneWidth * 1.5) obs.mesh.userData.ufoSwayDir = 1;
-      else if (obs.mesh.position.x > laneWidth * 1.5) obs.mesh.userData.ufoSwayDir = -1;
+      const maxDriftUFO = laneWidth * 1.5;
+      if (obs.mesh.userData.driftX < -maxDriftUFO) obs.mesh.userData.ufoSwayDir = 1;
+      else if (obs.mesh.userData.driftX > maxDriftUFO) obs.mesh.userData.ufoSwayDir = -1;
     }
     
     // Barrel drift: move sideways
-    if (obs.obstacleType === 'barrel' && obs.mesh.userData) {
-      obs.mesh.position.x += obs.mesh.userData.driftDir * obs.mesh.userData.driftSpeed;
-      if (obs.mesh.position.x < -laneWidth * 1.5 || obs.mesh.position.x > laneWidth * 1.5) {
+    if (obs.obstacleType === 'barrel' && obs.mesh.userData.driftDir) {
+      obs.mesh.userData.driftX = (obs.mesh.userData.driftX || 0) + obs.mesh.userData.driftDir * obs.mesh.userData.driftSpeed;
+      const maxDriftBarrel = laneWidth * 1.2;
+      if (obs.mesh.userData.driftX < -maxDriftBarrel || obs.mesh.userData.driftX > maxDriftBarrel) {
         obs.mesh.userData.driftDir *= -1;
       }
     }
@@ -2766,13 +2796,15 @@ const animate = () => {
     if (obs.obstacleType === 'police') {
       if (!obs.mesh.userData.policeDir) {
         obs.mesh.userData.policeDir = Math.random() > 0.5 ? 1 : -1;
-        obs.mesh.userData.policeSpeed = 0.05 * difficultyMultiplier; // faster lateral sweep
+        obs.mesh.userData.policeSpeed = 0.05 * difficultyMultiplier;
+        obs.mesh.userData.driftX = 0;
       }
-      obs.mesh.position.x += obs.mesh.userData.policeDir * obs.mesh.userData.policeSpeed * delta * 60;
-      // Bounce between road edges
-      if (obs.mesh.position.x < -laneWidth * 1.5) {
+      obs.mesh.userData.driftX += obs.mesh.userData.policeDir * obs.mesh.userData.policeSpeed * delta * 60;
+      // Bounce between road edges — full road width
+      const maxDrift = laneWidth * 2; // can cross all 3 lanes
+      if (obs.mesh.userData.driftX < -maxDrift) {
         obs.mesh.userData.policeDir = 1;
-      } else if (obs.mesh.position.x > laneWidth * 1.5) {
+      } else if (obs.mesh.userData.driftX > maxDrift) {
         obs.mesh.userData.policeDir = -1;
       }
     }
@@ -3592,7 +3624,8 @@ const restartGame = () => {
   curveChangeTimer.value = 0
   nextCurveChange.value = 3
   currentStage.value = debugStartStage.value
-  stageTime.value = debugStartStage.value > 0 ? STAGES[debugStartStage.value].stageDuration - 10 : 0
+  stageTime.value = debugStartStage.value > 0 ? Math.max(0, STAGES[debugStartStage.value].stageDuration - 20) : 0
+  bossWarning.value = false
   bossActive.value = false
   bossDefeated.value = false
   bossHealth.value = 100
