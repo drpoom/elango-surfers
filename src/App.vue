@@ -8,6 +8,9 @@
       <div id="powerup-indicator" v-if="activePowerup">{{ powerupIcon }} {{ powerupName }} {{ powerupTimeLeft }}s</div>
       <div id="fly-indicator" v-if="micEnabledRef">&#x1F3A4;&#x2708;ï¸</div>
       <div id="stage-indicator" v-if="!gameOver">STAGE {{ currentStage + 1 }}: {{ STAGES[currentStage].name }}</div>
+      <div id="boss-warning" v-if="bossWarning && !bossActive" style="color:#ff4444;font-size:20px;font-weight:bold;animation:pulse 0.5s infinite">
+        ⚠️ BOSS INCOMING! ⚠️
+      </div>
       <div id="boss-bar" v-if="bossActive && !bossDefeated">
         <div class="boss-label">BOSS</div>
         <div class="boss-health-track"><div class="boss-health-fill" :style="{ width: bossHealth + '%' }"></div></div>
@@ -101,7 +104,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v4.0.2';
+const VERSION = 'v4.0.3';
 
 // Audio system
 let audioCtx = null;
@@ -379,6 +382,7 @@ const stageTime = ref(0)
 const bossActive = ref(false)
 const bossHealth = ref(100)
 const bossDefeated = ref(false)
+const bossWarning = ref(false)
 const roadCurve = ref(0)
 const roadCurveTarget = ref(0)
 const stageTransitioning = ref(false)
@@ -413,7 +417,7 @@ const STAGES = [
     difficultyMultiplier: 1.0,
     bossType: 'truck',
     bossDuration: 25,
-    stageDuration: 60,
+    stageDuration: 90,
   },
   {
     id: 'medieval',
@@ -422,7 +426,7 @@ const STAGES = [
     difficultyMultiplier: 1.3,
     bossType: 'dragon',
     bossDuration: 25,
-    stageDuration: 60,
+    stageDuration: 90,
   }
 ]
 
@@ -504,7 +508,7 @@ const getSurfaceTilt = (z) => {
 // Objects further away appear more offset, creating a visual "turn"
 const getCurveX = (z) => {
   const depth = Math.max(0, -z); // how far ahead (positive)
-  return roadCurve.value * (depth / 80) * 3;
+  return roadCurve.value * (depth / 80) * 8;
 };
 
 // Voice/fly controls
@@ -2163,7 +2167,7 @@ const animate = () => {
   if (!bossActive.value) {
     curveChangeTimer.value += realDelta
     if (curveChangeTimer.value >= nextCurveChange.value) {
-      roadCurveTarget.value = (Math.random() - 0.5) * 1.6 // -0.8 to 0.8
+      roadCurveTarget.value = (Math.random() - 0.5) * 2.4 // -1.2 to 1.2
       nextCurveChange.value = 8 + Math.random() * 7 // 8-15 seconds
       curveChangeTimer.value = 0
     }
@@ -2175,9 +2179,19 @@ const animate = () => {
   // === UPDATE ROAD MESH CURVE ===
   updateRoadCurve();
 
-  // === BOSS SPAWN TRIGGER ===
+  // === BOSS WARNING + SPAWN TRIGGER ===
   const stage = STAGES[currentStage.value]
-  if (stageTime.value >= stage.stageDuration && !bossActive.value && !bossDefeated.value && !stageTransitioning.value) {
+  const bossSpawnTime = stage.stageDuration
+  
+  // Warning 5s before boss
+  if (stageTime.value >= bossSpawnTime - 5 && stageTime.value < bossSpawnTime && !bossActive.value && !bossWarning.value && !bossDefeated.value) {
+    bossWarning.value = true
+    createFloatingText('\u26A0\uFE0F BOSS INCOMING! \u26A0\uFE0F', player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#ff4444')
+  }
+  
+  // Spawn boss
+  if (stageTime.value >= bossSpawnTime && !bossActive.value && !bossDefeated.value && !stageTransitioning.value) {
+    bossWarning.value = false
     bossActive.value = true
     bossHealth.value = 100
     createFloatingText(`\u26A0\uFE0F ${stage.bossType === 'truck' ? 'ROAD RAGE TRUCK' : 'SKY TERROR DRAGON'} \u26A0\uFE0F`, player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#ff4444')
@@ -2567,7 +2581,7 @@ const animate = () => {
   }
 
   // During bullet time, stretch spawn interval so objects don't pile up
-  if (time - lastSpawnTime > spawnInterval && !bonusNoSpawn) {
+  if (time - lastSpawnTime > spawnInterval && !bonusNoSpawn && !bossActive.value) {
     if (Math.random() < 0.7) {
     if (Math.random() < 0.3) {
       spawnFloatingObstacle();
