@@ -111,7 +111,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v4.1.0';
+const VERSION = 'v4.1.1';
 
 // Audio system
 let audioCtx = null;
@@ -517,9 +517,13 @@ const getSurfaceTilt = (z) => {
 const getCurveX = (z) => {
   if (!roadCurveEnabled.value) return 0;
   const depth = Math.max(0, -z); // how far ahead (positive)
-  // Quadratic curve: straight near player, bends more at distance (looks like real road turning)
-  const t = depth / 80; // normalize depth (0 = at player, 1 = far horizon)
-  return roadCurve.value * t * t * 12; // quadratic — offset grows with square of distance
+  // Road stays straight for first 15 units, then curves from that point
+  const curveOnset = 15; // depth where curve begins
+  if (depth < curveOnset) return 0; // straight near player
+  const curveDepth = depth - curveOnset; // distance past onset point
+  const t = curveDepth / 65; // normalize (0 at onset, 1 at far horizon)
+  // Cubic: gentle start at onset, dramatic curve at distance
+  return roadCurve.value * t * t * t * 16;
 };
 
 // Voice/fly controls
@@ -2378,8 +2382,8 @@ const animate = () => {
       boss.position.x = Math.max(-laneWidth * 1.5, Math.min(laneWidth * 1.5, boss.position.x))
       if (bossType === 'truck') boss.position.y = getSurfaceY(boss.position.z)
       
-      // Reached player area? Retreat
-      if (boss.position.z > -5 || bossChargeTimer > 3) {
+      // Charge past player but not off screen
+      if (boss.position.z > 5 || bossChargeTimer > 4) {
         bossCharging = false
         boss.userData = boss.userData || {}
         boss.userData.retreatPhase = true
@@ -2388,11 +2392,11 @@ const animate = () => {
         boss.userData.chargeMissTriggered = false
       }
     } else if (boss.userData?.retreatPhase) {
-      // Slow swervy retreat back to z=-40
+      // Slow swervy retreat back to z=-50 (further back for longer break)
       boss.userData.retreatTimer += realDelta
-      const retreatDuration = 3.5 // seconds to retreat
+      const retreatDuration = 4.0 // seconds to retreat (longer)
       const t = Math.min(boss.userData.retreatTimer / retreatDuration, 1)
-      boss.position.z = -5 + (-40 - (-5)) * t // lerp Z back
+      boss.position.z = 5 + (-50 - 5) * t // lerp from z=5 back to z=-50
       // Swerve: sine oscillation that dampens as it retreats
       boss.position.x = boss.userData.retreatStartX + Math.sin(t * Math.PI * 3) * 2.5 * (1 - t)
       // Clamp
@@ -2400,12 +2404,12 @@ const animate = () => {
       if (bossType === 'truck') boss.position.y = getSurfaceY(boss.position.z)
       if (t >= 1) {
         boss.userData.retreatPhase = false
-        boss.position.z = -40
+        boss.position.z = -50
       }
     } else {
       // Idle: hover/sway
       const sway = Math.sin(Date.now() * 0.001) * 3
-      boss.position.z = -40 + sway
+      boss.position.z = -50 + sway
       if (bossType === 'truck') {
         const truckLane = Math.sin(Date.now() * 0.003) * 1.5
         boss.position.x = truckLane + getCurveX(boss.position.z)
@@ -2494,24 +2498,27 @@ const animate = () => {
     }
   }
   
-  // Truck charge collision
+  // Truck charge collision (use horizontal distance for better feel)
   if (bossCharging && boss) {
-    const chargeDist = player.position.distanceTo(boss.position)
-    if (chargeDist < 2.5 && !isInvincible) {
+    const dx = player.position.x - boss.position.x
+    const dz = player.position.z - boss.position.z
+    const horizDist = Math.sqrt(dx * dx + dz * dz)
+    // Must be close in Z (truck passing through player's Z range) AND close in X
+    const inZRange = Math.abs(dz) < 3
+    if (inZRange && Math.abs(dx) < 1.5 && !isInvincible) {
+      // Truck hit!
       bossHealth.value = Math.min(100, bossHealth.value + 15)
-      createFloatingText('💥', player.position.clone().add(new THREE.Vector3(0, 2, 0)), '#ff4444')
+      createFloatingText('HIT!', player.position.clone().add(new THREE.Vector3(0, 2, 0)), '#ff4444')
       cameraShakeTimer = 0.8; cameraShakeIntensity = 0.4
       isInvincible = true
       setTimeout(() => { isInvincible = false }, 1500)
-      bossCharging = false
-      boss.position.z = -40
     }
-    // Near-miss dodge damages boss
-    if (!boss.userData?.chargeMissTriggered && chargeDist < 3.5 && chargeDist >= 2.5) {
+    // Near-miss: in Z range but X just barely missed
+    if (inZRange && !boss.userData?.chargeMissTriggered && Math.abs(dx) >= 1.5 && Math.abs(dx) < 3.0) {
       if (!boss.userData) boss.userData = {}
       boss.userData.chargeMissTriggered = true
       bossHealth.value -= 12
-      createFloatingText('⚡', player.position.clone().add(new THREE.Vector3(0, 2, 0)), '#44ff44')
+      createFloatingText('DODGE!', player.position.clone().add(new THREE.Vector3(0, 2, 0)), '#44ff44')
     }
   }
 
@@ -2807,15 +2814,18 @@ const animate = () => {
       else if (obs.mesh.userData.driftX > maxDriftUFO) obs.mesh.userData.ufoSwayDir = -1;
     }
     
-    // Barrel drift: roll sideways with rotation
+    // Barrel: roll across street like a log
     if (obs.obstacleType === 'barrel' && obs.mesh.userData.driftDir) {
       obs.mesh.userData.driftX = (obs.mesh.userData.driftX || 0) + obs.mesh.userData.driftDir * obs.mesh.userData.driftSpeed;
       const maxDriftBarrel = laneWidth * 1.2;
       if (obs.mesh.userData.driftX < -maxDriftBarrel || obs.mesh.userData.driftX > maxDriftBarrel) {
         obs.mesh.userData.driftDir *= -1;
       }
-      // Roll: rotate around Z axis proportional to sideways drift
-      obs.mesh.rotation.z += obs.mesh.userData.driftDir * obs.mesh.userData.driftSpeed * 3;
+      // Roll: rotate the barrel cylinder child, not the whole group (avoid surface tilt conflict)
+      const barrelChild = obs.mesh.children[0]; // first child is the barrel cylinder
+      if (barrelChild) {
+        barrelChild.rotation.z += obs.mesh.userData.driftDir * obs.mesh.userData.driftSpeed * 4;
+      }
     }
     // Red car / bus / fireengine: move forward or backward at noticeable speed (slower than player)
     if (obs.obstacleType === 'car' || obs.obstacleType === 'bus' || obs.obstacleType === 'fireengine') {
