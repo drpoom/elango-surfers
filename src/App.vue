@@ -448,6 +448,13 @@ const getSurfaceTilt = (z) => {
   return -dist / EARTH_R; // radians, objects lean back
 };
 
+// Road curvature: returns X offset at a given Z depth based on current roadCurve
+// Objects further away appear more offset, creating a visual "turn"
+const getCurveX = (z) => {
+  const depth = Math.max(0, -z); // how far ahead (positive)
+  return roadCurve.value * (depth / 80) * 3;
+};
+
 // Voice/fly controls
 let micStream = null;
 let micAnalyser = null;
@@ -582,6 +589,8 @@ let trees = [];
 let buildings = [];
 let composer;
 let groundTexture;
+let roadMesh, grassMesh, leftCurbMesh, rightCurbMesh;
+let roadOrigPositions, grassOrigPositions, leftCurbOrigPositions, rightCurbOrigPositions;
 let skyTextures = {};
 let mountainMesh;
 let textureLoader = new THREE.TextureLoader();
@@ -918,6 +927,10 @@ const createGround = () => {
   ground.receiveShadow = false;
   ground.name = 'road';
   scene.add(ground);
+  roadMesh = ground;
+  // Save original vertex positions for curve animation
+  roadOrigPositions = new Float32Array(gPos.array.length);
+  roadOrigPositions.set(gPos.array);
   
   // Add colorful grass borders with AI texture
   // Priority load: grass (large surface area)
@@ -945,6 +958,9 @@ const createGround = () => {
   grass.position.set(0, -0.1, -50); // just below road
   grass.receiveShadow = false;
   scene.add(grass);
+  grassMesh = grass;
+  grassOrigPositions = new Float32Array(gPosG.array.length);
+  grassOrigPositions.set(gPosG.array);
   
   // Road edge curbs (curved to match earth)
   const curbGeo = new THREE.BoxGeometry(0.3, 0.15, 200, 1, 1, 60); // 60 segments for curve
@@ -962,10 +978,62 @@ const createGround = () => {
   leftCurb.position.set(-7.5, 0.07, -50);
   leftCurb.receiveShadow = false;
   scene.add(leftCurb);
-  const rightCurb = new THREE.Mesh(curbGeo, curbMat);
+  leftCurbMesh = leftCurb;
+  leftCurbOrigPositions = new Float32Array(curbPos.array.length);
+  leftCurbOrigPositions.set(curbPos.array);
+  const rightCurb = new THREE.Mesh(curbGeo.clone(), curbMat.clone());
   rightCurb.position.set(7.5, 0.07, -50);
   rightCurb.receiveShadow = false;
   scene.add(rightCurb);
+  rightCurbMesh = rightCurb;
+  rightCurbOrigPositions = new Float32Array(curbPos.array.length);
+  rightCurbOrigPositions.set(curbPos.array);
+};
+
+const updateRoadCurve = () => {
+  // Bend road/grass/curb mesh vertices based on current roadCurve
+  // Each vertex's X offset = getCurveX(worldZ) where worldZ depends on vertex position
+  
+  if (roadMesh && roadOrigPositions) {
+    const pos = roadMesh.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const origY = roadOrigPositions[i * 3 + 1]; // Y in plane local = Z axis (long)
+      const worldZ = -origY - 50;
+      const curveX = getCurveX(worldZ);
+      pos.setX(i, roadOrigPositions[i * 3] + curveX);
+    }
+    pos.needsUpdate = true;
+    roadMesh.geometry.computeVertexNormals();
+  }
+  
+  if (grassMesh && grassOrigPositions) {
+    const pos = grassMesh.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const origY = grassOrigPositions[i * 3 + 1];
+      const worldZ = -origY - 50;
+      const curveX = getCurveX(worldZ);
+      pos.setX(i, grassOrigPositions[i * 3] + curveX);
+    }
+    pos.needsUpdate = true;
+    grassMesh.geometry.computeVertexNormals();
+  }
+  
+  // Curbs: vertices are in a BoxGeometry with Z as the long axis
+  // Need to also clone for right curb since they share geometry originally
+  const applyCurbCurve = (mesh, origPos) => {
+    if (!mesh || !origPos) return;
+    const pos = mesh.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const origZ = origPos[i * 3 + 2]; // Z in box = long axis
+      const worldZ = origZ - 50;
+      const curveX = getCurveX(worldZ);
+      pos.setX(i, origPos[i * 3] + curveX);
+    }
+    pos.needsUpdate = true;
+    mesh.geometry.computeVertexNormals();
+  };
+  applyCurbCurve(leftCurbMesh, leftCurbOrigPositions);
+  applyCurbCurve(rightCurbMesh, rightCurbOrigPositions);
 };
 
 const createLaneMarkers = () => {
@@ -1304,6 +1372,7 @@ const createBackgroundElements = () => {
       treeZ
     );
     tree.baseY = treeBaseY;
+    tree.baseX = tree.position.x; // store for road curve
     scene.add(tree);
     trees.push(tree);
   }
@@ -1353,6 +1422,7 @@ const createBackgroundElements = () => {
     );
     scene.add(buildingGroup);
     buildingGroup.baseY = height / 2;
+    buildingGroup.baseX = buildingGroup.position.x; // store for road curve
     buildings.push(buildingGroup);
   }
 };
@@ -1947,6 +2017,9 @@ const animate = () => {
     roadCurve.value += (0 - roadCurve.value) * Math.min(realDelta * 0.5, 0.05)
   }
 
+  // === UPDATE ROAD MESH CURVE ===
+  updateRoadCurve();
+
   // === BOSS SPAWN TRIGGER ===
   const stage = STAGES[currentStage.value]
   if (stageTime.value >= stage.stageDuration && !bossActive.value && !bossDefeated.value && !stageTransitioning.value) {
@@ -1983,6 +2056,7 @@ const animate = () => {
   if (boss && bossActive.value && !bossDefeated.value) {
     boss.rotation.y += 0.02
     boss.position.z = -40 + Math.sin(Date.now() * 0.001) * 3
+      boss.position.x = getCurveX(boss.position.z)
     if (boss.name === 'boss') {
       boss.position.y = STAGES[currentStage.value].bossType === 'truck' ? 1.5 + getSurfaceY(boss.position.z) : 6 + Math.sin(Date.now() * 0.002) * 1.5 + getSurfaceY(boss.position.z)
     }
@@ -2011,11 +2085,8 @@ const animate = () => {
   // Bonus portal animation & collection
   if (bonusPortal) {
     bonusPortal.mesh.position.z += gameSpeed;
-    // Road curve offset
-    {
-      const depthFactor = Math.abs(bonusPortal.mesh.position.z) / 80
-      bonusPortal.mesh.position.x += roadCurve.value * depthFactor * realDelta * 2
-    }
+    // Road curve: absolute position based on lane + curve offset
+    bonusPortal.mesh.position.x = ((bonusPortal.lane - 1) * laneWidth) + getCurveX(bonusPortal.mesh.position.z)
     // Curved earth
     bonusPortal.mesh.position.y = (bonusPortal.mesh.baseY || 1.5) + getSurfaceY(bonusPortal.mesh.position.z);
     bonusPortal.mesh.rotation.x = getSurfaceTilt(bonusPortal.mesh.position.z);
@@ -2129,7 +2200,7 @@ const animate = () => {
         coinMesh.position.set(lane * laneWidth, 0.5, z);
         coinMesh.rotation.x = Math.PI / 2;
         scene.add(coinMesh);
-        bonusCoins.push({ mesh: coinMesh, collected: false });
+        bonusCoins.push({ mesh: coinMesh, collected: false, baseX: lane * laneWidth });
       }
       scene.userData.bonusEnvActive = true;
       
@@ -2250,8 +2321,7 @@ const animate = () => {
     obs.mesh.position.z += gameSpeed;
     // Road curvature: shift obstacles laterally based on depth
     {
-      const depthFactor = Math.abs(obs.mesh.position.z) / 80
-      obs.mesh.position.x += roadCurve.value * depthFactor * realDelta * 2
+      obs.mesh.position.x = ((obs.lane - 1) * laneWidth) + getCurveX(obs.mesh.position.z)
     }
     obs.mesh.position.y = (obs.mesh.baseY || 0) + getSurfaceY(obs.mesh.position.z);
     obs.mesh.rotation.x = getSurfaceTilt(obs.mesh.position.z);
@@ -2454,19 +2524,13 @@ const animate = () => {
       } else {
         // Blocked by obstacle - continue normal movement
         coin.mesh.position.z += gameSpeed;
-        {
-          const depthFactor = Math.abs(coin.mesh.position.z) / 80
-          coin.mesh.position.x += roadCurve.value * depthFactor * realDelta * 2
-        }
+        coin.mesh.position.x = ((coin.lane - 1) * laneWidth) + getCurveX(coin.mesh.position.z);
         coin.mesh.rotation.y += 0.1;
       }
     } else {
       // No magnet - normal movement
       coin.mesh.position.z += gameSpeed;
-      {
-        const depthFactor = Math.abs(coin.mesh.position.z) / 80
-        coin.mesh.position.x += roadCurve.value * depthFactor * realDelta * 2
-      }
+      coin.mesh.position.x = ((coin.lane - 1) * laneWidth) + getCurveX(coin.mesh.position.z);
       coin.mesh.rotation.y += 0.1;
     }
     
@@ -2501,10 +2565,7 @@ const animate = () => {
   bonusCoins.forEach((bc, index) => {
     if (bc.collected) return;
     bc.mesh.position.z += gameSpeed;
-    {
-      const depthFactor = Math.abs(bc.mesh.position.z) / 80
-      bc.mesh.position.x += roadCurve.value * depthFactor * realDelta * 2
-    }
+    bc.mesh.position.x = (bc.baseX || 0) + getCurveX(bc.mesh.position.z);
     bc.mesh.rotation.y += 0.1;
     bc.mesh.position.y = 0.5 + getSurfaceY(bc.mesh.position.z);
     bc.mesh.rotation.x = getSurfaceTilt(bc.mesh.position.z);
@@ -2533,10 +2594,7 @@ const animate = () => {
     if (pw.collected) return;
     
     pw.mesh.position.z += gameSpeed;
-    {
-      const depthFactor = Math.abs(pw.mesh.position.z) / 80
-      pw.mesh.position.x += roadCurve.value * depthFactor * realDelta * 2
-    }
+    pw.mesh.position.x = ((pw.lane - 1) * laneWidth) + getCurveX(pw.mesh.position.z);
     pw.mesh.rotation.y += 0.15;
     // Curved earth
     pw.mesh.position.y = (pw.mesh.baseY || 1) + getSurfaceY(pw.mesh.position.z);
@@ -2637,16 +2695,14 @@ const animate = () => {
   // Animate trees moving
   trees.forEach((tree) => {
     tree.position.z += gameSpeed;
-    // Road curve offset for trees
-    {
-      const depthFactor = Math.abs(tree.position.z) / 80
-      tree.position.x += roadCurve.value * depthFactor * realDelta * 2
-    }
+    // Road curve: absolute position from baseX + curve offset
+    tree.position.x = (tree.baseX || tree.position.x) + getCurveX(tree.position.z);
     tree.position.y = (tree.baseY || 0) + getSurfaceY(tree.position.z);
     if (tree.position.z > 10) {
       const side = tree.position.x > 0 ? 1 : -1;
       tree.position.z = -Math.random() * 80;
       tree.position.x = side * (8 + Math.random() * 10);
+      tree.baseX = tree.position.x; // update baseX for road curve
       tree.position.y = (tree.baseY || 0) + getSurfaceY(tree.position.z);
     }
   });
@@ -2655,10 +2711,8 @@ const animate = () => {
   buildings.forEach((building) => {
     building.position.z += gameSpeed;
     // Road curve offset for buildings
-    {
-      const depthFactor = Math.abs(building.position.z) / 80
-      building.position.x += roadCurve.value * depthFactor * realDelta * 2
-    }
+    // Road curve: absolute position from baseX + curve offset
+    building.position.x = (building.baseX || building.position.x) + getCurveX(building.position.z);
     // Curved earth
     building.position.y = (building.baseY || 0) + getSurfaceY(building.position.z);
     building.rotation.x = getSurfaceTilt(building.position.z);
@@ -2666,6 +2720,7 @@ const animate = () => {
       const side = building.position.x > 0 ? 1 : -1;
       building.position.z = -20 - Math.random() * 60;
       building.position.x = side * (15 + Math.random() * 10);
+      building.baseX = building.position.x; // update baseX for road curve
       building.position.y = (building.baseY || 0) + getSurfaceY(building.position.z);
     }
   });
