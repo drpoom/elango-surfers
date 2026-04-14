@@ -111,7 +111,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v4.1.2';
+const VERSION = 'v4.1.3';
 
 // Audio system
 let audioCtx = null;
@@ -463,6 +463,8 @@ function applyStageVisuals(stageIndex) {
     if (grassMesh) { grassMesh.material.color.set(0x2d5a1e); grassMesh.material.needsUpdate = true; }
     // Darker sky
     if (scene && scene.fog) { scene.fog.color.set(0x4a5568); scene.background = new THREE.Color(0x4a5568); }
+    // Medieval BGM: slow down playback for darker, more ominous feel
+    if (bgmAudio) bgmAudio.playbackRate = 0.75;
   } else {
     // Highway: restore original
     roadMesh.material.map = originalGroundTexture;
@@ -470,6 +472,8 @@ function applyStageVisuals(stageIndex) {
     roadMesh.material.needsUpdate = true;
     if (grassMesh) { grassMesh.material.color.set(0x3a7d2c); grassMesh.material.needsUpdate = true; }
     if (scene && scene.fog) { scene.fog.color.set(0x87ceeb); scene.background = new THREE.Color(0x87ceeb); }
+    // Highway BGM: normal speed
+    if (bgmAudio) bgmAudio.playbackRate = 1.0;
   }
 }
 
@@ -508,17 +512,22 @@ const getSurfaceTilt = (z) => {
 };
 
 // Road curvature: returns X offset at a given Z depth based on current roadCurve
-// Objects further away appear more offset, creating a visual "turn"
+// The curve has a 'front' that propagates from far away toward the player,
+// so you can SEE the curve approaching before it reaches you.
+let curveFrontZ = -200 // where the curve starts (far away, negative Z)
+let curveFrontTarget = -200
+
 const getCurveX = (z) => {
   if (!roadCurveEnabled.value) return 0;
   const depth = Math.max(0, -z); // how far ahead (positive)
-  // Road stays straight for first 15 units, then curves from that point
-  const curveOnset = 15; // depth where curve begins
-  if (depth < curveOnset) return 0; // straight near player
-  const curveDepth = depth - curveOnset; // distance past onset point
-  const t = curveDepth / 65; // normalize (0 at onset, 1 at far horizon)
-  // Cubic: gentle start at onset, dramatic curve at distance
-  return roadCurve.value * t * t * t * 16;
+  const frontDepth = Math.max(0, -curveFrontZ); // where curve starts
+  // If this vertex is BEHIND the curve front (closer to player than the front), no curve
+  if (depth < frontDepth) return 0;
+  // If this vertex is PAST the curve front, apply quadratic curve
+  const curveDepth = depth - frontDepth; // depth past the front
+  const maxDepth = 80 - frontDepth;
+  const t = Math.max(0, maxDepth > 0 ? curveDepth / maxDepth : 0);
+  return roadCurve.value * t * t * 12;
 };
 
 // Voice/fly controls
@@ -2267,16 +2276,28 @@ const animate = () => {
     curveChangeTimer.value += realDelta
     if (curveChangeTimer.value >= nextCurveChange.value) {
       if (Math.abs(roadCurveTarget.value) < 0.1) {
+        // Start a new curve — set front far away, it'll propagate toward player
         roadCurveTarget.value = (Math.random() > 0.5 ? 1 : -1) * (0.8 + Math.random() * 0.5)
+        curveFrontTarget = -100 // curve starts far away
         nextCurveChange.value = 2 + Math.random() * 1.5
       } else {
+        // Straighten out
         roadCurveTarget.value = 0
         nextCurveChange.value = 5 + Math.random() * 5
       }
       curveChangeTimer.value = 0
     }
+    // Lerp curve value
     const lerpSpeed = Math.abs(roadCurveTarget.value) > 0.1 ? Math.min(realDelta * 2.5, 0.15) : Math.min(realDelta * 1.5, 0.08)
     roadCurve.value += (roadCurveTarget.value - roadCurve.value) * lerpSpeed
+    // Propagate curve front toward player (0 = right at player position)
+    // The front moves at the same speed as the road, so the curve "approaches"
+    if (curveFrontTarget < 0) {
+      curveFrontTarget += gameSpeed * 8 // front approaches faster than road scrolls
+      curveFrontTarget = Math.max(0, curveFrontTarget)
+    }
+    // Lerp actual front position toward target
+    curveFrontZ += (curveFrontTarget - curveFrontZ) * Math.min(realDelta * 3, 0.2)
   } else {
     roadCurve.value += (0 - roadCurve.value) * Math.min(realDelta * 1.0, 0.06)
   }
@@ -3669,6 +3690,8 @@ const restartGame = () => {
   roadCurveTarget.value = 0
   curveChangeTimer.value = 0
   nextCurveChange.value = 3
+  curveFrontZ = -200
+  curveFrontTarget = -200
   currentStage.value = debugStartStage.value >= 0 ? debugStartStage.value : 0
   stageTime.value = debugStartStage.value >= 0 ? Math.max(0, STAGES[debugStartStage.value].stageDuration - 20) : 0
   bossWarning.value = false
