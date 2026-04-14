@@ -46,6 +46,16 @@
           <input type="checkbox" v-model="fovWarpRef" @change="toggleFovWarp" style="width:20px;height:20px;cursor:pointer" /> FOV Warp Effect
         </label>
       </div>
+      <div class="settings-section" style="border-bottom:1px solid #444;padding-bottom:1rem;margin-bottom:1rem">
+        <h3>🗺️ Debug: Start Stage</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button v-for="(s, i) in STAGES" :key="i" @click="debugStartStage = i"
+            :style="{ background: debugStartStage === i ? '#4ecdc4' : '#333', color: '#fff', border: '1px solid #555', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px' }">
+            {{ i + 1 }}. {{ s.name }}
+          </button>
+        </div>
+        <div style="color:#888;font-size:11px;margin-top:4px">Next game starts at this stage</div>
+      </div>
       <div class="settings-section">
         <h3>🎨 Skins</h3>
         <div class="skin-selector">
@@ -91,7 +101,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v4.0.1';
+const VERSION = 'v4.0.2';
 
 // Audio system
 let audioCtx = null;
@@ -353,6 +363,7 @@ const gameOver = ref(false);
 const countdownActive = ref(false);
 const countdownText = ref('');
 const showSettings = ref(false);
+const debugStartStage = ref(0);
 const tiltEnabledRef = ref(true);
 const micEnabledRef = ref(false);
 const achievements = ref([]);
@@ -414,6 +425,47 @@ const STAGES = [
     stageDuration: 60,
   }
 ]
+
+// === STAGE VISUAL TRANSITIONS ===
+let cobblestoneTexture = null;
+let originalGroundTexture = null;
+let originalGroundColor = null;
+
+function applyStageVisuals(stageIndex) {
+  const stage = STAGES[stageIndex];
+  if (!roadMesh) return;
+  
+  // Save originals on first call
+  if (!originalGroundTexture) {
+    originalGroundTexture = roadMesh.material.map;
+    originalGroundColor = roadMesh.material.color.getHex();
+  }
+  
+  if (stage.roadTexture === 'cobblestone') {
+    // Load cobblestone texture if not cached
+    if (!cobblestoneTexture) {
+      cobblestoneTexture = textureLoader.load('assets/road_cobblestone.webp');
+      cobblestoneTexture.wrapS = THREE.RepeatWrapping;
+      cobblestoneTexture.wrapT = THREE.RepeatWrapping;
+      cobblestoneTexture.repeat.set(1, 10);
+    }
+    roadMesh.material.map = cobblestoneTexture;
+    roadMesh.material.color.set(0x888888);
+    roadMesh.material.needsUpdate = true;
+    // Tint grass darker for medieval
+    if (grassMesh) { grassMesh.material.color.set(0x2d5a1e); grassMesh.material.needsUpdate = true; }
+    // Darker sky
+    if (scene && scene.fog) { scene.fog.color.set(0x4a5568); scene.background = new THREE.Color(0x4a5568); }
+  } else {
+    // Highway: restore original
+    roadMesh.material.map = originalGroundTexture;
+    roadMesh.material.color.set(originalGroundColor);
+    roadMesh.material.needsUpdate = true;
+    if (grassMesh) { grassMesh.material.color.set(0x3a7d2c); grassMesh.material.needsUpdate = true; }
+    if (scene && scene.fog) { scene.fog.color.set(0x87ceeb); scene.background = new THREE.Color(0x87ceeb); }
+  }
+}
+
 let scene, camera, renderer, player, clock;
 let boss = null;
 let obstacles = [];
@@ -1952,17 +2004,120 @@ const createFloatingText = (text, position, color) => {
 };
 
 // Boss spawn function
+// Boss attack state
+let bossAttackTimer = 0
+let bossNextAttack = 3 // seconds until first attack
+let bossProjectiles = []
+let bossCharging = false
+let bossChargeTimer = 0
+let bossChargeTarget = 0
+
 function spawnBoss(bossType) {
   if (boss) { scene.remove(boss); boss = null; }
-  const color = bossType === 'truck' ? 0xff3333 : 0x9933ff
-  const geo = bossType === 'truck'
-    ? new THREE.BoxGeometry(3, 3, 4)
-    : new THREE.ConeGeometry(2, 4, 6)
-  const mat = new THREE.MeshPhongMaterial({ color, emissive: color, emissiveIntensity: 0.3 })
-  boss = new THREE.Mesh(geo, mat)
-  boss.position.set(0, bossType === 'truck' ? 1.5 : 6, -40)
-  boss.name = 'boss'
-  scene.add(boss)
+  bossProjectiles = []
+  bossAttackTimer = 0
+  bossNextAttack = 2 + Math.random() * 2
+  bossCharging = false
+  bossChargeTimer = 0
+  
+  const group = new THREE.Group()
+  group.name = 'boss'
+  
+  if (bossType === 'truck') {
+    // Truck boss — big red box with headlights
+    const body = new THREE.Mesh(
+      new THREE.BoxGeometry(3, 2.5, 5),
+      new THREE.MeshPhongMaterial({ color: 0xff2222, emissive: 0xff0000, emissiveIntensity: 0.2 })
+    )
+    body.position.y = 1.5
+    group.add(body)
+    // Cab
+    const cab = new THREE.Mesh(
+      new THREE.BoxGeometry(2, 1.5, 2),
+      new THREE.MeshPhongMaterial({ color: 0xcc1111 })
+    )
+    cab.position.set(0, 3, 1)
+    group.add(cab)
+    // Headlights
+    const lightGeo = new THREE.SphereGeometry(0.2, 6, 6)
+    const lightMat = new THREE.MeshBasicMaterial({ color: 0xffff88 })
+    const hl = new THREE.Mesh(lightGeo, lightMat)
+    hl.position.set(-0.8, 1.5, 2.5)
+    group.add(hl)
+    const hr = new THREE.Mesh(lightGeo, lightMat)
+    hr.position.set(0.8, 1.5, 2.5)
+    group.add(hr)
+    // Wheels
+    const wheelGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 8)
+    const wheelMat = new THREE.MeshPhongMaterial({ color: 0x222222 })
+    for (const [x, z] of [[-1.6, 1.5], [1.6, 1.5], [-1.6, -1.5], [1.6, -1.5]]) {
+      const w = new THREE.Mesh(wheelGeo, wheelMat)
+      w.rotation.z = Math.PI / 2
+      w.position.set(x, 0.4, z)
+      group.add(w)
+    }
+  } else {
+    // Dragon boss — cone body + wings
+    const bodyGeo = new THREE.ConeGeometry(1.5, 4, 6)
+    const bodyMat = new THREE.MeshPhongMaterial({ color: 0x9933ff, emissive: 0x6600cc, emissiveIntensity: 0.3 })
+    const body = new THREE.Mesh(bodyGeo, bodyMat)
+    body.position.y = 0
+    group.add(body)
+    // Wings
+    const wingGeo = new THREE.PlaneGeometry(3, 2)
+    const wingMat = new THREE.MeshPhongMaterial({ color: 0x7722cc, side: THREE.DoubleSide, transparent: true, opacity: 0.8 })
+    const lw = new THREE.Mesh(wingGeo, wingMat)
+    lw.position.set(-2, 0.5, 0)
+    lw.rotation.y = 0.5
+    lw.rotation.z = 0.3
+    group.add(lw)
+    const rw = new THREE.Mesh(wingGeo, wingMat)
+    rw.position.set(2, 0.5, 0)
+    rw.rotation.y = -0.5
+    rw.rotation.z = -0.3
+    group.add(rw)
+    // Eyes
+    const eyeGeo = new THREE.SphereGeometry(0.15, 6, 6)
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff3300 })
+    const le = new THREE.Mesh(eyeGeo, eyeMat)
+    le.position.set(-0.4, 1.2, 1.5)
+    group.add(le)
+    const re = new THREE.Mesh(eyeGeo, eyeMat)
+    re.position.set(0.4, 1.2, 1.5)
+    group.add(re)
+  }
+  
+  group.position.set(0, bossType === 'truck' ? 0 : 5, -40)
+  scene.add(group)
+  boss = group
+}
+
+function spawnBossProjectile(type) {
+  const lane = Math.floor(Math.random() * 3)
+  const targetX = (lane - 1) * laneWidth
+  
+  if (type === 'truck') {
+    // Truck charges forward — no projectile, just ram
+    bossCharging = true
+    bossChargeTimer = 0
+    bossChargeTarget = -5 // rush toward player
+    if (boss && boss.userData) boss.userData.chargeMissTriggered = false
+  } else {
+    // Dragon fireball
+    const fbGeo = new THREE.SphereGeometry(0.5, 8, 8)
+    const fbMat = new THREE.MeshBasicMaterial({ color: 0xff6600 })
+    const fb = new THREE.Mesh(fbGeo, fbMat)
+    // Glow child
+    const glowGeo = new THREE.SphereGeometry(0.8, 8, 8)
+    const glowMat = new THREE.MeshBasicMaterial({ color: 0xff2200, transparent: true, opacity: 0.4 })
+    fb.add(new THREE.Mesh(glowGeo, glowMat))
+    
+    fb.position.set(boss.position.x, boss.position.y - 1, boss.position.z + 3)
+    fb.userData = { targetX, targetLane: lane, speed: 0.5 }
+    scene.add(fb)
+    bossProjectiles.push(fb)
+    createFloatingText('🔥', new THREE.Vector3(targetX, 1, -5), '#ff6600')
+  }
 }
 
 // Comic-book word art for bullet time
@@ -2036,11 +2191,28 @@ const animate = () => {
       bossDefeated.value = true
       bossHealth.value = 0
       createFloatingText('\u2728 STAGE CLEAR! \u2728', player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#44ff44')
-      if (boss) { scene.remove(boss); boss = null; }
+      // Boss defeat explosion
+      if (boss) {
+        const bossPos = boss.position.clone()
+        for (let i = 0; i < 20; i++) {
+          const pGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3)
+          const pMat = new THREE.MeshBasicMaterial({ color: Math.random() > 0.5 ? 0xffaa00 : 0xff4400 })
+          const p = new THREE.Mesh(pGeo, pMat)
+          p.position.copy(bossPos).add(new THREE.Vector3((Math.random()-0.5)*3, Math.random()*3, (Math.random()-0.5)*3))
+          p.userData = { velocity: new THREE.Vector3((Math.random()-0.5)*0.3, Math.random()*0.2, (Math.random()-0.5)*0.3), life: 1.5 }
+          scene.add(p)
+          particles.push(p)
+        }
+        scene.remove(boss); boss = null
+      }
+      // Clean up boss projectiles
+      bossProjectiles.forEach(fb => scene.remove(fb))
+      bossProjectiles = []
       setTimeout(() => {
         stageTransitioning.value = true
         const nextStage = (currentStage.value + 1) % STAGES.length
         currentStage.value = nextStage
+        applyStageVisuals(nextStage)
         createFloatingText(`STAGE ${nextStage + 1}: ${STAGES[nextStage].name}`, player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#ffffff')
         setTimeout(() => {
           stageTime.value = 0
@@ -2052,13 +2224,104 @@ const animate = () => {
     }
   }
 
-  // === BOSS ANIMATION ===
+  // === BOSS ANIMATION + ATTACK AI ===
   if (boss && bossActive.value && !bossDefeated.value) {
-    boss.rotation.y += 0.02
-    boss.position.z = -40 + Math.sin(Date.now() * 0.001) * 3
-    boss.position.x = getCurveX(boss.position.z)
-    if (boss.name === 'boss') {
-      boss.position.y = STAGES[currentStage.value].bossType === 'truck' ? 1.5 + getSurfaceY(boss.position.z) : 6 + Math.sin(Date.now() * 0.002) * 1.5 + getSurfaceY(boss.position.z)
+    const bossType = STAGES[currentStage.value].bossType
+    
+    // Base hover/sway
+    const sway = Math.sin(Date.now() * 0.001) * 3
+    
+    if (bossCharging) {
+      // Truck charge attack
+      bossChargeTimer += realDelta
+      boss.position.z += gameSpeed * 3 // rush forward
+      boss.position.x = getCurveX(boss.position.z)
+      if (bossType === 'truck') boss.position.y = getSurfaceY(boss.position.z)
+      
+      // Check if charge reached player
+      if (boss.position.z > -5 || bossChargeTimer > 3) {
+        bossCharging = false
+        boss.position.z = -40 // retreat
+      }
+    } else {
+      boss.position.z = -40 + sway
+      boss.position.x = getCurveX(boss.position.z)
+      if (bossType === 'truck') {
+        boss.position.y = getSurfaceY(boss.position.z)
+        boss.rotation.y = 0 // face player
+      } else {
+        boss.position.y = 5 + Math.sin(Date.now() * 0.002) * 1.5 + getSurfaceY(boss.position.z)
+        boss.rotation.y += 0.02
+      }
+    }
+    
+    // Attack timer
+    bossAttackTimer += realDelta
+    if (bossAttackTimer >= bossNextAttack) {
+      bossAttackTimer = 0
+      bossNextAttack = 2.5 + Math.random() * 2
+      spawnBossProjectile(bossType)
+      // Screen shake on attack
+      cameraShakeTimer = 0.3; cameraShakeIntensity = 0.15
+    }
+  }
+  
+  // === BOSS PROJECTILE MOVEMENT + COLLISION ===
+  for (let i = bossProjectiles.length - 1; i >= 0; i--) {
+    const fb = bossProjectiles[i]
+    fb.position.z += fb.userData.speed
+    fb.position.x += (fb.userData.targetX - fb.position.x) * 0.05
+    fb.position.y += (0.5 - fb.position.y) * 0.03 // sink to ground
+    fb.rotation.y += 0.1
+    
+    // Collision with player
+    const dist = player.position.distanceTo(fb.position)
+    if (dist < 1.5) {
+      if (!isInvincible) {
+        // Player hit — boss gains health back
+        bossHealth.value = Math.min(100, bossHealth.value + 10)
+        createFloatingText('💥', player.position.clone().add(new THREE.Vector3(0, 2, 0)), '#ff4444')
+        cameraShakeTimer = 0.5; cameraShakeIntensity = 0.25
+        isInvincible = true
+        setTimeout(() => { isInvincible = false }, 1500)
+      }
+      scene.remove(fb)
+      bossProjectiles.splice(i, 1)
+      continue
+    }
+    
+    // Near-miss — player dodges close, damages boss
+    if (!fb.userData.nearMissTriggered && dist < 2.5 && dist >= 1.5) {
+      fb.userData.nearMissTriggered = true
+      bossHealth.value -= 8
+      createFloatingText('⚡', player.position.clone().add(new THREE.Vector3(0, 2, 0)), '#44ff44')
+    }
+    
+    // Remove if past player
+    if (fb.position.z > 10) {
+      scene.remove(fb)
+      bossProjectiles.splice(i, 1)
+    }
+  }
+  
+  // Truck charge collision
+  if (bossCharging && boss) {
+    const chargeDist = player.position.distanceTo(boss.position)
+    if (chargeDist < 2.5 && !isInvincible) {
+      bossHealth.value = Math.min(100, bossHealth.value + 15)
+      createFloatingText('💥', player.position.clone().add(new THREE.Vector3(0, 2, 0)), '#ff4444')
+      cameraShakeTimer = 0.8; cameraShakeIntensity = 0.4
+      isInvincible = true
+      setTimeout(() => { isInvincible = false }, 1500)
+      bossCharging = false
+      boss.position.z = -40
+    }
+    // Near-miss dodge damages boss
+    if (!boss.userData?.chargeMissTriggered && chargeDist < 3.5 && chargeDist >= 2.5) {
+      if (!boss.userData) boss.userData = {}
+      boss.userData.chargeMissTriggered = true
+      bossHealth.value -= 12
+      createFloatingText('⚡', player.position.clone().add(new THREE.Vector3(0, 2, 0)), '#44ff44')
     }
   }
 
@@ -3198,13 +3461,14 @@ const restartGame = () => {
   roadCurveTarget.value = 0
   curveChangeTimer.value = 0
   nextCurveChange.value = 10
-  currentStage.value = 0
-  stageTime.value = 0
+  currentStage.value = debugStartStage.value
+  stageTime.value = debugStartStage.value > 0 ? STAGES[debugStartStage.value].stageDuration - 10 : 0
   bossActive.value = false
   bossDefeated.value = false
   bossHealth.value = 100
   stageTransitioning.value = false
   if (boss) { scene.remove(boss); boss = null; }
+  applyStageVisuals(currentStage.value)
   comboCount = 0;
   scoreMultiplier = 1;
   magnetRange = 0;
@@ -3268,6 +3532,9 @@ const restartGame = () => {
   
   particles.forEach(p => scene.remove(p));
   particles = [];
+  
+  bossProjectiles.forEach(fb => scene.remove(fb));
+  bossProjectiles = [];
   
   floatingTexts.forEach(t => scene.remove(t));
   floatingTexts = [];
