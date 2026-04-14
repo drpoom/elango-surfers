@@ -55,6 +55,10 @@
       <div class="settings-section" style="border-bottom:1px solid #444;padding-bottom:1rem;margin-bottom:1rem">
         <h3>🗺️ Debug: Start Stage</h3>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button @click="debugStartStage = -1"
+            :style="{ background: debugStartStage === -1 ? '#4ecdc4' : '#333', color: '#fff', border: '1px solid #555', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px' }">
+            Normal
+          </button>
           <button v-for="(s, i) in STAGES" :key="i" @click="debugStartStage = i"
             :style="{ background: debugStartStage === i ? '#4ecdc4' : '#333', color: '#fff', border: '1px solid #555', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px' }">
             {{ i + 1 }}. {{ s.name }}
@@ -107,7 +111,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v4.0.8';
+const VERSION = 'v4.0.9';
 
 // Audio system
 let audioCtx = null;
@@ -369,7 +373,7 @@ const gameOver = ref(false);
 const countdownActive = ref(false);
 const countdownText = ref('');
 const showSettings = ref(false);
-const debugStartStage = ref(0);
+const debugStartStage = ref(-1);
 const tiltEnabledRef = ref(true);
 const micEnabledRef = ref(false);
 const achievements = ref([]);
@@ -2408,7 +2412,28 @@ const animate = () => {
       } else {
         boss.position.x = getCurveX(boss.position.z)
         boss.position.y = 5 + Math.sin(Date.now() * 0.002) * 1.5 + getSurfaceY(boss.position.z)
-        boss.rotation.y += 0.02
+        boss.rotation.y = 0 // face player, no spinning
+        // Animate dragon parts
+        boss.children.forEach(child => {
+          // Wing flap (left + right wings)
+          if (child.position.x < -1) { // left wing segments
+            child.rotation.z = 0.3 + Math.sin(Date.now() * 0.005) * 0.3
+          } else if (child.position.x > 1) { // right wing segments
+            child.rotation.z = -0.3 - Math.sin(Date.now() * 0.005) * 0.3
+          }
+        })
+        // Tail sway
+        const tailSway = Math.sin(Date.now() * 0.003) * 0.3
+        boss.children.forEach(child => {
+          if (child.position.z < -1 && child.geometry?.type === 'SphereGeometry') {
+            child.position.x = tailSway * (-child.position.z / 4)
+          }
+        })
+        // Mouth open when about to attack
+        if (bossAttackTimer > bossNextAttack * 0.7) {
+          const snout = boss.children.find(c => c.geometry?.type === 'ConeGeometry' && c.position.z > 2)
+          if (snout) snout.rotation.x = -Math.PI / 2 + Math.sin(Date.now() * 0.01) * 0.15
+        }
       }
     }
     
@@ -2435,12 +2460,18 @@ const animate = () => {
     const dist = player.position.distanceTo(fb.position)
     if (dist < 1.5) {
       if (!isInvincible) {
-        // Player hit — boss gains health back
-        bossHealth.value = Math.min(100, bossHealth.value + 10)
-        createFloatingText('💥', player.position.clone().add(new THREE.Vector3(0, 2, 0)), '#ff4444')
-        cameraShakeTimer = 0.5; cameraShakeIntensity = 0.25
-        isInvincible = true
-        setTimeout(() => { isInvincible = false }, 1500)
+        // Dragon fireball = instant death, truck = damage
+        if (STAGES[currentStage.value].bossType === 'dragon') {
+          gameOver.value = true
+          createFloatingText('HIT!', player.position.clone().add(new THREE.Vector3(0, 2, 0)), '#ff4444')
+          cameraShakeTimer = 0.8; cameraShakeIntensity = 0.4
+        } else {
+          bossHealth.value = Math.min(100, bossHealth.value + 10)
+          createFloatingText('HIT', player.position.clone().add(new THREE.Vector3(0, 2, 0)), '#ff4444')
+          cameraShakeTimer = 0.5; cameraShakeIntensity = 0.25
+          isInvincible = true
+          setTimeout(() => { isInvincible = false }, 1500)
+        }
       }
       scene.remove(fb)
       bossProjectiles.splice(i, 1)
@@ -2497,8 +2528,8 @@ const animate = () => {
   
   score.value += Math.floor(delta * 50 * difficultyMultiplier);
 
-  // === BONUS PORTAL SPAWN ===
-  if (!bonusPortal && !inBonusZone && Math.random() < 0.001) {
+  // === BONUS PORTAL SPAWN (not during boss) ===
+  if (!bonusPortal && !inBonusZone && !bossActive.value && Math.random() < 0.001) {
     spawnBonusPortal();
   }
   
@@ -2774,15 +2805,16 @@ const animate = () => {
       else if (obs.mesh.userData.driftX > maxDriftUFO) obs.mesh.userData.ufoSwayDir = -1;
     }
     
-    // Barrel drift: move sideways
+    // Barrel drift: roll sideways with rotation
     if (obs.obstacleType === 'barrel' && obs.mesh.userData.driftDir) {
       obs.mesh.userData.driftX = (obs.mesh.userData.driftX || 0) + obs.mesh.userData.driftDir * obs.mesh.userData.driftSpeed;
       const maxDriftBarrel = laneWidth * 1.2;
       if (obs.mesh.userData.driftX < -maxDriftBarrel || obs.mesh.userData.driftX > maxDriftBarrel) {
         obs.mesh.userData.driftDir *= -1;
       }
+      // Roll: rotate around Z axis proportional to sideways drift
+      obs.mesh.rotation.z += obs.mesh.userData.driftDir * obs.mesh.userData.driftSpeed * 3;
     }
-    
     // Red car / bus / fireengine: move forward or backward at noticeable speed (slower than player)
     if (obs.obstacleType === 'car' || obs.obstacleType === 'bus' || obs.obstacleType === 'fireengine') {
       if (!obs.mesh.userData.lungeTimer) {
@@ -3629,8 +3661,8 @@ const restartGame = () => {
   roadCurveTarget.value = 0
   curveChangeTimer.value = 0
   nextCurveChange.value = 3
-  currentStage.value = debugStartStage.value
-  stageTime.value = debugStartStage.value > 0 ? Math.max(0, STAGES[debugStartStage.value].stageDuration - 20) : 0
+  currentStage.value = debugStartStage.value >= 0 ? debugStartStage.value : 0
+  stageTime.value = debugStartStage.value >= 0 ? Math.max(0, STAGES[debugStartStage.value].stageDuration - 20) : 0
   bossWarning.value = false
   bossActive.value = false
   bossDefeated.value = false
