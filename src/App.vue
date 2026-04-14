@@ -111,7 +111,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v4.1.3';
+const VERSION = 'v4.1.4';
 
 // Audio system
 let audioCtx = null;
@@ -120,7 +120,11 @@ let audioInitialized = false;
 let bgmAudio = null;
 let bgmGain = null;
 let bgmSource = null;
+let bgmMedievalAudio = null; // medieval stage BGM
+let bgmMedievalSource = null;
+let bgmMedievalGain = null;
 let isBGMPlaying = false;
+let isMedievalBGM = false; // which BGM is currently playing
 let bgmInterval = null;
 
 const initAudio = () => {
@@ -242,16 +246,25 @@ const toggleMute = () => {
   }
 };
 
-// Action BGM - continuous looping electronic track
+// Action BGM - supports highway and medieval tracks
+const getCurrentBGMTrack = () => {
+  // Medieval stage uses different BGM
+  const stage = STAGES[currentStage.value]
+  return (stage && stage.roadTexture === 'cobblestone') ? 'medieval' : 'highway'
+}
+
 const startBGM = () => {
   if (!audioCtx || isBGMPlaying || isMuted) return;
   
   isBGMPlaying = true;
+  const track = getCurrentBGMTrack()
+  isMedievalBGM = (track === 'medieval')
+  
+  // Highway BGM
   bgmGain = audioCtx.createGain();
-  bgmGain.gain.value = 0.35;
+  bgmGain.gain.value = isMedievalBGM ? 0 : 0.35;
   bgmGain.connect(audioCtx.destination);
   
-  // Load and play OGG music file
   if (!bgmAudio) {
     bgmAudio = new Audio('assets/game_music.ogg');
     bgmAudio.loop = true;
@@ -261,17 +274,55 @@ const startBGM = () => {
   }
   bgmAudio.currentTime = 0;
   bgmAudio.play().catch(() => {});
+  
+  // Medieval BGM
+  if (!bgmMedievalAudio) {
+    bgmMedievalAudio = new Audio('assets/medieval_music.ogg');
+    bgmMedievalAudio.loop = true;
+    bgmMedievalAudio.volume = 1;
+  }
+  if (!bgmMedievalSource) {
+    bgmMedievalGain = audioCtx.createGain();
+    bgmMedievalGain.gain.value = isMedievalBGM ? 0.35 : 0;
+    bgmMedievalGain.connect(audioCtx.destination);
+    bgmMedievalSource = audioCtx.createMediaElementSource(bgmMedievalAudio);
+    bgmMedievalSource.connect(bgmMedievalGain);
+  }
+  bgmMedievalAudio.currentTime = 0;
+  bgmMedievalAudio.play().catch(() => {});
+};
+
+// Crossfade between BGM tracks on stage change
+const switchBGMTrack = (track) => {
+  if (!audioCtx || !isBGMPlaying) return;
+  const toMedieval = (track === 'medieval')
+  if (toMedieval === isMedievalBGM) return // already on this track
+  isMedievalBGM = toMedieval
+  // Fade over 2 seconds
+  const fadeTime = audioCtx.currentTime + 2
+  if (bgmGain) bgmGain.gain.linearRampToValueAtTime(toMedieval ? 0 : 0.35, fadeTime)
+  if (bgmMedievalGain) bgmMedievalGain.gain.linearRampToValueAtTime(toMedieval ? 0.35 : 0, fadeTime)
 };
 
 const stopBGM = () => {
   isBGMPlaying = false;
+  isMedievalBGM = false;
   if (bgmAudio) {
     bgmAudio.pause();
     bgmAudio.currentTime = 0;
   }
+  if (bgmMedievalAudio) {
+    bgmMedievalAudio.pause();
+    bgmMedievalAudio.currentTime = 0;
+  }
   if (bgmGain) {
     try { bgmGain.disconnect(); } catch(e) {}
     bgmGain = null;
+  }
+  if (bgmMedievalGain) {
+    try { bgmMedievalGain.disconnect(); } catch(e) {}
+    bgmMedievalGain = null;
+    bgmMedievalSource = null; // must recreate after disconnect
   }
   if (bgmInterval) {
     clearTimeout(bgmInterval);
@@ -464,7 +515,8 @@ function applyStageVisuals(stageIndex) {
     // Darker sky
     if (scene && scene.fog) { scene.fog.color.set(0x4a5568); scene.background = new THREE.Color(0x4a5568); }
     // Medieval BGM: slow down playback for darker, more ominous feel
-    if (bgmAudio) bgmAudio.playbackRate = 0.75;
+    // Switch to medieval BGM
+    switchBGMTrack('medieval');
   } else {
     // Highway: restore original
     roadMesh.material.map = originalGroundTexture;
@@ -473,7 +525,8 @@ function applyStageVisuals(stageIndex) {
     if (grassMesh) { grassMesh.material.color.set(0x3a7d2c); grassMesh.material.needsUpdate = true; }
     if (scene && scene.fog) { scene.fog.color.set(0x87ceeb); scene.background = new THREE.Color(0x87ceeb); }
     // Highway BGM: normal speed
-    if (bgmAudio) bgmAudio.playbackRate = 1.0;
+    // Switch to highway BGM
+    switchBGMTrack('highway');
   }
 }
 
