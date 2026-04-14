@@ -104,7 +104,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v4.0.3';
+const VERSION = 'v4.0.4';
 
 // Audio system
 let audioCtx = null;
@@ -387,7 +387,7 @@ const roadCurve = ref(0)
 const roadCurveTarget = ref(0)
 const stageTransitioning = ref(false)
 const curveChangeTimer = ref(0)
-const nextCurveChange = ref(10)
+const nextCurveChange = ref(3)
 
 // Power-up state
 let activePowerup = null;
@@ -2167,13 +2167,22 @@ const animate = () => {
   if (!bossActive.value) {
     curveChangeTimer.value += realDelta
     if (curveChangeTimer.value >= nextCurveChange.value) {
-      roadCurveTarget.value = (Math.random() - 0.5) * 2.4 // -1.2 to 1.2
-      nextCurveChange.value = 8 + Math.random() * 7 // 8-15 seconds
+      if (Math.abs(roadCurveTarget.value) < 0.1) {
+        // Start a new curve — sharp and dramatic
+        roadCurveTarget.value = (Math.random() > 0.5 ? 1 : -1) * (0.8 + Math.random() * 0.5) // 0.8-1.3
+        nextCurveChange.value = 2 + Math.random() * 1.5 // curve holds 2-3.5s
+      } else {
+        // Straighten out
+        roadCurveTarget.value = 0
+        nextCurveChange.value = 5 + Math.random() * 5 // straight for 5-10s before next curve
+      }
       curveChangeTimer.value = 0
     }
-    roadCurve.value += (roadCurveTarget.value - roadCurve.value) * Math.min(realDelta * 0.5, 0.05)
+    // Fast transition into curve, moderate transition out
+    const lerpSpeed = Math.abs(roadCurveTarget.value) > 0.1 ? Math.min(realDelta * 2.5, 0.15) : Math.min(realDelta * 1.5, 0.08)
+    roadCurve.value += (roadCurveTarget.value - roadCurve.value) * lerpSpeed
   } else {
-    roadCurve.value += (0 - roadCurve.value) * Math.min(realDelta * 0.5, 0.05)
+    roadCurve.value += (0 - roadCurve.value) * Math.min(realDelta * 1.0, 0.06)
   }
 
   // === UPDATE ROAD MESH CURVE ===
@@ -3474,7 +3483,7 @@ const restartGame = () => {
   roadCurve.value = 0
   roadCurveTarget.value = 0
   curveChangeTimer.value = 0
-  nextCurveChange.value = 10
+  nextCurveChange.value = 3
   currentStage.value = debugStartStage.value
   stageTime.value = debugStartStage.value > 0 ? STAGES[debugStartStage.value].stageDuration - 10 : 0
   bossActive.value = false
