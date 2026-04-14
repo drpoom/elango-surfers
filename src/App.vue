@@ -48,6 +48,9 @@
         <label style="color:#fff;font-size:16px;display:flex;align-items:center;gap:8px;cursor:pointer">
           <input type="checkbox" v-model="fovWarpRef" @change="toggleFovWarp" style="width:20px;height:20px;cursor:pointer" /> FOV Warp Effect
         </label>
+        <label style="color:#fff;font-size:16px;display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px">
+          <input type="checkbox" v-model="roadCurveEnabled" style="width:20px;height:20px;cursor:pointer" /> Road Curves
+        </label>
       </div>
       <div class="settings-section" style="border-bottom:1px solid #444;padding-bottom:1rem;margin-bottom:1rem">
         <h3>🗺️ Debug: Start Stage</h3>
@@ -104,7 +107,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v4.0.4';
+const VERSION = 'v4.0.5';
 
 // Audio system
 let audioCtx = null;
@@ -375,6 +378,7 @@ const currentSkin = ref(0);
 const unlockedHats = ref([]);
 const currentHat = ref(null);
 const fovWarpRef = ref(false);
+const roadCurveEnabled = ref(true);
 
 // Stage & road curve state
 const currentStage = ref(0)
@@ -507,6 +511,7 @@ const getSurfaceTilt = (z) => {
 // Road curvature: returns X offset at a given Z depth based on current roadCurve
 // Objects further away appear more offset, creating a visual "turn"
 const getCurveX = (z) => {
+  if (!roadCurveEnabled.value) return 0;
   const depth = Math.max(0, -z); // how far ahead (positive)
   return roadCurve.value * (depth / 80) * 8;
 };
@@ -1489,10 +1494,20 @@ const spawnObstacle = () => {
   
   // Pick obstacle type based on difficulty
   const difficultyMultiplier = Math.min(1 + (gameDuration / 30), 3.5);
-  const types = ['fruit', 'fruit', 'car']; // base types
+  const stage = STAGES[currentStage.value]
+  const isMedieval = stage.id === 'medieval'
+  // Base obstacle types — filter for stage theme
+  const types = isMedieval
+    ? ['fruit', 'fruit', 'barrel', 'stone'] // medieval: no cars/buses
+    : ['fruit', 'fruit', 'car']; // modern: cars allowed
   if (difficultyMultiplier > 1.3) types.push('stone', 'barrier');
-  if (difficultyMultiplier > 1.8) types.push('police', 'bus');
-  if (difficultyMultiplier > 2.2) types.push('fireengine', 'wall');
+  if (!isMedieval) {
+    if (difficultyMultiplier > 1.8) types.push('police', 'bus');
+    if (difficultyMultiplier > 2.2) types.push('fireengine', 'wall');
+  } else {
+    if (difficultyMultiplier > 1.8) types.push('wall', 'barrel');
+    if (difficultyMultiplier > 2.2) types.push('barrier', 'stone');
+  }
   if (difficultyMultiplier > 2.8) types.push('wall', 'barrel');
   const obsType = types[Math.floor(Math.random() * types.length)];
   
@@ -2097,30 +2112,44 @@ function spawnBoss(bossType) {
 }
 
 function spawnBossProjectile(type) {
-  const lane = Math.floor(Math.random() * 3)
-  const targetX = (lane - 1) * laneWidth
-  
   if (type === 'truck') {
-    // Truck charges forward — no projectile, just ram
+    // Truck charges — sometimes straight, sometimes from side
     bossCharging = true
     bossChargeTimer = 0
-    bossChargeTarget = -5 // rush toward player
-    if (boss && boss.userData) boss.userData.chargeMissTriggered = false
+    bossChargeTarget = -5
+    // Randomly start charge from a side lane
+    if (boss) {
+      boss.position.x = (Math.random() - 0.5) * 6 + getCurveX(boss.position.z)
+      if (boss.userData) boss.userData.chargeMissTriggered = false
+    }
   } else {
-    // Dragon fireball
-    const fbGeo = new THREE.SphereGeometry(0.5, 8, 8)
-    const fbMat = new THREE.MeshBasicMaterial({ color: 0xff6600 })
-    const fb = new THREE.Mesh(fbGeo, fbMat)
-    // Glow child
-    const glowGeo = new THREE.SphereGeometry(0.8, 8, 8)
-    const glowMat = new THREE.MeshBasicMaterial({ color: 0xff2200, transparent: true, opacity: 0.4 })
-    fb.add(new THREE.Mesh(glowGeo, glowMat))
+    // Dragon fires 2-3 fireballs at different lanes & heights
+    const lanes = [0, 1, 2]
+    const playerLane = currentLane
+    const otherLanes = lanes.filter(l => l !== playerLane).sort(() => Math.random() - 0.5)
+    const attackLanes = [playerLane]
+    const extra = Math.random() > 0.3 ? 2 : 1
+    for (let i = 0; i < Math.min(extra, otherLanes.length); i++) attackLanes.push(otherLanes[i])
     
-    fb.position.set(boss.position.x, boss.position.y - 1, boss.position.z + 3)
-    fb.userData = { targetX, targetLane: lane, speed: 0.5 }
-    scene.add(fb)
-    bossProjectiles.push(fb)
-    createFloatingText('🔥', new THREE.Vector3(targetX, 1, -5), '#ff6600')
+    const heights = [0.5, 1.5, 3.0] // low, mid, high — player must jump/duck/slide
+    
+    attackLanes.forEach((lane, idx) => {
+      const targetX = (lane - 1) * laneWidth
+      const fbY = heights[idx % heights.length]
+      
+      const fbGeo = new THREE.SphereGeometry(0.5, 8, 8)
+      const fbMat = new THREE.MeshBasicMaterial({ color: 0xff6600 })
+      const fb = new THREE.Mesh(fbGeo, fbMat)
+      const glowGeo = new THREE.SphereGeometry(0.8, 8, 8)
+      const glowMat = new THREE.MeshBasicMaterial({ color: 0xff2200, transparent: true, opacity: 0.4 })
+      fb.add(new THREE.Mesh(glowGeo, glowMat))
+      
+      fb.position.set(boss.position.x + (Math.random() - 0.5) * 2, fbY, boss.position.z + 3)
+      fb.userData = { targetX, targetLane: lane, targetY: fbY, speed: 0.45, delay: idx * 0.15 }
+      scene.add(fb)
+      bossProjectiles.push(fb)
+    })
+    createFloatingText('\u{1f525}', new THREE.Vector3((attackLanes[0] - 1) * laneWidth, 2, -5), '#ff6600')
   }
 }
 
@@ -2163,22 +2192,19 @@ const animate = () => {
     stageTime.value += realDelta
   }
 
-  // === CURVE OSCILLATION (not during boss) ===
-  if (!bossActive.value) {
+  // === CURVE OSCILLATION (not during boss, or disabled) ===
+  if (!bossActive.value && roadCurveEnabled.value) {
     curveChangeTimer.value += realDelta
     if (curveChangeTimer.value >= nextCurveChange.value) {
       if (Math.abs(roadCurveTarget.value) < 0.1) {
-        // Start a new curve — sharp and dramatic
-        roadCurveTarget.value = (Math.random() > 0.5 ? 1 : -1) * (0.8 + Math.random() * 0.5) // 0.8-1.3
-        nextCurveChange.value = 2 + Math.random() * 1.5 // curve holds 2-3.5s
+        roadCurveTarget.value = (Math.random() > 0.5 ? 1 : -1) * (0.8 + Math.random() * 0.5)
+        nextCurveChange.value = 2 + Math.random() * 1.5
       } else {
-        // Straighten out
         roadCurveTarget.value = 0
-        nextCurveChange.value = 5 + Math.random() * 5 // straight for 5-10s before next curve
+        nextCurveChange.value = 5 + Math.random() * 5
       }
       curveChangeTimer.value = 0
     }
-    // Fast transition into curve, moderate transition out
     const lerpSpeed = Math.abs(roadCurveTarget.value) > 0.1 ? Math.min(realDelta * 2.5, 0.15) : Math.min(realDelta * 1.5, 0.08)
     roadCurve.value += (roadCurveTarget.value - roadCurve.value) * lerpSpeed
   } else {
@@ -2187,6 +2213,11 @@ const animate = () => {
 
   // === UPDATE ROAD MESH CURVE ===
   updateRoadCurve();
+  
+  // Scroll cobblestone texture
+  if (cobblestoneTexture && currentStage.value > 0) {
+    cobblestoneTexture.offset.y -= gameSpeed * 0.05;
+  }
 
   // === BOSS WARNING + SPAWN TRIGGER ===
   const stage = STAGES[currentStage.value]
@@ -2255,21 +2286,28 @@ const animate = () => {
     const sway = Math.sin(Date.now() * 0.001) * 3
     
     if (bossCharging) {
-      // Truck charge attack
+      // Truck charge attack — rush forward and swerve
       bossChargeTimer += realDelta
-      boss.position.z += gameSpeed * 3 // rush forward
-      boss.position.x = getCurveX(boss.position.z)
+      const chargeSpeed = gameSpeed * 3
+      boss.position.z += chargeSpeed
+      // Swerve left/right during charge
+      boss.position.x += Math.sin(bossChargeTimer * 8) * 0.3
+      boss.position.x = boss.position.x + getCurveX(boss.position.z) - boss.position.x // follow curve
       if (bossType === 'truck') boss.position.y = getSurfaceY(boss.position.z)
       
       // Check if charge reached player
-      if (boss.position.z > -5 || bossChargeTimer > 3) {
+      if (boss.position.z > -5 || bossChargeTimer > 2.5) {
         bossCharging = false
         boss.position.z = -40 // retreat
+        if (boss && boss.userData) boss.userData.chargeMissTriggered = false
       }
     } else {
+      // Non-charge: truck dodges left/right quickly
       boss.position.z = -40 + sway
-      boss.position.x = getCurveX(boss.position.z)
       if (bossType === 'truck') {
+        // Truck weaves aggressively between lanes
+        const truckLane = Math.sin(Date.now() * 0.003) * 2.5 // wide sweep
+        boss.position.x = truckLane + getCurveX(boss.position.z)
         boss.position.y = getSurfaceY(boss.position.z)
         boss.rotation.y = 0 // face player
       } else {
@@ -2282,7 +2320,7 @@ const animate = () => {
     bossAttackTimer += realDelta
     if (bossAttackTimer >= bossNextAttack) {
       bossAttackTimer = 0
-      bossNextAttack = 2.5 + Math.random() * 2
+      bossNextAttack = 1.5 + Math.random() * 1.5 // faster attacks
       spawnBossProjectile(bossType)
       // Screen shake on attack
       cameraShakeTimer = 0.3; cameraShakeIntensity = 0.15
@@ -2294,7 +2332,7 @@ const animate = () => {
     const fb = bossProjectiles[i]
     fb.position.z += fb.userData.speed
     fb.position.x += (fb.userData.targetX - fb.position.x) * 0.05
-    fb.position.y += (0.5 - fb.position.y) * 0.03 // sink to ground
+    fb.position.y += (fb.userData.targetY - fb.position.y) * 0.04 // converge to target height
     fb.rotation.y += 0.1
     
     // Collision with player
