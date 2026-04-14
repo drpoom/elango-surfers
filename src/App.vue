@@ -91,7 +91,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v4.0.0-dev';
+const VERSION = 'v4.0.1';
 
 // Audio system
 let audioCtx = null;
@@ -2056,7 +2056,7 @@ const animate = () => {
   if (boss && bossActive.value && !bossDefeated.value) {
     boss.rotation.y += 0.02
     boss.position.z = -40 + Math.sin(Date.now() * 0.001) * 3
-      boss.position.x = getCurveX(boss.position.z)
+    boss.position.x = getCurveX(boss.position.z)
     if (boss.name === 'boss') {
       boss.position.y = STAGES[currentStage.value].bossType === 'truck' ? 1.5 + getSurfaceY(boss.position.z) : 6 + Math.sin(Date.now() * 0.002) * 1.5 + getSurfaceY(boss.position.z)
     }
@@ -3197,6 +3197,7 @@ const restartGame = () => {
   roadCurve.value = 0
   roadCurveTarget.value = 0
   curveChangeTimer.value = 0
+  nextCurveChange.value = 10
   currentStage.value = 0
   stageTime.value = 0
   bossActive.value = false
