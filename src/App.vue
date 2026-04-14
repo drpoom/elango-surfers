@@ -111,7 +111,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v4.1.1';
+const VERSION = 'v4.1.2';
 
 // Audio system
 let audioCtx = null;
@@ -129,14 +129,9 @@ const initAudio = () => {
   audioInitialized = true;
   // Resume context if suspended (browser autoplay policy)
   if (audioCtx.state === 'suspended') {
-    audioCtx.resume().then(() => {
-      console.log('Audio resumed, starting BGM');
-      startBGM();
-    }).catch(err => console.log('Audio resume failed:', err));
-  } else {
-    console.log('Audio already running, starting BGM');
-    startBGM();
+    audioCtx.resume().catch(err => console.log('Audio resume failed:', err));
   }
+  // BGM starts after countdown "GO!" or on first player movement
 };
 
 const playSound = (type, pitchMod = 1) => {
@@ -3644,6 +3639,7 @@ const startCountdown = () => {
       setTimeout(tick, 1000);
     } else if (count === 0) {
       countdownText.value = 'GO!';
+      startBGM(); // Start music on GO!
       setTimeout(() => {
         countdownActive.value = false;
         countdownLocked = false;
