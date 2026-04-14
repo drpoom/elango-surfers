@@ -107,7 +107,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v4.0.5';
+const VERSION = 'v4.0.6';
 
 // Audio system
 let audioCtx = null;
@@ -421,7 +421,7 @@ const STAGES = [
     difficultyMultiplier: 1.0,
     bossType: 'truck',
     bossDuration: 25,
-    stageDuration: 90,
+    stageDuration: 60,
   },
   {
     id: 'medieval',
@@ -430,7 +430,7 @@ const STAGES = [
     difficultyMultiplier: 1.3,
     bossType: 'dragon',
     bossDuration: 25,
-    stageDuration: 90,
+    stageDuration: 60,
   }
 ]
 
@@ -1800,6 +1800,7 @@ const spawnObstacle = () => {
       group.position.set(wallX, 0, -50);
       obsLane = gapLane; // gap lane for spawning purposes
       hitWidth = 2.5;
+      group.userData.baseX = wallX; // custom X position (between 2 lanes)
       break;
     }
     
@@ -2076,34 +2077,98 @@ function spawnBoss(bossType) {
       group.add(w)
     }
   } else {
-    // Dragon boss — cone body + wings
-    const bodyGeo = new THREE.ConeGeometry(1.5, 4, 6)
-    const bodyMat = new THREE.MeshPhongMaterial({ color: 0x9933ff, emissive: 0x6600cc, emissiveIntensity: 0.3 })
-    const body = new THREE.Mesh(bodyGeo, bodyMat)
+    // Dragon boss — detailed polygon dragon
+    const dMat = new THREE.MeshPhongMaterial({ color: 0x9933ff, emissive: 0x4400aa, emissiveIntensity: 0.25 })
+    const dMatDark = new THREE.MeshPhongMaterial({ color: 0x6622aa, emissive: 0x330066, emissiveIntensity: 0.2 })
+    const dMatBelly = new THREE.MeshPhongMaterial({ color: 0xcc88ff, emissive: 0x8844cc, emissiveIntensity: 0.15 })
+    // Body — elongated ellipsoid
+    const bodyGeo = new THREE.SphereGeometry(1, 8, 6)
+    bodyGeo.scale(1.2, 0.8, 2.0)
+    const body = new THREE.Mesh(bodyGeo, dMat)
     body.position.y = 0
     group.add(body)
-    // Wings
-    const wingGeo = new THREE.PlaneGeometry(3, 2)
-    const wingMat = new THREE.MeshPhongMaterial({ color: 0x7722cc, side: THREE.DoubleSide, transparent: true, opacity: 0.8 })
-    const lw = new THREE.Mesh(wingGeo, wingMat)
-    lw.position.set(-2, 0.5, 0)
-    lw.rotation.y = 0.5
-    lw.rotation.z = 0.3
-    group.add(lw)
-    const rw = new THREE.Mesh(wingGeo, wingMat)
-    rw.position.set(2, 0.5, 0)
-    rw.rotation.y = -0.5
-    rw.rotation.z = -0.3
-    group.add(rw)
-    // Eyes
-    const eyeGeo = new THREE.SphereGeometry(0.15, 6, 6)
+    // Belly — slightly protruding underside
+    const bellyGeo = new THREE.SphereGeometry(0.7, 6, 4)
+    bellyGeo.scale(0.9, 0.6, 1.8)
+    const belly = new THREE.Mesh(bellyGeo, dMatBelly)
+    belly.position.set(0, -0.3, 0.1)
+    group.add(belly)
+    // Head — sphere + snout
+    const headGeo = new THREE.SphereGeometry(0.6, 8, 6)
+    const head = new THREE.Mesh(headGeo, dMat)
+    head.position.set(0, 0.5, 2.2)
+    group.add(head)
+    // Snout
+    const snoutGeo = new THREE.ConeGeometry(0.35, 1.0, 6)
+    const snout = new THREE.Mesh(snoutGeo, dMat)
+    snout.rotation.x = -Math.PI / 2
+    snout.position.set(0, 0.3, 3.0)
+    group.add(snout)
+    // Eyes — glowing
+    const eyeGeo = new THREE.SphereGeometry(0.12, 6, 6)
     const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff3300 })
     const le = new THREE.Mesh(eyeGeo, eyeMat)
-    le.position.set(-0.4, 1.2, 1.5)
+    le.position.set(-0.25, 0.7, 2.7)
     group.add(le)
     const re = new THREE.Mesh(eyeGeo, eyeMat)
-    re.position.set(0.4, 1.2, 1.5)
+    re.position.set(0.25, 0.7, 2.7)
     group.add(re)
+    // Horns
+    const hornGeo = new THREE.ConeGeometry(0.1, 0.8, 5)
+    const hornMat = new THREE.MeshPhongMaterial({ color: 0xddcc88 })
+    const lh = new THREE.Mesh(hornGeo, hornMat)
+    lh.position.set(-0.3, 1.0, 2.1)
+    lh.rotation.z = 0.4
+    group.add(lh)
+    const rh = new THREE.Mesh(hornGeo, hornMat)
+    rh.position.set(0.3, 1.0, 2.1)
+    rh.rotation.z = -0.4
+    group.add(rh)
+    // Wings — large bat-like (3 segments each)
+    const wingMat = new THREE.MeshPhongMaterial({ color: 0x7722cc, side: THREE.DoubleSide, transparent: true, opacity: 0.85 })
+    // Left wing — 3 triangular flaps
+    for (let s = 0; s < 3; s++) {
+      const wGeo = new THREE.BufferGeometry()
+      const angle = -0.3 - s * 0.3
+      const len = 2.5 - s * 0.5
+      const wVerts = new Float32Array([0,0,0, -len, 0.8+s*0.3, -0.3+s*0.2, -len*0.6, -0.2, 0.2+s*0.1])
+      wGeo.setAttribute('position', new THREE.BufferAttribute(wVerts, 3))
+      wGeo.computeVertexNormals()
+      const wMesh = new THREE.Mesh(wGeo, wingMat)
+      wMesh.position.set(-0.8, 0.3, -0.5)
+      group.add(wMesh)
+    }
+    // Right wing
+    for (let s = 0; s < 3; s++) {
+      const wGeo = new THREE.BufferGeometry()
+      const len = 2.5 - s * 0.5
+      const wVerts = new Float32Array([0,0,0, len, 0.8+s*0.3, -0.3+s*0.2, len*0.6, -0.2, 0.2+s*0.1])
+      wGeo.setAttribute('position', new THREE.BufferAttribute(wVerts, 3))
+      wGeo.computeVertexNormals()
+      const wMesh = new THREE.Mesh(wGeo, wingMat)
+      wMesh.position.set(0.8, 0.3, -0.5)
+      group.add(wMesh)
+    }
+    // Tail — chain of 5 spheres
+    for (let t = 0; t < 5; t++) {
+      const tGeo = new THREE.SphereGeometry(0.3 - t * 0.04, 6, 4)
+      const tMesh = new THREE.Mesh(tGeo, tMatDark)
+      tMesh.position.set(0, -0.1 + Math.sin(t*0.5)*0.2, -1.2 - t * 0.6)
+      group.add(tMesh)
+    }
+    // Tail tip — spike
+    const tipGeo = new THREE.ConeGeometry(0.15, 0.5, 4)
+    const tip = new THREE.Mesh(tipGeo, hornMat)
+    tip.rotation.x = Math.PI / 2
+    tip.position.set(0, -0.1, -4.4)
+    group.add(tip)
+    // Legs — 4 stubby
+    const legGeo = new THREE.CylinderGeometry(0.15, 0.2, 0.6, 5)
+    for (const [x, z] of [[-0.6, 0.8], [0.6, 0.8], [-0.5, -0.5], [0.5, -0.5]]) {
+      const leg = new THREE.Mesh(legGeo, dMatDark)
+      leg.position.set(x, -0.7, z)
+      group.add(leg)
+    }
   }
   
   group.position.set(0, bossType === 'truck' ? 0 : 5, -40)
@@ -2216,7 +2281,7 @@ const animate = () => {
   
   // Scroll cobblestone texture
   if (cobblestoneTexture && currentStage.value > 0) {
-    cobblestoneTexture.offset.y -= gameSpeed * 0.05;
+    cobblestoneTexture.offset.y += gameSpeed * 0.05;
   }
 
   // === BOSS WARNING + SPAWN TRIGGER ===
@@ -2320,7 +2385,7 @@ const animate = () => {
     bossAttackTimer += realDelta
     if (bossAttackTimer >= bossNextAttack) {
       bossAttackTimer = 0
-      bossNextAttack = 1.5 + Math.random() * 1.5 // faster attacks
+      bossNextAttack = 0.8 + Math.random() * 0.6 // rapid burst interval
       spawnBossProjectile(bossType)
       // Screen shake on attack
       cameraShakeTimer = 0.3; cameraShakeIntensity = 0.15
@@ -2645,7 +2710,7 @@ const animate = () => {
     obs.mesh.position.z += gameSpeed;
     // Road curvature: shift obstacles laterally based on depth
     {
-      obs.mesh.position.x = ((obs.lane - 1) * laneWidth) + getCurveX(obs.mesh.position.z)
+      obs.mesh.position.x = (obs.mesh.userData.baseX !== undefined ? obs.mesh.userData.baseX : ((obs.lane - 1) * laneWidth)) + getCurveX(obs.mesh.position.z)
     }
     obs.mesh.position.y = (obs.mesh.baseY || 0) + getSurfaceY(obs.mesh.position.z);
     obs.mesh.rotation.x = getSurfaceTilt(obs.mesh.position.z);
@@ -2655,20 +2720,23 @@ const animate = () => {
     // UFO: sin wave + lateral sweep across road
     if (obs.type === 'floating') {
       obs.mesh.position.y = 2.2 + Math.sin(time * 3 + obs.mesh.position.z * 0.1) * 0.5 + getSurfaceY(obs.mesh.position.z);
-      // Lateral sweep at higher difficulty
-      if (difficultyMultiplier > 1.5) {
-        if (!obs.mesh.userData.ufoSwayDir) {
-          obs.mesh.userData.ufoSwayDir = Math.random() > 0.5 ? 1 : -1;
-          obs.mesh.userData.ufoSwaySpeed = 0.01 * difficultyMultiplier;
-        }
-        obs.mesh.position.x += obs.mesh.userData.ufoSwayDir * obs.mesh.userData.ufoSwaySpeed;
-        // Keep within road boundaries (don't hit trees/buildings at x=±8+)
-        if (obs.mesh.position.x < -laneWidth * 1.3) {
-          obs.mesh.userData.ufoSwayDir = 1;
-        } else if (obs.mesh.position.x > laneWidth * 1.3) {
-          obs.mesh.userData.ufoSwayDir = -1;
-        }
+      // Lateral sweep — random fixed distance movement
+      if (!obs.mesh.userData.ufoSwayDir) {
+        obs.mesh.userData.ufoSwayDir = Math.random() > 0.5 ? 1 : -1;
+        obs.mesh.userData.ufoSwaySpeed = 0.04 + Math.random() * 0.02;
+        obs.mesh.userData.ufoSwayDist = 0;
+        obs.mesh.userData.ufoSwayMaxDist = 1.5 + Math.random() * 2; // 1.5-3.5 units before turning
       }
+      obs.mesh.position.x += obs.mesh.userData.ufoSwayDir * obs.mesh.userData.ufoSwaySpeed;
+      obs.mesh.userData.ufoSwayDist += obs.mesh.userData.ufoSwaySpeed;
+      if (obs.mesh.userData.ufoSwayDist >= obs.mesh.userData.ufoSwayMaxDist) {
+        obs.mesh.userData.ufoSwayDir *= -1;
+        obs.mesh.userData.ufoSwayDist = 0;
+        obs.mesh.userData.ufoSwayMaxDist = 1.5 + Math.random() * 2; // new random distance
+      }
+      // Keep within road boundaries
+      if (obs.mesh.position.x < -laneWidth * 1.5) obs.mesh.userData.ufoSwayDir = 1;
+      else if (obs.mesh.position.x > laneWidth * 1.5) obs.mesh.userData.ufoSwayDir = -1;
     }
     
     // Barrel drift: move sideways
@@ -2679,25 +2747,26 @@ const animate = () => {
       }
     }
     
-    // Bus/Car: move forward (toward player) or backward (away) at higher difficulty
-    if (difficultyMultiplier > 1.8 && (obs.obstacleType === 'bus' || obs.obstacleType === 'car' || obs.obstacleType === 'fireengine')) {
+    // Red car / bus / fireengine: move forward or backward at noticeable speed (slower than player)
+    if (obs.obstacleType === 'car' || obs.obstacleType === 'bus' || obs.obstacleType === 'fireengine') {
       if (!obs.mesh.userData.lungeTimer) {
         obs.mesh.userData.lungeTimer = Math.random() * 3;
         obs.mesh.userData.lungeDir = Math.random() > 0.5 ? 1 : -1;
+        obs.mesh.userData.lungeSpeed = 0.02 + Math.random() * 0.03; // noticeable but slower than player
       }
       obs.mesh.userData.lungeTimer -= delta;
       if (obs.mesh.userData.lungeTimer <= 0) {
         obs.mesh.userData.lungeDir *= -1;
         obs.mesh.userData.lungeTimer = 1.5 + Math.random() * 2;
       }
-      obs.mesh.position.z += obs.mesh.userData.lungeDir * 0.01 * difficultyMultiplier;
+      obs.mesh.position.z += obs.mesh.userData.lungeDir * obs.mesh.userData.lungeSpeed;
     }
     
     // Police car: 90° across the road, slides left or right across lanes
     if (obs.obstacleType === 'police') {
       if (!obs.mesh.userData.policeDir) {
         obs.mesh.userData.policeDir = Math.random() > 0.5 ? 1 : -1;
-        obs.mesh.userData.policeSpeed = 0.02 * difficultyMultiplier;
+        obs.mesh.userData.policeSpeed = 0.05 * difficultyMultiplier; // faster lateral sweep
       }
       obs.mesh.position.x += obs.mesh.userData.policeDir * obs.mesh.userData.policeSpeed * delta * 60;
       // Bounce between road edges
@@ -2726,12 +2795,12 @@ const animate = () => {
     const collisionDist = obs.hitWidth || 1.5;
     const isFloating = obs.type === 'floating';
     
-    // Near-miss detection (only once per obstacle)
-    // Wider band: within 1.2 units of collision edge
-    if (!obs.nearMissTriggered && horizDist < collisionDist + 1.2 && horizDist >= collisionDist && Math.abs(dz) < 1.5) {
+    // Near-miss detection — rare & rewarding (only once per obstacle, tighter band)
+    if (!obs.nearMissTriggered && horizDist < collisionDist + 0.4 && horizDist >= collisionDist && Math.abs(dz) < 1.0) {
       obs.nearMissTriggered = true;
       nearMissCount++;
-      nearMissTextRef.value = 'CLOSE CALL! \u{1F525}';
+      score.value += 25; // bonus points for close call
+      nearMissTextRef.value = 'CLOSE CALL! +25 \u{1F525}';
       nearMissTimer = 1.0;
       nearMissCountRef.value = nearMissCount;
     }
