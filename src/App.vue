@@ -7,11 +7,20 @@
       <div id="combo" v-if="comboCount > 1">🔥 x{{ comboCount }}</div>
       <div id="powerup-indicator" v-if="activePowerup">{{ powerupIcon }} {{ powerupName }} {{ powerupTimeLeft }}s</div>
       <div id="fly-indicator" v-if="micEnabledRef">&#x1F3A4;&#x2708;ï¸</div>
+      <div id="stage-indicator" v-if="!gameOver">STAGE {{ currentStage + 1 }}: {{ STAGES[currentStage].name }}</div>
+      <div id="boss-bar" v-if="bossActive && !bossDefeated">
+        <div class="boss-label">BOSS</div>
+        <div class="boss-health-track"><div class="boss-health-fill" :style="{ width: bossHealth + '%' }"></div></div>
+      </div>
     </div>
     <div id="floating-texts">
       <div id="near-miss" v-if="nearMissTextRef">{{ nearMissTextRef }}</div>
       <div id="event-alert" v-if="eventAlertTextRef">{{ eventAlertTextRef }}</div>
       <div id="bonus-zone" v-if="inBonusZoneRef">&#x1F308; BONUS ZONE! {{ Math.ceil(bonusTimerRef) }}s</div>
+    </div>
+    <div id="curve-indicator" v-if="!gameOver && Math.abs(roadCurve) > 0.15"
+         :style="{ opacity: Math.min(Math.abs(roadCurve) * 1.5, 1) }">
+      {{ roadCurve > 0 ? '➡️' : '⬅️' }}
     </div>
     <div id="top-buttons">
       <div id="mic-btn" @click="toggleMic">{{ micEnabledRef ? '🎤' : '🎤🔴' }}</div>
@@ -82,7 +91,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v3.7.9 Nyan Cat + Music v2';
+const VERSION = 'v4.0.0-dev';
 
 // Audio system
 let audioCtx = null;
@@ -353,6 +362,18 @@ const unlockedHats = ref([]);
 const currentHat = ref(null);
 const fovWarpRef = ref(false);
 
+// Stage & road curve state
+const currentStage = ref(0)
+const stageTime = ref(0)
+const bossActive = ref(false)
+const bossHealth = ref(100)
+const bossDefeated = ref(false)
+const roadCurve = ref(0)
+const roadCurveTarget = ref(0)
+const stageTransitioning = ref(false)
+const curveChangeTimer = ref(0)
+const nextCurveChange = ref(10)
+
 // Power-up state
 let activePowerup = null;
 let powerupEndTime = 0;
@@ -371,7 +392,30 @@ let isInvincible = false;
 // Day/night cycle
 let dayCycleTime = 0;
 const DAY_DURATION = 120; // 120s per full cycle (4 stages × 30s)
+
+// Stage system
+const STAGES = [
+  {
+    id: 'highway',
+    name: 'The Modern Highway',
+    roadTexture: null,
+    difficultyMultiplier: 1.0,
+    bossType: 'truck',
+    bossDuration: 25,
+    stageDuration: 60,
+  },
+  {
+    id: 'medieval',
+    name: 'The Ancient Path',
+    roadTexture: 'cobblestone',
+    difficultyMultiplier: 1.3,
+    bossType: 'dragon',
+    bossDuration: 25,
+    stageDuration: 60,
+  }
+]
 let scene, camera, renderer, player, clock;
+let boss = null;
 let obstacles = [];
 let coins = [];
 let powerups = [];
@@ -1814,13 +1858,13 @@ const createParticleEffect = (position, color, count = 10) => {
   }
 };
 
-const createFloatingText = (text, position) => {
+const createFloatingText = (text, position, color) => {
   const canvas = document.createElement('canvas');
   canvas.width = 512;
   canvas.height = 128;
   const ctx = canvas.getContext('2d');
   ctx.font = 'bold 64px Arial';
-  ctx.fillStyle = 'white';
+  ctx.fillStyle = color || 'white';
   ctx.strokeStyle = 'black';
   ctx.lineWidth = 4;
   ctx.textAlign = 'center';
@@ -1836,6 +1880,20 @@ const createFloatingText = (text, position) => {
   scene.add(sprite);
   floatingTexts.push(sprite);
 };
+
+// Boss spawn function
+function spawnBoss(bossType) {
+  if (boss) { scene.remove(boss); boss = null; }
+  const color = bossType === 'truck' ? 0xff3333 : 0x9933ff
+  const geo = bossType === 'truck'
+    ? new THREE.BoxGeometry(3, 3, 4)
+    : new THREE.ConeGeometry(2, 4, 6)
+  const mat = new THREE.MeshPhongMaterial({ color, emissive: color, emissiveIntensity: 0.3 })
+  boss = new THREE.Mesh(geo, mat)
+  boss.position.set(0, bossType === 'truck' ? 1.5 : 6, -40)
+  boss.name = 'boss'
+  scene.add(boss)
+}
 
 // Comic-book word art for bullet time
 
@@ -1871,18 +1929,77 @@ const animate = () => {
   gameDuration += delta;
   dayCycleTime = (dayCycleTime + delta) % DAY_DURATION;
   
+  // === STAGE TIME TRACKING ===
+  if (!countdownLocked && !gameOver.value && !stageTransitioning.value) {
+    stageTime.value += realDelta
+  }
+
+  // === CURVE OSCILLATION (not during boss) ===
+  if (!bossActive.value) {
+    curveChangeTimer.value += realDelta
+    if (curveChangeTimer.value >= nextCurveChange.value) {
+      roadCurveTarget.value = (Math.random() - 0.5) * 1.6 // -0.8 to 0.8
+      nextCurveChange.value = 8 + Math.random() * 7 // 8-15 seconds
+      curveChangeTimer.value = 0
+    }
+    roadCurve.value += (roadCurveTarget.value - roadCurve.value) * Math.min(realDelta * 0.5, 0.05)
+  } else {
+    roadCurve.value += (0 - roadCurve.value) * Math.min(realDelta * 0.5, 0.05)
+  }
+
+  // === BOSS SPAWN TRIGGER ===
+  const stage = STAGES[currentStage.value]
+  if (stageTime.value >= stage.stageDuration && !bossActive.value && !bossDefeated.value && !stageTransitioning.value) {
+    bossActive.value = true
+    bossHealth.value = 100
+    createFloatingText(`\u26A0\uFE0F ${stage.bossType === 'truck' ? 'ROAD RAGE TRUCK' : 'SKY TERROR DRAGON'} \u26A0\uFE0F`, player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#ff4444')
+    spawnBoss(stage.bossType)
+  }
+
+  // === BOSS TIMER (decrement health over bossDuration seconds) ===
+  if (bossActive.value && !bossDefeated.value) {
+    bossHealth.value -= (100 / stage.bossDuration) * realDelta
+    if (bossHealth.value <= 0) {
+      bossDefeated.value = true
+      bossHealth.value = 0
+      createFloatingText('\u2728 STAGE CLEAR! \u2728', player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#44ff44')
+      if (boss) { scene.remove(boss); boss = null; }
+      setTimeout(() => {
+        stageTransitioning.value = true
+        const nextStage = (currentStage.value + 1) % STAGES.length
+        currentStage.value = nextStage
+        createFloatingText(`STAGE ${nextStage + 1}: ${STAGES[nextStage].name}`, player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#ffffff')
+        setTimeout(() => {
+          stageTime.value = 0
+          bossActive.value = false
+          bossDefeated.value = false
+          stageTransitioning.value = false
+        }, 3000)
+      }, 2000)
+    }
+  }
+
+  // === BOSS ANIMATION ===
+  if (boss && bossActive.value && !bossDefeated.value) {
+    boss.rotation.y += 0.02
+    boss.position.z = -40 + Math.sin(Date.now() * 0.001) * 3
+    if (boss.name === 'boss') {
+      boss.position.y = STAGES[currentStage.value].bossType === 'truck' ? 1.5 + getSurfaceY(boss.position.z) : 6 + Math.sin(Date.now() * 0.002) * 1.5 + getSurfaceY(boss.position.z)
+    }
+  }
+
   // Day/night cycle
   updateDayNightCycle(delta);
   
   // Progressive difficulty scaling
   // Speed increases every 30 seconds, caps at 3.5x base speed
   const difficultyMultiplier = Math.min(1 + (gameDuration / 30), 3.5);
-  const targetSpeed = 0.25 * difficultyMultiplier;
+  const targetSpeed = 0.25 * difficultyMultiplier * STAGES[currentStage.value].difficultyMultiplier;
   gameSpeed = THREE.MathUtils.lerp(gameSpeed, targetSpeed, 0.01);
   
   
   // Spawn interval decreases over time (more obstacles)
-  spawnInterval = Math.max(0.35, 1.2 - (gameDuration / 80));
+  spawnInterval = Math.max(0.35, 1.2 - (gameDuration / 80)) / STAGES[currentStage.value].difficultyMultiplier;
   
   score.value += Math.floor(delta * 50 * difficultyMultiplier);
 
@@ -1894,6 +2011,11 @@ const animate = () => {
   // Bonus portal animation & collection
   if (bonusPortal) {
     bonusPortal.mesh.position.z += gameSpeed;
+    // Road curve offset
+    {
+      const depthFactor = Math.abs(bonusPortal.mesh.position.z) / 80
+      bonusPortal.mesh.position.x += roadCurve.value * depthFactor * realDelta * 2
+    }
     // Curved earth
     bonusPortal.mesh.position.y = (bonusPortal.mesh.baseY || 1.5) + getSurfaceY(bonusPortal.mesh.position.z);
     bonusPortal.mesh.rotation.x = getSurfaceTilt(bonusPortal.mesh.position.z);
@@ -2126,6 +2248,11 @@ const animate = () => {
 
   obstacles.forEach((obs, index) => {
     obs.mesh.position.z += gameSpeed;
+    // Road curvature: shift obstacles laterally based on depth
+    {
+      const depthFactor = Math.abs(obs.mesh.position.z) / 80
+      obs.mesh.position.x += roadCurve.value * depthFactor * realDelta * 2
+    }
     obs.mesh.position.y = (obs.mesh.baseY || 0) + getSurfaceY(obs.mesh.position.z);
     obs.mesh.rotation.x = getSurfaceTilt(obs.mesh.position.z);
     // Spin UFOs, ground obstacles gentle spin
@@ -2327,11 +2454,19 @@ const animate = () => {
       } else {
         // Blocked by obstacle - continue normal movement
         coin.mesh.position.z += gameSpeed;
+        {
+          const depthFactor = Math.abs(coin.mesh.position.z) / 80
+          coin.mesh.position.x += roadCurve.value * depthFactor * realDelta * 2
+        }
         coin.mesh.rotation.y += 0.1;
       }
     } else {
       // No magnet - normal movement
       coin.mesh.position.z += gameSpeed;
+      {
+        const depthFactor = Math.abs(coin.mesh.position.z) / 80
+        coin.mesh.position.x += roadCurve.value * depthFactor * realDelta * 2
+      }
       coin.mesh.rotation.y += 0.1;
     }
     
@@ -2366,6 +2501,10 @@ const animate = () => {
   bonusCoins.forEach((bc, index) => {
     if (bc.collected) return;
     bc.mesh.position.z += gameSpeed;
+    {
+      const depthFactor = Math.abs(bc.mesh.position.z) / 80
+      bc.mesh.position.x += roadCurve.value * depthFactor * realDelta * 2
+    }
     bc.mesh.rotation.y += 0.1;
     bc.mesh.position.y = 0.5 + getSurfaceY(bc.mesh.position.z);
     bc.mesh.rotation.x = getSurfaceTilt(bc.mesh.position.z);
@@ -2394,6 +2533,10 @@ const animate = () => {
     if (pw.collected) return;
     
     pw.mesh.position.z += gameSpeed;
+    {
+      const depthFactor = Math.abs(pw.mesh.position.z) / 80
+      pw.mesh.position.x += roadCurve.value * depthFactor * realDelta * 2
+    }
     pw.mesh.rotation.y += 0.15;
     // Curved earth
     pw.mesh.position.y = (pw.mesh.baseY || 1) + getSurfaceY(pw.mesh.position.z);
@@ -2494,6 +2637,11 @@ const animate = () => {
   // Animate trees moving
   trees.forEach((tree) => {
     tree.position.z += gameSpeed;
+    // Road curve offset for trees
+    {
+      const depthFactor = Math.abs(tree.position.z) / 80
+      tree.position.x += roadCurve.value * depthFactor * realDelta * 2
+    }
     tree.position.y = (tree.baseY || 0) + getSurfaceY(tree.position.z);
     if (tree.position.z > 10) {
       const side = tree.position.x > 0 ? 1 : -1;
@@ -2506,6 +2654,11 @@ const animate = () => {
   // Animate buildings moving
   buildings.forEach((building) => {
     building.position.z += gameSpeed;
+    // Road curve offset for buildings
+    {
+      const depthFactor = Math.abs(building.position.z) / 80
+      building.position.x += roadCurve.value * depthFactor * realDelta * 2
+    }
     // Curved earth
     building.position.y = (building.baseY || 0) + getSurfaceY(building.position.z);
     building.rotation.x = getSurfaceTilt(building.position.z);
@@ -2617,7 +2770,8 @@ const animate = () => {
   const leftPupil = player.getObjectByName('left-pupil');
   const rightPupil = player.getObjectByName('right-pupil');
   
-  const targetX = (currentLane - 1) * laneWidth;
+  const playerLaneOffset = -roadCurve.value * 0.6
+  const targetX = (currentLane - 1) * laneWidth + playerLaneOffset;
   const moveDir = targetX - player.position.x;
   
   // Running animation - arms and legs swing
@@ -2984,6 +3138,17 @@ const restartGame = () => {
   gameSpeed = 0.25;
   spawnInterval = 1.2;
   gameDuration = 0;
+  // Stage & road curve reset
+  roadCurve.value = 0
+  roadCurveTarget.value = 0
+  curveChangeTimer.value = 0
+  currentStage.value = 0
+  stageTime.value = 0
+  bossActive.value = false
+  bossDefeated.value = false
+  bossHealth.value = 100
+  stageTransitioning.value = false
+  if (boss) { scene.remove(boss); boss = null; }
   comboCount = 0;
   scoreMultiplier = 1;
   magnetRange = 0;
@@ -3395,6 +3560,12 @@ button {
 #near-miss { position: absolute; top: 35%; left: 50%; transform: translateX(-50%); font-size: min(6vw, 22px); color: #ff0; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); pointer-events: none; animation: nearMissPop 0.5s ease-out; white-space: nowrap; }
 #event-alert { position: absolute; top: 25%; left: 50%; transform: translateX(-50%); font-size: min(7vw, 26px); color: #fff; font-weight: bold; text-shadow: 2px 2px 8px rgba(0,0,0,0.9); pointer-events: none; white-space: nowrap; }
 #bonus-zone { position: absolute; top: 12%; left: 50%; transform: translateX(-50%); font-size: min(8vw, 32px); color: #ff0; font-weight: bold; white-space: nowrap; text-shadow: 0 0 20px #f0f, 0 0 40px #0ff; animation: bonusPulse 0.5s ease-in-out infinite alternate; }
+#curve-indicator { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -120px); font-size: 28px; pointer-events: none; z-index: 5; }
+#stage-indicator { color: #aaa; font-size: 11px; }
+#boss-bar { margin-top: 2px; }
+#boss-bar .boss-label { color: #ff4444; font-size: 11px; font-weight: bold; }
+#boss-bar .boss-health-track { width: 100%; height: 6px; background: #333; border-radius: 3px; overflow: hidden; }
+#boss-bar .boss-health-fill { height: 100%; background: linear-gradient(90deg, #ff4444, #ff8800); border-radius: 3px; transition: width 0.3s; }
 #vignette-glow { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0; transition: opacity 0.3s; box-shadow: inset 0 0 100px 40px rgba(255,0,0,0.4); }
 @keyframes nearMissPop { 0% { transform: translateX(-50%) scale(0.5); opacity: 0; } 50% { transform: translateX(-50%) scale(1.3); } 100% { transform: translateX(-50%) scale(1); opacity: 1; } }
 @keyframes bonusPulse { 0% { transform: translateX(-50%) scale(1); } 100% { transform: translateX(-50%) scale(1.1); } }
