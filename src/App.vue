@@ -107,7 +107,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v4.0.7';
+const VERSION = 'v4.0.8';
 
 // Audio system
 let audioCtx = null;
@@ -2152,7 +2152,7 @@ function spawnBoss(bossType) {
     // Tail — chain of 5 spheres
     for (let t = 0; t < 5; t++) {
       const tGeo = new THREE.SphereGeometry(0.3 - t * 0.04, 6, 4)
-      const tMesh = new THREE.Mesh(tGeo, tMatDark)
+      const tMesh = new THREE.Mesh(tGeo, dMatDark)
       tMesh.position.set(0, -0.1 + Math.sin(t*0.5)*0.2, -1.2 - t * 0.6)
       group.add(tMesh)
     }
@@ -2357,48 +2357,54 @@ const animate = () => {
   if (boss && bossActive.value && !bossDefeated.value) {
     const bossType = STAGES[currentStage.value].bossType
     
-    // Base hover/sway
-    const sway = Math.sin(Date.now() * 0.001) * 3
-    
     if (bossCharging) {
-      // Truck charge attack — rush toward player with wide swerves
+      // Truck charge — aim at player's lane, with some swerve
       bossChargeTimer += realDelta
-      const chargeSpeed = gameSpeed * 1.5 // slower charge so player can dodge
+      const chargeSpeed = gameSpeed * 1.2
       boss.position.z += chargeSpeed
-      // Wide swerve during charge
-      boss.position.x += Math.sin(bossChargeTimer * 6) * 0.5
-      // Converge toward player's lane
-      const targetX = currentLane * laneWidth + getCurveX(boss.position.z)
-      boss.position.x += (targetX - boss.position.x) * 0.03
+      // Target X: player's lane + road curve offset
+      const playerLaneX = (currentLane - 1) * laneWidth + getCurveX(boss.position.z)
+      // Converge toward player lane (strong pull)
+      boss.position.x += (playerLaneX - boss.position.x) * 0.08
+      // Add swerve as SET (not accumulate)
+      boss.position.x += Math.sin(bossChargeTimer * 5) * 0.15
+      // Clamp X to road width
+      boss.position.x = Math.max(-laneWidth * 1.5, Math.min(laneWidth * 1.5, boss.position.x))
       if (bossType === 'truck') boss.position.y = getSurfaceY(boss.position.z)
       
-      // Check if charge reached player area
+      // Reached player area? Retreat
       if (boss.position.z > -5 || bossChargeTimer > 3) {
         bossCharging = false
-        // Slow swervy retreat
+        boss.userData = boss.userData || {}
         boss.userData.retreatPhase = true
         boss.userData.retreatTimer = 0
-        if (boss && boss.userData) boss.userData.chargeMissTriggered = false
+        boss.userData.retreatStartX = boss.position.x
+        boss.userData.chargeMissTriggered = false
       }
     } else if (boss.userData?.retreatPhase) {
       // Slow swervy retreat back to z=-40
       boss.userData.retreatTimer += realDelta
-      boss.position.z -= gameSpeed * 0.5 // slow retreat
-      boss.position.x += Math.sin(boss.userData.retreatTimer * 4) * 0.4 // wide swerves
+      const retreatDuration = 3.5 // seconds to retreat
+      const t = Math.min(boss.userData.retreatTimer / retreatDuration, 1)
+      boss.position.z = -5 + (-40 - (-5)) * t // lerp Z back
+      // Swerve: sine oscillation that dampens as it retreats
+      boss.position.x = boss.userData.retreatStartX + Math.sin(t * Math.PI * 3) * 2.5 * (1 - t)
+      // Clamp
+      boss.position.x = Math.max(-laneWidth * 1.5, Math.min(laneWidth * 1.5, boss.position.x))
       if (bossType === 'truck') boss.position.y = getSurfaceY(boss.position.z)
-      if (boss.position.z <= -40) {
+      if (t >= 1) {
         boss.userData.retreatPhase = false
         boss.position.z = -40
       }
     } else {
-      // Non-charge: truck dodges left/right quickly
+      // Idle: hover/sway
+      const sway = Math.sin(Date.now() * 0.001) * 3
       boss.position.z = -40 + sway
       if (bossType === 'truck') {
-        // Truck weaves aggressively between lanes
-        const truckLane = Math.sin(Date.now() * 0.003) * 2.5 // wide sweep
+        const truckLane = Math.sin(Date.now() * 0.003) * 1.5
         boss.position.x = truckLane + getCurveX(boss.position.z)
         boss.position.y = getSurfaceY(boss.position.z)
-        boss.rotation.y = 0 // face player
+        boss.rotation.y = 0
       } else {
         boss.position.x = getCurveX(boss.position.z)
         boss.position.y = 5 + Math.sin(Date.now() * 0.002) * 1.5 + getSurfaceY(boss.position.z)
