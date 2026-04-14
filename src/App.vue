@@ -111,7 +111,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v4.0.9';
+const VERSION = 'v4.1.0';
 
 // Audio system
 let audioCtx = null;
@@ -517,7 +517,9 @@ const getSurfaceTilt = (z) => {
 const getCurveX = (z) => {
   if (!roadCurveEnabled.value) return 0;
   const depth = Math.max(0, -z); // how far ahead (positive)
-  return roadCurve.value * (depth / 80) * 8;
+  // Quadratic curve: straight near player, bends more at distance (looks like real road turning)
+  const t = depth / 80; // normalize depth (0 = at player, 1 = far horizon)
+  return roadCurve.value * t * t * 12; // quadratic — offset grows with square of distance
 };
 
 // Voice/fly controls
