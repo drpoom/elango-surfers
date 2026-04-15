@@ -136,6 +136,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { useAudio } from './composables/useAudio.js'
 import { useLeaderboard } from './composables/useLeaderboard.js'
 import { useAchievements } from './composables/useAchievements.js'
+import { EARTH_R, DAY_DURATION, jumpStrength, slideDuration, laneWidth, FLY_LIFT, FLY_GRAVITY, FLY_MAX_HEIGHT, MIC_THRESHOLD, MIC_PEAK_THRESHOLD, minSwipeDistance, TILT_THRESHOLD, TILT_LR_THRESHOLD, TILT_LANE_COOLDOWN, CALIBRATION_MAX_SAMPLES } from './gameConstants.js'
 
 // Version - Update this for each release
 const VERSION = 'v4.3.8';
@@ -179,7 +180,6 @@ let isInvincible = false;
 
 // Day/night cycle
 let dayCycleTime = 0;
-const DAY_DURATION = 120; // 120s per full cycle (4 stages × 30s)
 
 // Stage system
 const STAGES = [
@@ -295,15 +295,11 @@ const {
 let currentLane = 1;
 let isJumping = false;
 let jumpVelocity = 0;
-const jumpStrength = 0.35;
 let isSliding = false;
 let slideTimer = 0;
-const slideDuration = 0.6;
 const gravity = 0.015;
-const laneWidth = 3;
 
 // Curved earth: ground and objects follow a sphere arc
-const EARTH_R = 350; // planet radius — larger = less curve
 const getSurfaceY = (z) => {
   // z is world Z (negative = ahead). Returns Y offset.
   // Near the player (z > -5): flat (y=0)
@@ -343,11 +339,6 @@ let micDataArray = null;
 let micEnabled = false;
 let isFlying = false;
 let flyVelocity = 0;
-const FLY_LIFT = 0.02; // Upward force when blowing
-const FLY_GRAVITY = 0.008; // Gravity when not blowing (gentler than jump gravity)
-const FLY_MAX_HEIGHT = 4.0; // Max fly height
-const MIC_THRESHOLD = 20; // Volume level to sustain flying (0-128)
-const MIC_PEAK_THRESHOLD = 45; // Spike to start flying
 let gameSpeed = 0.25;
 let lastSpawnTime = -2; // grace period before first spawn
 let spawnInterval = 1.2;
@@ -397,16 +388,12 @@ let currentSkyTex = null;
 // Touch/swipe controls
 let touchStartX = 0;
 let touchStartY = 0;
-const minSwipeDistance = 50;
 
 // Tilt/gyro controls
 let tiltEnabled = true;
 let tiltInitialBeta = null; // Calibrate on enable
 let tiltInitialGamma = null; // Calibrate sideways center
-const TILT_THRESHOLD = 20; // degrees tilt to trigger action
-const TILT_LR_THRESHOLD = 15; // degrees for left/right
 let lastTiltLaneChange = 0;
-const TILT_LANE_COOLDOWN = 300; // ms between lane changes from tilt
 
 // Mobile detection
 const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || ('ontouchstart' in window && window.innerWidth < 1024);
@@ -414,7 +401,6 @@ const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/
 // Tilt calibration during countdown
 let tiltCalibrationSamples = [];
 let isCalibrating = false;
-const CALIBRATION_MAX_SAMPLES = 60; // ~3 seconds at 20Hz
 
 const startTiltCalibration = () => {
   tiltCalibrationSamples = [];
