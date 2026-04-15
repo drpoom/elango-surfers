@@ -7,6 +7,7 @@
  * Usage: const { getSurfaceY, getSurfaceTilt, getCurveX, curveFrontZ } = useCurve({ roadCurveEnabled, roadCurve })
  */
 
+import { ref } from 'vue'
 import { EARTH_R } from '../gameConstants.js'
 
 export function useCurve({ roadCurveEnabled, roadCurve }) {
