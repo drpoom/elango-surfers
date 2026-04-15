@@ -111,7 +111,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v4.1.9';
+const VERSION = 'v4.2.0';
 
 // Audio system
 let audioCtx = null;
@@ -269,9 +269,9 @@ const startBGM = () => {
     bgmAudio = new Audio('assets/game_music.ogg');
     bgmAudio.loop = true;
     bgmAudio.volume = 1;
-    const src = audioCtx.createMediaElementSource(bgmAudio);
-    src.connect(bgmGain);
+    bgmSource = audioCtx.createMediaElementSource(bgmAudio);
   }
+  bgmSource.connect(bgmGain);
   bgmAudio.currentTime = 0;
   bgmAudio.play().catch(() => {});
   
@@ -282,12 +282,12 @@ const startBGM = () => {
     bgmMedievalAudio.volume = 1;
   }
   if (!bgmMedievalSource) {
-    bgmMedievalGain = audioCtx.createGain();
-    bgmMedievalGain.gain.value = isMedievalBGM ? 0.35 : 0;
-    bgmMedievalGain.connect(audioCtx.destination);
     bgmMedievalSource = audioCtx.createMediaElementSource(bgmMedievalAudio);
-    bgmMedievalSource.connect(bgmMedievalGain);
   }
+  bgmMedievalGain = audioCtx.createGain();
+  bgmMedievalGain.gain.value = isMedievalBGM ? 0.35 : 0;
+  bgmMedievalGain.connect(audioCtx.destination);
+  bgmMedievalSource.connect(bgmMedievalGain);
   bgmMedievalAudio.currentTime = 0;
   bgmMedievalAudio.play().catch(() => {});
 };
@@ -322,7 +322,7 @@ const stopBGM = () => {
   if (bgmMedievalGain) {
     try { bgmMedievalGain.disconnect(); } catch(e) {}
     bgmMedievalGain = null;
-    bgmMedievalSource = null; // must recreate after disconnect
+    // Don't null bgmMedievalSource — createMediaElementSource can only be called once per element
   }
   if (bgmInterval) {
     clearTimeout(bgmInterval);
@@ -3784,6 +3784,7 @@ const startCountdown = () => {
 };
 
 const restartGame = () => {
+  stopBGM(); // Stop any playing BGM on restart
   gameOver.value = false;
   score.value = 0;
   currentLane = 1;
@@ -3811,14 +3812,24 @@ const restartGame = () => {
   bossHealth.value = 100
   bossCharging = false
   bossChargeTimer = 0
+  bossChargeTarget = 0
+  bossAttackTimer = 0
+  bossNextAttack = 3
   stageTransitioning.value = false
   if (boss) { scene.remove(boss); boss = null; }
   applyStageVisuals(currentStage.value)
   comboCount = 0;
+  lastCoinTime = 0;
   scoreMultiplier = 1;
   magnetRange = 0;
   isInvincible = false;
   activePowerup = null;
+  powerupEndTime = 0;
+  powerupIcon = '';
+  powerupName = '';
+  powerupTimeLeft.value = 0;
+  cameraShakeTimer = 0;
+  cameraShakeIntensity = 0;
   dayCycleTime = 0;
   nearMissTimer = 0;
   nearMissCount = 0;
@@ -3831,6 +3842,7 @@ const restartGame = () => {
   fogDensity = 0;
   edgeGlowIntensity = 0;
   bonusPortal = null;
+  bonusPortalSpawned = false;
   inBonusZone = false;
   bonusTimer = 0;
   inBonusZoneRef.value = false;
