@@ -141,7 +141,7 @@ import { useCurve } from './composables/useCurve.js'
 import { useMic } from './composables/useMic.js'
 
 // Version - Update this for each release
-const VERSION = 'v4.4.4';
+const VERSION = 'v4.4.5';
 
 // Score & High Score refs
 const score = ref(0);
@@ -2249,9 +2249,10 @@ const animate = () => {
         applyStageVisuals(nextStage)
         createFloatingText(`STAGE ${nextStage + 1}: ${STAGES[nextStage].name}`, player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#ffffff')
         // Reset for new stage — like a new game but score continues
-        gameDuration = 0 // fresh spawn grace for new stage
+        gameDuration = 1.5 // skip spawn grace (5s pause was enough)
         gameSpeed = 0.25 // reset to default speed immediately
         stageTime.value = 0
+        lastSpawnTime = clock.getElapsedTime() // reset spawn timer
         // Clear remaining obstacles + coins
         obstacles.forEach(obs => scene.remove(obs.mesh))
         obstacles = []
@@ -3754,6 +3755,7 @@ onMounted(() => {
       setTimeout(initTick, 1000);
     } else if (initCount === 0) {
       countdownText.value = 'GO!';
+      startBGM(); // Start music on initial GO!
       setTimeout(() => {
         countdownActive.value = false;
         countdownLocked = false;
