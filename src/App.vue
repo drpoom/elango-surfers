@@ -134,7 +134,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v4.3.3';
+const VERSION = 'v4.3.4';
 
 // Audio system
 let audioCtx = null;
@@ -2304,6 +2304,15 @@ const triggerGameOver = (shakeIntensity = 0.5) => {
   // Restore building/tree visibility
   buildings.forEach(b => { b.visible = true; });
   trees.forEach(t => { t.visible = true; });
+  // Immediately remove all game objects from scene so they can't interfere on restart
+  obstacles.forEach(obs => { obs.mesh.traverse(c => { if (c.geometry && c.geometry !== sharedCoinGeo) c.geometry.dispose(); }); scene.remove(obs.mesh); });
+  coins.forEach(coin => scene.remove(coin.mesh));
+  powerups.forEach(pw => scene.remove(pw.mesh));
+  bossProjectiles.forEach(fb => scene.remove(fb));
+  particles.forEach(p => scene.remove(p));
+  floatingTexts.forEach(t => scene.remove(t));
+  if (boss) { scene.remove(boss); boss = null; }
+
   // Save score + stats
   saveHighScore();
   if (score.value > gameStats.maxScore) gameStats.maxScore = score.value;
@@ -3557,7 +3566,7 @@ const animate = () => {
   const leftPupil = player.getObjectByName('left-pupil');
   const rightPupil = player.getObjectByName('right-pupil');
   
-  const playerLaneOffset = -roadCurve.value * 0.6
+  const playerLaneOffset = getCurveX(player.position.z) // follow road curve at player Z
   const targetX = (currentLane - 1) * laneWidth + playerLaneOffset;
   const moveDir = targetX - player.position.x;
   
