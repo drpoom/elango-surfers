@@ -134,7 +134,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v4.3.2';
+const VERSION = 'v4.3.3';
 
 // Audio system
 let audioCtx = null;
@@ -2269,6 +2269,7 @@ let bossDefeatTimeout2 = null
 let invincibilityTimeout = null
 let gameOverShakeInterval = null
 let gameOverTime = 0 // timestamp of game over, prevents instant restart
+let gameStartTime = 0 // timestamp when game started, grace period for collisions
 
 // Centralized game-over handler — all death paths must call this
 const triggerGameOver = (shakeIntensity = 0.5) => {
@@ -3927,9 +3928,23 @@ const startCountdown = () => {
       setTimeout(() => {
         countdownActive.value = false;
         countdownLocked = false;
-        // 2-second invincibility after game starts to prevent death loops
+        // 2-second invincibility after game starts (green shield)
         isInvincible = true;
-        invincibilityTimeout = setTimeout(() => { isInvincible = false; invincibilityTimeout = null; }, 2000);
+        gameStartTime = Date.now();
+        const oldGrace = player.getObjectByName('shield-aura');
+        if (!oldGrace) {
+          const graceGeo = new THREE.SphereGeometry(1.2, 16, 16);
+          const graceMat = new THREE.MeshToonMaterial({ color: 0x44ff44, transparent: true, opacity: 0.3, side: THREE.DoubleSide });
+          const graceMesh = new THREE.Mesh(graceGeo, graceMat);
+          graceMesh.name = 'shield-aura';
+          player.add(graceMesh);
+        }
+        invincibilityTimeout = setTimeout(() => {
+          isInvincible = false;
+          invincibilityTimeout = null;
+          const shield = player.getObjectByName('shield-aura');
+          if (shield) player.remove(shield);
+        }, 2000);
       }, 500);
     }
   };
@@ -4126,9 +4141,23 @@ onMounted(() => {
       setTimeout(() => {
         countdownActive.value = false;
         countdownLocked = false;
-        // 2-second invincibility after game starts to prevent death loops
+        // 2-second invincibility after game starts (green shield)
         isInvincible = true;
-        invincibilityTimeout = setTimeout(() => { isInvincible = false; invincibilityTimeout = null; }, 2000);
+        gameStartTime = Date.now();
+        const oldGrace = player.getObjectByName('shield-aura');
+        if (!oldGrace) {
+          const graceGeo = new THREE.SphereGeometry(1.2, 16, 16);
+          const graceMat = new THREE.MeshToonMaterial({ color: 0x44ff44, transparent: true, opacity: 0.3, side: THREE.DoubleSide });
+          const graceMesh = new THREE.Mesh(graceGeo, graceMat);
+          graceMesh.name = 'shield-aura';
+          player.add(graceMesh);
+        }
+        invincibilityTimeout = setTimeout(() => {
+          isInvincible = false;
+          invincibilityTimeout = null;
+          const shield = player.getObjectByName('shield-aura');
+          if (shield) player.remove(shield);
+        }, 2000);
       }, 500);
     }
   };
