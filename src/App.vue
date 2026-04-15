@@ -58,6 +58,7 @@
           id="name-input"
         />
         <button @click="submitScore" :disabled="playerName.trim().length === 0" id="submit-btn">SAVE</button>
+        <button @click="showNameEntry = false" id="skip-btn">SKIP</button>
       </div>
       <p style="margin-top:0.75rem;font-size:0.8rem;color:#aaa">Press SPACE or tap to restart</p>
     </div>
@@ -2267,11 +2268,13 @@ let bossDefeatTimeout1 = null
 let bossDefeatTimeout2 = null
 let invincibilityTimeout = null
 let gameOverShakeInterval = null
+let gameOverTime = 0 // timestamp of game over, prevents instant restart
 
 // Centralized game-over handler — all death paths must call this
 const triggerGameOver = (shakeIntensity = 0.5) => {
   if (gameOver.value) return // already dead, don't double-fire
   gameOver.value = true
+  gameOverTime = Date.now() // block restart for 1 second
   // Clean up bonus zone
   if (bonusPortal) { scene.remove(bonusPortal.mesh); bonusPortal = null; }
   inBonusZone = false; inBonusZoneRef.value = false; bonusTimer = 0; bonusTimerRef.value = 0;
@@ -3698,8 +3701,10 @@ const handleTouchEnd = (e) => {
   const touchEndX = e.changedTouches[0].clientX;
   const touchEndY = e.changedTouches[0].clientY;
   
-  // If game over, any tap restarts (but not during name entry)
-  if (gameOver.value && !showNameEntry.value) {
+  // If game over, any tap restarts (but not during name entry, and not within 1s of death)
+  if (gameOver.value) {
+    if (showNameEntry.value) return;
+    if (Date.now() - gameOverTime < 1000) return;
     startCountdown();
     return;
   }
@@ -3868,6 +3873,7 @@ const handleKeyDown = (e) => {
   // Restart on Space, Enter, or any key when game over (but not during name entry)
   if (gameOver.value) {
     if (showNameEntry.value) return; // Don't restart while entering name
+    if (Date.now() - gameOverTime < 1000) return; // Prevent instant restart
     startCountdown();
     return;
   }
@@ -4131,7 +4137,7 @@ onMounted(() => {
     if (e.target.closest('#settings-panel') || e.target.closest('#settings-btn') || e.target.closest('#mute-btn') || e.target.closest('#tilt-btn') || e.target.closest('#mic-btn') || e.target.closest('#name-entry')) {
       return;
     }
-    if (gameOver.value && !showNameEntry.value) startCountdown();
+    if (gameOver.value && !showNameEntry.value && Date.now() - gameOverTime >= 1000) startCountdown();
     initAudio();
   });
   
@@ -4367,6 +4373,20 @@ onUnmounted(() => {
   background: #555;
   color: #888;
   cursor: not-allowed;
+}
+#skip-btn {
+  margin-left: 8px;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  background: transparent;
+  color: #aaa;
+  border: 1px solid #555;
+  border-radius: 6px;
+  cursor: pointer;
+}
+#skip-btn:hover {
+  color: #fff;
+  border-color: #aaa;
 }
 #countdown {
   position: absolute;
