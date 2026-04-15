@@ -136,7 +136,9 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { useAudio } from './composables/useAudio.js'
 import { useLeaderboard } from './composables/useLeaderboard.js'
 import { useAchievements } from './composables/useAchievements.js'
-import { EARTH_R, DAY_DURATION, jumpStrength, slideDuration, laneWidth, FLY_LIFT, FLY_GRAVITY, FLY_MAX_HEIGHT, MIC_THRESHOLD, MIC_PEAK_THRESHOLD, minSwipeDistance, TILT_THRESHOLD, TILT_LR_THRESHOLD, TILT_LANE_COOLDOWN, CALIBRATION_MAX_SAMPLES } from './gameConstants.js'
+import { DAY_DURATION, jumpStrength, slideDuration, laneWidth, FLY_LIFT, FLY_GRAVITY, FLY_MAX_HEIGHT, MIC_THRESHOLD, MIC_PEAK_THRESHOLD, minSwipeDistance, TILT_THRESHOLD, TILT_LR_THRESHOLD, TILT_LANE_COOLDOWN, CALIBRATION_MAX_SAMPLES } from './gameConstants.js'
+import { EARTH_R } from './gameConstants.js'
+import { useCurve } from './composables/useCurve.js'
 
 // Version - Update this for each release
 const VERSION = 'v4.3.8';
@@ -162,6 +164,9 @@ const roadCurveTarget = ref(0)
 const stageTransitioning = ref(false)
 const curveChangeTimer = ref(0)
 const nextCurveChange = ref(3)
+
+// Initialize curve composable
+const { getSurfaceY, getSurfaceTilt, getCurveX, curveFrontZ } = useCurve({ roadCurveEnabled, roadCurve })
 
 // Power-up state
 let activePowerup = null;
@@ -299,38 +304,7 @@ let isSliding = false;
 let slideTimer = 0;
 const gravity = 0.015;
 
-// Curved earth: ground and objects follow a sphere arc
-const getSurfaceY = (z) => {
-  // z is world Z (negative = ahead). Returns Y offset.
-  // Near the player (z > -5): flat (y=0)
-  // Far away: drops below as if curving over a sphere
-  const dist = Math.max(0, -z);
-  if (dist < 5) return 0;
-  const angle = dist / EARTH_R;
-  return -EARTH_R * (1 - Math.cos(angle));
-};
-const getSurfaceTilt = (z) => {
-  const dist = Math.max(0, -z);
-  if (dist < 5) return 0;
-  return -dist / EARTH_R; // radians, objects lean back
-};
-
-// Road curvature: quadratic offset with approaching front
-// The curve front starts at the horizon and sweeps toward the player,
-// so you can SEE the bend approaching before it reaches you.
-// curveFrontZ: 0 = front at player (full curve), negative = front still approaching
-let curveFrontZ = 0
-
-const getCurveX = (z) => {
-  if (!roadCurveEnabled.value) return 0;
-  const depth = Math.max(0, -z); // how far ahead (positive)
-  const frontDepth = Math.max(0, -curveFrontZ); // depth where curve starts
-  // Smooth transition: behind the front = no curve, ahead = quadratic curve
-  if (depth <= frontDepth) return 0; // player side of front: straight
-  const pastFront = depth - frontDepth; // how far past the front
-  const t = pastFront / 80; // normalize
-  return roadCurve.value * t * t * 24; // strong 30-45 degree turn
-};
+// Surface/curve math extracted to useCurve.js
 
 // Voice/fly controls
 let micStream = null;
@@ -2229,7 +2203,7 @@ const animate = () => {
       if (Math.abs(roadCurveTarget.value) < 0.1) {
         // Start a new curve — front starts at horizon
         roadCurveTarget.value = (Math.random() > 0.5 ? 1 : -1) * (1.2 + Math.random() * 0.6)
-        curveFrontZ = -80 // front starts at horizon, sweeps toward player
+        curveFrontZ.value = -80 // front starts at horizon, sweeps toward player
         nextCurveChange.value = 2.5 + Math.random() * 1.5
       } else {
         // Straighten out — when straight, curve doesn't need a front
@@ -2243,9 +2217,9 @@ const animate = () => {
     roadCurve.value += (roadCurveTarget.value - roadCurve.value) * lerpSpeed
     // Sweep curve front toward player (0 = right at player)
     // Front moves at road speed so the bend visually approaches
-    if (curveFrontZ < 0) {
-      curveFrontZ += realDelta * 25 // takes ~3.2 seconds to sweep from -80 to 0
-      if (curveFrontZ > 0) curveFrontZ = 0
+    if (curveFrontZ.value < 0) {
+      curveFrontZ.value += realDelta * 25 // takes ~3.2 seconds to sweep from -80 to 0
+      if (curveFrontZ.value > 0) curveFrontZ.value = 0
     }
   } else {
     roadCurve.value += (0 - roadCurve.value) * Math.min(realDelta * 1.0, 0.06)
@@ -3654,7 +3628,7 @@ const restartGame = () => {
   roadCurveTarget.value = 0
   curveChangeTimer.value = 0
   nextCurveChange.value = 3
-  curveFrontZ = 0
+  curveFrontZ.value = 0
   currentStage.value = debugStartStage.value >= 0 ? debugStartStage.value : 0
   stageTime.value = debugStartStage.value >= 0 ? Math.max(0, STAGES[debugStartStage.value].stageDuration - 20) : 0
   bossWarning.value = false
