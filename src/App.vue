@@ -111,7 +111,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v4.2.0';
+const VERSION = 'v4.2.1';
 
 // Audio system
 let audioCtx = null;
@@ -670,12 +670,44 @@ const minSwipeDistance = 50;
 // Tilt/gyro controls
 let tiltEnabled = true;
 let tiltInitialBeta = null; // Calibrate on enable
+let tiltInitialGamma = null; // Calibrate sideways center
 const TILT_THRESHOLD = 20; // degrees tilt to trigger action
 const TILT_LR_THRESHOLD = 15; // degrees for left/right
 let lastTiltLaneChange = 0;
 const TILT_LANE_COOLDOWN = 300; // ms between lane changes from tilt
 
-const toggleTilt = () => {
+// Mobile detection
+const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || ('ontouchstart' in window && window.innerWidth < 1024);
+
+// Tilt calibration during countdown
+let tiltCalibrationSamples = [];
+let isCalibrating = false;
+const CALIBRATION_MAX_SAMPLES = 60; // ~3 seconds at 20Hz
+
+const startTiltCalibration = () => {
+  tiltCalibrationSamples = [];
+  isCalibrating = true;
+  tiltInitialBeta = null;
+  tiltInitialGamma = null;
+};
+
+const finishTiltCalibration = () => {
+  if (tiltCalibrationSamples.length === 0) {
+    // Fallback: use current single reading or 0
+    tiltInitialBeta = tiltInitialBeta ?? 45; // Neutral phone hold
+    tiltInitialGamma = tiltInitialGamma ?? 0;
+  } else {
+    // Average all samples
+    const avgBeta = tiltCalibrationSamples.reduce((s, v) => s + v.beta, 0) / tiltCalibrationSamples.length;
+    const avgGamma = tiltCalibrationSamples.reduce((s, v) => s + v.gamma, 0) / tiltCalibrationSamples.length;
+    tiltInitialBeta = avgBeta;
+    tiltInitialGamma = avgGamma;
+  }
+  isCalibrating = false;
+  tiltCalibrationSamples = [];
+};
+
+let toggleTilt = () => {
   tiltEnabled = !tiltEnabled;
   tiltEnabledRef.value = tiltEnabled;
   tiltInitialBeta = null;
@@ -2152,6 +2184,70 @@ let bossCharging = false
 let bossChargeTimer = 0
 let bossChargeTarget = 0
 
+// Pending timeouts that must be cancelled on restart
+let bossDefeatTimeout1 = null
+let bossDefeatTimeout2 = null
+let invincibilityTimeout = null
+let gameOverShakeInterval = null
+
+// Centralized game-over handler — all death paths must call this
+const triggerGameOver = (shakeIntensity = 0.5) => {
+  if (gameOver.value) return // already dead, don't double-fire
+  gameOver.value = true
+  // Clean up bonus zone
+  if (bonusPortal) { scene.remove(bonusPortal.mesh); bonusPortal = null; }
+  inBonusZone = false; inBonusZoneRef.value = false; bonusTimer = 0; bonusTimerRef.value = 0;
+  bonusNoSpawn = false;
+  bonusCoins.forEach(bc => scene.remove(bc.mesh));
+  bonusCoins = [];
+  scene.userData.bonusEnvActive = false;
+  if (scene.userData.nyanCat) {
+    scene.remove(scene.userData.nyanCat);
+    scene.userData.nyanCat = null;
+    scene.userData.nyanCatTime = 0;
+  }
+  // Restore road material if in rainbow mode
+  const roadGO = scene.getObjectByName('road');
+  if (roadGO && originalRoadMaterial) {
+    roadGO.material.dispose();
+    roadGO.material = originalRoadMaterial;
+    originalRoadMaterial = null;
+  }
+  // Discard saved substage state (we're starting fresh)
+  if (savedSubstageState) {
+    savedSubstageState.obstacles.forEach(obs => scene.remove(obs.mesh));
+    savedSubstageState.coins.forEach(coin => scene.remove(coin.mesh));
+    savedSubstageState = null;
+  }
+  // Restore building/tree visibility
+  buildings.forEach(b => { b.visible = true; });
+  trees.forEach(t => { t.visible = true; });
+  // Save score + stats
+  saveHighScore();
+  if (score.value > gameStats.maxScore) gameStats.maxScore = score.value;
+  if (gameDuration > gameStats.maxTime) gameStats.maxTime = gameDuration;
+  if (score.value > gameStats.bestRun) gameStats.bestRun = score.value;
+  saveProgress();
+  // Effects
+  playSound('crash');
+  createParticleEffect(player.position, 0xff0000, 30);
+  comboCount = 0;
+  // Screen shake
+  const originalPos = camera.position.clone();
+  let shakeTime = 0;
+  gameOverShakeInterval = setInterval(() => {
+    shakeTime += 0.05;
+    if (shakeTime > 0.5) {
+      camera.position.copy(originalPos);
+      clearInterval(gameOverShakeInterval);
+      gameOverShakeInterval = null;
+      return;
+    }
+    camera.position.x = originalPos.x + (Math.random() - 0.5) * shakeIntensity * (1 - shakeTime * 2);
+    camera.position.y = originalPos.y + (Math.random() - 0.5) * shakeIntensity * (1 - shakeTime * 2);
+  }, 30);
+}
+
 function spawnBoss(bossType) {
   if (boss) { scene.remove(boss); boss = null; }
   bossProjectiles = []
@@ -2459,7 +2555,7 @@ const animate = () => {
       // Clean up boss projectiles
       bossProjectiles.forEach(fb => scene.remove(fb))
       bossProjectiles = []
-      setTimeout(() => {
+      bossDefeatTimeout1 = setTimeout(() => {
         stageTransitioning.value = true
         const nextStage = (currentStage.value + 1) % STAGES.length
         currentStage.value = nextStage
@@ -2476,11 +2572,13 @@ const animate = () => {
         powerups.forEach(pw => scene.remove(pw.mesh))
         powerups = []
         spawnInterval = 1.2
-        setTimeout(() => {
+        bossDefeatTimeout2 = setTimeout(() => {
           bossActive.value = false
           bossDefeated.value = false
           stageTransitioning.value = false
+          bossDefeatTimeout2 = null
         }, 3000)
+        bossDefeatTimeout1 = null
       }, 2000)
     }
   }
@@ -2592,15 +2690,14 @@ const animate = () => {
       if (!isInvincible) {
         // Dragon fireball = instant death, truck = damage
         if (STAGES[currentStage.value].bossType === 'dragon') {
-          gameOver.value = true
           createFloatingText('HIT!', player.position.clone().add(new THREE.Vector3(0, 2, 0)), '#ff4444')
-          cameraShakeTimer = 0.8; cameraShakeIntensity = 0.4
+          triggerGameOver(0.4)
         } else {
           bossHealth.value = Math.min(100, bossHealth.value + 10)
           createFloatingText('HIT', player.position.clone().add(new THREE.Vector3(0, 2, 0)), '#ff4444')
           cameraShakeTimer = 0.5; cameraShakeIntensity = 0.25
           isInvincible = true
-          setTimeout(() => { isInvincible = false }, 1500)
+          invincibilityTimeout = setTimeout(() => { isInvincible = false; invincibilityTimeout = null }, 1500)
         }
       }
       scene.remove(fb)
@@ -2629,9 +2726,8 @@ const animate = () => {
     const inZRange = Math.abs(dz) < 3
     if (inZRange && Math.abs(dx) < 2.0 && !isInvincible) {
       // Boss hit — instant kill
-      gameOver.value = true
       createFloatingText('HIT!', player.position.clone().add(new THREE.Vector3(0, 2, 0)), '#ff4444')
-      cameraShakeTimer = 1.0; cameraShakeIntensity = 0.5
+      triggerGameOver(0.5)
     }
     // Near-miss dodge: close but escaped
     if (inZRange && !boss.userData?.chargeMissTriggered && Math.abs(dx) >= 2.0 && Math.abs(dx) < 4.0) {
@@ -3028,60 +3124,7 @@ const animate = () => {
         scene.remove(obs.mesh);
         obstacles.splice(index, 1);
       } else {
-        gameOver.value = true;
-        if (bonusPortal) { scene.remove(bonusPortal.mesh); bonusPortal = null; }
-        // Word art is HTML overlay
-        inBonusZone = false; inBonusZoneRef.value = false; bonusTimer = 0; bonusTimerRef.value = 0;
-        // Clean up bonus zone state on game over
-        bonusNoSpawn = false;
-        bonusCoins.forEach(bc => scene.remove(bc.mesh));
-        bonusCoins = [];
-        if (scene.userData.nyanCat) {
-          scene.remove(scene.userData.nyanCat);
-          scene.userData.nyanCat = null;
-          scene.userData.nyanCatTime = 0;
-        }
-        // Restore road material if in rainbow mode
-        const roadGO = scene.getObjectByName('road');
-        if (roadGO && originalRoadMaterial) {
-          roadGO.material.dispose();
-          roadGO.material = originalRoadMaterial;
-          originalRoadMaterial = null;
-        }
-        // Discard saved substage state (we're starting fresh)
-        if (savedSubstageState) {
-          savedSubstageState.obstacles.forEach(obs => scene.remove(obs.mesh));
-          savedSubstageState.coins.forEach(coin => scene.remove(coin.mesh));
-          savedSubstageState = null;
-        }
-        // Restore building/tree visibility
-        buildings.forEach(b => { b.visible = true; });
-        trees.forEach(t => { t.visible = true; });
-        saveHighScore();
-        playSound('crash');
-        createParticleEffect(player.position, 0xff0000, 30);
-        comboCount = 0;
-        
-        // Screen shake effect
-        const shakeIntensity = 0.5;
-        const originalPos = camera.position.clone();
-        let shakeTime = 0;
-        const shakeInterval = setInterval(() => {
-          shakeTime += 0.05;
-          if (shakeTime > 0.5) {
-            camera.position.copy(originalPos);
-            clearInterval(shakeInterval);
-            return;
-          }
-          camera.position.x = originalPos.x + (Math.random() - 0.5) * shakeIntensity * (1 - shakeTime * 2);
-          camera.position.y = originalPos.y + (Math.random() - 0.5) * shakeIntensity * (1 - shakeTime * 2);
-        }, 30);
-        
-        // Update stats
-        if (score.value > gameStats.maxScore) gameStats.maxScore = score.value;
-        if (gameDuration > gameStats.maxTime) gameStats.maxTime = gameDuration;
-        if (score.value > gameStats.bestRun) gameStats.bestRun = score.value;
-        saveProgress();
+        triggerGameOver(0.5)
       }
     }
 
@@ -3693,28 +3736,38 @@ const handleDeviceOrientation = (e) => {
   
   if (beta === null || gamma === null) return;
   
-  // Calibrate on first reading
+  // During calibration (countdown), collect samples
+  if (isCalibrating) {
+    tiltCalibrationSamples.push({ beta, gamma });
+    if (tiltCalibrationSamples.length > CALIBRATION_MAX_SAMPLES) {
+      tiltCalibrationSamples.shift();
+    }
+    return; // Don't process tilt during calibration
+  }
+  
+  // Calibrate on first reading (non-mobile fallback)
   if (tiltInitialBeta === null) {
     tiltInitialBeta = beta;
+    tiltInitialGamma = gamma;
     return;
   }
   
   const tiltForward = beta - tiltInitialBeta; // Negative = tilted forward (up)
-  const tiltSideways = gamma; // Negative = left, Positive = right
+  const tiltSideways = gamma - (tiltInitialGamma || 0); // Relative to calibrated center
   
   // Tilt phone toward you (beta increases) = jump
-  if (tiltForward > TILT_THRESHOLD && !isJumping && !isSliding) {
+  if (tiltForward > TILT_THRESHOLD && !isJumping && !isSliding && !countdownLocked) {
     handleJump();
   }
   
   // Tilt phone away from you (beta decreases) = slide
-  if (tiltForward < -TILT_THRESHOLD && !isJumping && !isSliding) {
+  if (tiltForward < -TILT_THRESHOLD && !isJumping && !isSliding && !countdownLocked) {
     handleSlide();
   }
   
   // Tilt left/right = lane change
   const now = Date.now();
-  if (now - lastTiltLaneChange > TILT_LANE_COOLDOWN) {
+  if (now - lastTiltLaneChange > TILT_LANE_COOLDOWN && !countdownLocked) {
     if (tiltSideways < -TILT_LR_THRESHOLD) {
       if (currentLane > 0) { currentLane--; lastTiltLaneChange = now; }
     } else if (tiltSideways > TILT_LR_THRESHOLD) {
@@ -3762,6 +3815,11 @@ const startCountdown = () => {
   countdownLocked = true;
   countdownActive.value = true;
   
+  // Start tilt calibration on mobile during countdown (3s of sampling)
+  if (isMobile && tiltEnabled) {
+    startTiltCalibration();
+  }
+  
   let count = 3;
   countdownText.value = count.toString();
   
@@ -3773,6 +3831,10 @@ const startCountdown = () => {
     } else if (count === 0) {
       countdownText.value = 'GO!';
       startBGM(); // Start music on GO!
+      // Finish tilt calibration — compute average from countdown samples
+      if (isMobile && isCalibrating) {
+        finishTiltCalibration();
+      }
       setTimeout(() => {
         countdownActive.value = false;
         countdownLocked = false;
@@ -3785,6 +3847,13 @@ const startCountdown = () => {
 
 const restartGame = () => {
   stopBGM(); // Stop any playing BGM on restart
+
+  // Cancel any pending timeouts from previous game
+  if (bossDefeatTimeout1) { clearTimeout(bossDefeatTimeout1); bossDefeatTimeout1 = null; }
+  if (bossDefeatTimeout2) { clearTimeout(bossDefeatTimeout2); bossDefeatTimeout2 = null; }
+  if (invincibilityTimeout) { clearTimeout(invincibilityTimeout); invincibilityTimeout = null; }
+  if (gameOverShakeInterval) { clearInterval(gameOverShakeInterval); gameOverShakeInterval = null; }
+
   gameOver.value = false;
   score.value = 0;
   currentLane = 1;
@@ -3795,6 +3864,9 @@ const restartGame = () => {
   isFlying = false;
   flyVelocity = 0;
   tiltInitialBeta = null; // Re-calibrate tilt on restart
+  tiltInitialGamma = null;
+  tiltCalibrationSamples = [];
+  isCalibrating = false;
   gameSpeed = 0.25;
   spawnInterval = 1.2;
   gameDuration = 0;
@@ -3828,9 +3900,15 @@ const restartGame = () => {
   powerupIcon = '';
   powerupName = '';
   powerupTimeLeft.value = 0;
+  // Explicitly remove shield aura mesh (deactivatePowerup also does this but may not clear ref)
+  const shieldBefore = player.getObjectByName('shield-aura');
+  if (shieldBefore) player.remove(shieldBefore);
   cameraShakeTimer = 0;
   cameraShakeIntensity = 0;
+  // Reset camera to default position (clear any leftover shake)
+  camera.position.set(0, 6, 12);
   dayCycleTime = 0;
+  skyBlendFactor = 0;
   nearMissTimer = 0;
   nearMissCount = 0;
   nearMissTextRef.value = '';
@@ -3840,7 +3918,13 @@ const restartGame = () => {
   activeEvent = null;
   eventDuration = 0;
   fogDensity = 0;
+  // Restore fog to default
+  scene.fog.near = 20;
+  scene.fog.far = 80;
   edgeGlowIntensity = 0;
+  // Reset vignette glow
+  const vignetteEl = document.getElementById('vignette-glow');
+  if (vignetteEl) vignetteEl.style.opacity = '0';
   bonusPortal = null;
   bonusPortalSpawned = false;
   inBonusZone = false;
@@ -3850,6 +3934,8 @@ const restartGame = () => {
   bonusNoSpawn = false;
   bonusCoins.forEach(bc => scene.remove(bc.mesh));
   bonusCoins = [];
+  // Reset bonus env state
+  scene.userData.bonusEnvActive = false;
   if (scene.userData.nyanCat) {
     scene.remove(scene.userData.nyanCat);
     scene.userData.nyanCat = null;
@@ -3887,11 +3973,6 @@ const restartGame = () => {
     }
   });
   eventAlertTextRef.value = '';
-  
-  // Update stats
-  if (score.value > gameStats.maxScore) gameStats.maxScore = score.value;
-  if (gameDuration > gameStats.maxTime) gameStats.maxTime = gameDuration;
-  if (score.value > gameStats.bestRun) gameStats.bestRun = score.value;
   
   obstacles.forEach(obs => { obs.mesh.traverse(c => { if (c.geometry && c.geometry !== sharedCoinGeo) c.geometry.dispose(); }); scene.remove(obs.mesh); });
   obstacles = [];
@@ -3996,18 +4077,53 @@ onMounted(() => {
   // Tilt/gyro controls (mobile)
   if (window.DeviceOrientationEvent) {
     if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-      // iOS 13+ - request on first touch
-      window.addEventListener('touchstart', () => {
-        DeviceOrientationEvent.requestPermission().then(state => {
+      // iOS 13+ — request permission on first touch (retry-capable, not once:true)
+      let iosTiltPermissionRequested = false;
+      const requestTiltPermission = async () => {
+        if (iosTiltPermissionRequested) return; // already asked this session
+        iosTiltPermissionRequested = true;
+        try {
+          const state = await DeviceOrientationEvent.requestPermission();
           if (state === 'granted') {
             window.addEventListener('deviceorientation', handleDeviceOrientation);
+            tiltEnabled = true;
+            tiltEnabledRef.value = true;
+          } else {
+            // User denied — disable tilt and show hint
+            tiltEnabled = false;
+            tiltEnabledRef.value = false;
           }
-        }).catch(() => {});
+        } catch (err) {
+          console.log('iOS tilt permission error:', err);
+          tiltEnabled = false;
+          tiltEnabledRef.value = false;
+        }
+      };
+      // Attach to tilt button click (user gesture required for iOS permission)
+      window.addEventListener('touchstart', () => {
+        requestTiltPermission();
       }, { once: true });
+      // Also attach to tilt toggle button so user can retry
+      const origToggleTilt = toggleTilt;
+      toggleTilt = async () => {
+        if (!tiltEnabled) {
+          // Re-request permission on iOS when re-enabling
+          iosTiltPermissionRequested = false;
+          await requestTiltPermission();
+        } else {
+          tiltEnabled = false;
+          tiltEnabledRef.value = false;
+          tiltInitialBeta = null;
+        }
+      };
     } else {
-      // Android / older iOS
+      // Android / older iOS — auto-granted
       window.addEventListener('deviceorientation', handleDeviceOrientation);
     }
+  } else {
+    // No DeviceOrientation API available — disable tilt
+    tiltEnabled = false;
+    tiltEnabledRef.value = false;
   }
 });
 
