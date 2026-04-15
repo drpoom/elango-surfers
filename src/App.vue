@@ -389,7 +389,7 @@ const toggleFovWarp = () => {
 };
 
 // Mic input — extracted to useMic.js
-const { micEnabledRef, initMic, toggleMic: _toggleMic, getMicVolume } = useMic()
+const { micEnabledRef, initMic, toggleMic: _toggleMic, getMicVolume, cleanupMic } = useMic()
 const toggleMic = () => _toggleMic(() => { isFlying = false })
 // Environment elements
 let clouds = [];
@@ -3073,14 +3073,14 @@ const animate = () => {
 
   // Voice/fly - mic input
   const micVolume = getMicVolume();
-  if (micEnabled && micVolume > MIC_PEAK_THRESHOLD && !isJumping && !isFlying && !isSliding && !gameOver.value) {
+  if (micEnabledRef.value && micVolume > MIC_PEAK_THRESHOLD && !isJumping && !isFlying && !isSliding && !gameOver.value) {
     // Volume spike → start flying
     isFlying = true;
     flyVelocity = 0.15;
   }
   
   if (isFlying) {
-    if (micEnabled && micVolume > MIC_THRESHOLD) {
+    if (micEnabledRef.value && micVolume > MIC_THRESHOLD) {
       // Still blowing → keep flying (apply lift)
       flyVelocity += FLY_LIFT;
       if (flyVelocity > 0.15) flyVelocity = 0.15; // Cap upward speed
@@ -3838,10 +3838,7 @@ onUnmounted(() => {
   window.removeEventListener('touchend', handleTouchEnd);
   window.removeEventListener('touchmove', handleTouchEnd, { capture: true });
   window.removeEventListener('deviceorientation', handleDeviceOrientation);
-  if (micStream) {
-    micStream.getTracks().forEach(t => t.stop());
-    micStream = null;
-  }
+  cleanupMic();
   if (composer) composer.dispose();
   stopBGM();
 });

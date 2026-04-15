@@ -57,10 +57,23 @@ export function useMic() {
     return sum / micDataArray.length;
   };
 
+  // Cleanup: stop mic stream
+  const cleanupMic = () => {
+    if (micStream) {
+      micStream.getTracks().forEach(t => t.stop());
+      micStream = null;
+    }
+    micAnalyser = null;
+    micDataArray = null;
+    micEnabled = false;
+    micEnabledRef.value = false;
+  };
+
   return {
     micEnabledRef,
     initMic,
     toggleMic,
     getMicVolume,
+    cleanupMic,
   };
 }
