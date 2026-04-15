@@ -142,6 +142,19 @@ import { useMic } from './composables/useMic.js'
 
 // Version - Update this for each release
 const VERSION = 'v4.3.8';
+
+// Score & High Score refs
+const score = ref(0);
+const highScore = ref(0);
+
+// Game state refs
+const gameOver = ref(false);
+const countdownActive = ref(false);
+const countdownText = ref('');
+const showSettings = ref(false);
+const debugStartStage = ref(-1);
+const tiltEnabledRef = ref(true);
+
 const toggleSettings = () => {
   showSettings.value = !showSettings.value;
 };
@@ -419,7 +432,8 @@ const saveHighScore = () => {
   }
 };
 
-// === LEADERBOARD === (extracted to useLeaderboard.js — instantiated below after score/highScore refs)
+// === LEADERBOARD === (extracted to useLeaderboard.js)
+const { leaderboard, playerName, showNameEntry, isHighScore, submitScore, loadLeaderboard } = useLeaderboard({ VERSION, score, highScore })
 
 const initGame = () => {
   scene = new THREE.Scene();
