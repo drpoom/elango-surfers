@@ -168,7 +168,7 @@ export function useAudio({ currentStage, STAGES }) {
 
     // Highway BGM
     bgmGain = audioCtx.createGain();
-    bgmGain.gain.value = isMedievalBGM ? 0 : 0.35;
+    bgmGain.gain.value = isMedievalBGM ? 0 : 0.5;
     bgmGain.connect(audioCtx.destination);
 
     if (!bgmAudio) {
@@ -191,7 +191,7 @@ export function useAudio({ currentStage, STAGES }) {
       bgmMedievalSource = audioCtx.createMediaElementSource(bgmMedievalAudio);
     }
     bgmMedievalGain = audioCtx.createGain();
-    bgmMedievalGain.gain.value = isMedievalBGM ? 0.35 : 0;
+    bgmMedievalGain.gain.value = isMedievalBGM ? 0.5 : 0;
     bgmMedievalGain.connect(audioCtx.destination);
     bgmMedievalSource.connect(bgmMedievalGain);
     bgmMedievalAudio.currentTime = 0;
@@ -204,8 +204,8 @@ export function useAudio({ currentStage, STAGES }) {
     if (toMedieval === isMedievalBGM) return;
     isMedievalBGM = toMedieval;
     const fadeTime = audioCtx.currentTime + 2;
-    if (bgmGain) bgmGain.gain.linearRampToValueAtTime(toMedieval ? 0 : 0.35, fadeTime);
-    if (bgmMedievalGain) bgmMedievalGain.gain.linearRampToValueAtTime(toMedieval ? 0.35 : 0, fadeTime);
+    if (bgmGain) bgmGain.gain.linearRampToValueAtTime(toMedieval ? 0 : 0.5, fadeTime);
+    if (bgmMedievalGain) bgmMedievalGain.gain.linearRampToValueAtTime(toMedieval ? 0.5 : 0, fadeTime);
   };
 
   const stopBGM = () => {

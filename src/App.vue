@@ -141,7 +141,7 @@ import { useCurve } from './composables/useCurve.js'
 import { useMic } from './composables/useMic.js'
 
 // Version - Update this for each release
-const VERSION = 'v4.4.3';
+const VERSION = 'v4.4.4';
 
 // Score & High Score refs
 const score = ref(0);
@@ -2210,7 +2210,7 @@ const animate = () => {
     bossActive.value = true
     bossHealth.value = 100
     createFloatingText(`\u26A0\uFE0F ${stage.bossType === 'truck' ? 'ROAD RAGE TRUCK' : 'SKY TERROR DRAGON'} \u26A0\uFE0F`, player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#ff4444')
-    playSFX(stage.bossType === 'truck' ? 'truck_honk' : 'dragon_cry')
+    playSFX(stage.bossType === 'truck' ? 'truck_honk' : 'dragon_cry', 0.6)
     spawnBoss(stage.bossType)
   }
 
