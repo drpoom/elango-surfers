@@ -111,7 +111,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v4.1.7';
+const VERSION = 'v4.1.8';
 
 // Audio system
 let audioCtx = null;
@@ -2576,6 +2576,8 @@ const animate = () => {
     fb.position.y += (fb.userData.targetY - fb.position.y) * 0.04 // converge to target height
     fb.rotation.y += 0.1
     
+    // Skip collision if game over or countdown
+    if (gameOver.value || countdownLocked) continue;
     // Collision with player
     const dist = player.position.distanceTo(fb.position)
     if (dist < 1.5) {
@@ -2613,7 +2615,7 @@ const animate = () => {
   }
   
   // Boss collision: any touch = game over for both truck and dragon
-  if (bossCharging && boss) {
+  if (bossCharging && boss && !gameOver.value && !countdownLocked) {
     const dx = player.position.x - boss.position.x
     const dz = player.position.z - boss.position.z
     const inZRange = Math.abs(dz) < 3
@@ -2675,23 +2677,26 @@ const animate = () => {
         spark.position.set(Math.cos(angle) * 1.8, Math.sin(angle) * 1.8, 0);
       }
     }
-    // Collision check
-    const dist = player.position.distanceTo(bonusPortal.mesh.position);
-    if (dist < 2.0) {
-      // Enter bonus zone!
-      inBonusZone = true;
-      bonusTimer = 5;
-      inBonusZoneRef.value = true;
-      bonusTimerRef.value = 5;
-      scene.remove(bonusPortal.mesh);
-      bonusPortal = null;
-
-      playSound('powerup');
-    } else if (bonusPortal.mesh.position.z > 15) {
+    // Collision check (only during active gameplay)
+    if (!gameOver.value && !countdownLocked) {
+      const dist = player.position.distanceTo(bonusPortal.mesh.position);
+      if (dist < 2.0) {
+        // Enter bonus zone!
+        inBonusZone = true;
+        bonusTimer = 5;
+        inBonusZoneRef.value = true;
+        bonusTimerRef.value = 5;
+        scene.remove(bonusPortal.mesh);
+        bonusPortal = null;
+        playSound('powerup');
+      }
+    }
+    // Clean up portal if it passed the player
+    if (bonusPortal && bonusPortal.mesh.position.z > 15) {
       scene.remove(bonusPortal.mesh);
       bonusPortal = null;
     }
-  }
+  } // end if (bonusPortal)
   
   // Bonus zone timer
   if (inBonusZone) {
@@ -2981,6 +2986,8 @@ const animate = () => {
       }
     }
 
+    // Skip collision if game over or countdown (safety guard)
+    if (gameOver.value || countdownLocked) return;
     // Horizontal + Z distance (ignore Y for collision range check)
     const dx = player.position.x - obs.mesh.position.x;
     const dz = player.position.z - obs.mesh.position.z;
@@ -3794,6 +3801,8 @@ const restartGame = () => {
   bossActive.value = false
   bossDefeated.value = false
   bossHealth.value = 100
+  bossCharging = false
+  bossChargeTimer = 0
   stageTransitioning.value = false
   if (boss) { scene.remove(boss); boss = null; }
   applyStageVisuals(currentStage.value)
