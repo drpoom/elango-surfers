@@ -134,7 +134,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v4.3.4';
+const VERSION = 'v4.3.5';
 
 // Audio system
 let audioCtx = null;
@@ -2306,12 +2306,24 @@ const triggerGameOver = (shakeIntensity = 0.5) => {
   trees.forEach(t => { t.visible = true; });
   // Immediately remove all game objects from scene so they can't interfere on restart
   obstacles.forEach(obs => { obs.mesh.traverse(c => { if (c.geometry && c.geometry !== sharedCoinGeo) c.geometry.dispose(); }); scene.remove(obs.mesh); });
+  obstacles = [];
   coins.forEach(coin => scene.remove(coin.mesh));
+  coins = [];
   powerups.forEach(pw => scene.remove(pw.mesh));
+  powerups = [];
   bossProjectiles.forEach(fb => scene.remove(fb));
+  bossProjectiles = [];
   particles.forEach(p => scene.remove(p));
+  particles = [];
   floatingTexts.forEach(t => scene.remove(t));
+  floatingTexts = [];
   if (boss) { scene.remove(boss); boss = null; }
+  // Cancel any pending boss/stage timeouts
+  if (bossDefeatTimeout1) { clearTimeout(bossDefeatTimeout1); bossDefeatTimeout1 = null; }
+  if (bossDefeatTimeout2) { clearTimeout(bossDefeatTimeout2); bossDefeatTimeout2 = null; }
+  bossActive.value = false;
+  bossDefeated.value = false;
+  bossCharging = false;
 
   // Save score + stats
   saveHighScore();
@@ -2775,8 +2787,8 @@ const animate = () => {
     fb.position.y += (fb.userData.targetY - fb.position.y) * 0.04 // converge to target height
     fb.rotation.y += 0.1
     
-    // Skip collision if game over or countdown
-    if (gameOver.value || countdownLocked) continue;
+    // Skip collision if game over, countdown, or grace period
+    if (gameOver.value || countdownLocked || Date.now() - gameStartTime < 2000) continue;
     // Collision with player
     const dist = player.position.distanceTo(fb.position)
     if (dist < 1.5) {
@@ -2813,7 +2825,7 @@ const animate = () => {
   }
   
   // Boss collision: any touch = game over for both truck and dragon
-  if (bossCharging && boss && !gameOver.value && !countdownLocked) {
+  if (bossCharging && boss && !gameOver.value && !countdownLocked && Date.now() - gameStartTime >= 2000) {
     const dx = player.position.x - boss.position.x
     const dz = player.position.z - boss.position.z
     const inZRange = Math.abs(dz) < 3
@@ -3185,8 +3197,8 @@ const animate = () => {
       }
     }
 
-    // Skip collision if game over or countdown (safety guard)
-    if (gameOver.value || countdownLocked) return;
+    // Skip collision if game over, countdown, or grace period
+    if (gameOver.value || countdownLocked || Date.now() - gameStartTime < 2000) return;
     // Horizontal + Z distance (ignore Y for collision range check)
     const dx = player.position.x - obs.mesh.position.x;
     const dz = player.position.z - obs.mesh.position.z;
@@ -3204,6 +3216,9 @@ const animate = () => {
       nearMissCountRef.value = nearMissCount;
     }
     
+    // Hard grace period: no collisions for 2s after game start
+    if (Date.now() - gameStartTime < 2000) return;
+
     // Ground obstacles: hit if player is on ground level and not flying
     const hitGroundObs = !isFloating && player.position.y < 1.0 && !isFlying;
     // Floating/UFO: hit if player is NOT sliding (must slide under)
@@ -3969,6 +3984,8 @@ const restartGame = () => {
   if (bossDefeatTimeout2) { clearTimeout(bossDefeatTimeout2); bossDefeatTimeout2 = null; }
   if (invincibilityTimeout) { clearTimeout(invincibilityTimeout); invincibilityTimeout = null; }
   if (gameOverShakeInterval) { clearInterval(gameOverShakeInterval); gameOverShakeInterval = null; }
+  if (bossDefeatTimeout1) { clearTimeout(bossDefeatTimeout1); bossDefeatTimeout1 = null; }
+  if (bossDefeatTimeout2) { clearTimeout(bossDefeatTimeout2); bossDefeatTimeout2 = null; }
 
   gameOver.value = false;
   showNameEntry.value = false;
