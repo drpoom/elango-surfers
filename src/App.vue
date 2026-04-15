@@ -134,7 +134,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v4.3.7';
+const VERSION = 'v4.3.8';
 
 // Audio system
 let audioCtx = null;
@@ -2520,11 +2520,9 @@ function spawnBossProjectile(type) {
     const extra = Math.random() > 0.3 ? 2 : 1
     for (let i = 0; i < Math.min(extra, otherLanes.length); i++) attackLanes.push(otherLanes[i])
     
-    const heights = [0.5, 1.5, 3.0] // low, mid, high — player must jump/duck/slide
-    
     attackLanes.forEach((lane, idx) => {
       const targetX = (lane - 1) * laneWidth
-      const fbY = heights[idx % heights.length]
+      const fbY = 0.3 + Math.random() * 3.2 // random height between 0.3 and 3.5
       
       const fbGeo = new THREE.SphereGeometry(0.5, 8, 8)
       const fbMat = new THREE.MeshBasicMaterial({ color: 0xff6600 })
@@ -2533,8 +2531,8 @@ function spawnBossProjectile(type) {
       const glowMat = new THREE.MeshBasicMaterial({ color: 0xff2200, transparent: true, opacity: 0.4 })
       fb.add(new THREE.Mesh(glowGeo, glowMat))
       
-      fb.position.set(boss.position.x + (Math.random() - 0.5) * 2, fbY, boss.position.z + 3)
-      fb.userData = { targetX, targetLane: lane, targetY: fbY, speed: 0.45, delay: idx * 0.15 }
+      fb.position.set(boss.position.x + (Math.random() - 0.5) * 3, fbY, boss.position.z + 2 + Math.random() * 2)
+      fb.userData = { targetX, targetLane: lane, targetY: fbY, speed: 0.3 + Math.random() * 0.3, delay: idx * 0.15 }
       scene.add(fb)
       bossProjectiles.push(fb)
     })
@@ -2643,6 +2641,7 @@ const animate = () => {
     bossHealth.value -= (100 / stage.bossDuration) * realDelta
     if (bossHealth.value <= 0) {
       bossDefeated.value = true
+      bossActive.value = false // allow spawning immediately
       bossHealth.value = 0
       createFloatingText('\u2728 STAGE CLEAR! \u2728', player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#44ff44')
       // Boss defeat explosion
@@ -2680,7 +2679,6 @@ const animate = () => {
         powerups = []
         spawnInterval = 1.2
         bossDefeatTimeout2 = setTimeout(() => {
-          bossActive.value = false
           bossDefeated.value = false
           stageTransitioning.value = false
           bossDefeatTimeout2 = null
