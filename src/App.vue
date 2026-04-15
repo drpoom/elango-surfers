@@ -111,7 +111,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v4.1.5';
+const VERSION = 'v4.1.6';
 
 // Audio system
 let audioCtx = null;
@@ -567,19 +567,13 @@ const getSurfaceTilt = (z) => {
 // Road curvature: returns X offset at a given Z depth based on current roadCurve
 // The curve has a 'front' that propagates from far away toward the player,
 // so you can SEE the curve approaching before it reaches you.
-let curveFrontZ = 0 // Z position of the curve front (0 = at player, negative = far ahead)
-let curveFrontTarget = 0
-
+// Road curvature: quadratic offset — straight near player, dramatic bend at distance
 const getCurveX = (z) => {
   if (!roadCurveEnabled.value) return 0;
   const depth = Math.max(0, -z); // how far ahead (positive)
-  const frontDepth = Math.max(0, -curveFrontZ); // depth where curve begins
-  // Smooth transition: curve is zero at frontDepth, grows quadratically beyond
-  if (depth <= frontDepth) return 0; // straight ahead of the front
-  const pastFront = depth - frontDepth;
-  const maxCurveDepth = 80; // max depth we care about
-  const t = Math.min(pastFront / maxCurveDepth, 1);
-  return roadCurve.value * t * t * 14;
+  const t = depth / 80; // normalize (0 at player, 1 at horizon)
+  // Quadratic: road stays mostly straight near player, curves sharply at distance
+  return roadCurve.value * t * t * 24; // strong enough for 30-45 degree visual turn
 };
 
 // Voice/fly controls
@@ -1875,26 +1869,30 @@ const spawnObstacle = () => {
       const barrelGeo = new THREE.CylinderGeometry(0.5, 0.5, 1.0, 12);
       const barrelMat = new THREE.MeshToonMaterial({ color: 0x336699 });
       const barrel = new THREE.Mesh(barrelGeo, barrelMat);
-      barrel.position.y = 0.5;
+      // Lay barrel on its side (rotate 90 degrees so cylinder axis is horizontal)
+      barrel.rotation.z = Math.PI / 2;
+      barrel.position.y = 0.5; // center of barrel sits on ground
       barrel.castShadow = false;
       group.add(barrel);
-      // Hazard stripes
+      // Hazard stripes (now on the rolling barrel)
       const stripeGeo2 = new THREE.CylinderGeometry(0.52, 0.52, 0.1, 12);
       const stripeMat2 = new THREE.MeshToonMaterial({ color: 0xffcc00 });
       for (const sy of [0.3, 0.7]) {
         const stripe = new THREE.Mesh(stripeGeo2, stripeMat2);
-        stripe.position.y = sy;
+        stripe.rotation.z = Math.PI / 2;
+        stripe.position.y = 0.5;
         group.add(stripe);
       }
-      // Barrel lid
+      // Barrel lid (end cap)
       const lidGeo = new THREE.CylinderGeometry(0.48, 0.48, 0.05, 12);
       const lidMat = new THREE.MeshToonMaterial({ color: 0x224466 });
       const lid = new THREE.Mesh(lidGeo, lidMat);
-      lid.position.y = 1.02;
+      lid.rotation.z = Math.PI / 2;
+      lid.position.y = 0.5;
       group.add(lid);
       group.position.set(laneX, 0, -50);
-      // Barrel drifts sideways
-      group.userData = { driftDir: Math.random() > 0.5 ? 1 : -1, driftSpeed: 0.01 + Math.random() * 0.02 };
+      // Barrel rolls sideways across the road
+      group.userData = { driftDir: Math.random() > 0.5 ? 1 : -1, driftSpeed: 0.015 + Math.random() * 0.02 };
       break;
     }
   }
@@ -2325,35 +2323,25 @@ const animate = () => {
   }
 
   // === CURVE OSCILLATION (not during boss, or disabled) ===
-  // The curve front propagates from far away toward the player, creating a "curve approaching" effect.
-  // When a curve starts, the front is set to z=-80 (far horizon) and moves toward z=0 (player).
-  // You see the road bending at a distance BEFORE it reaches you.
+  // Curve builds gradually via slow lerp — you see it develop from the distance
+  // 30-45 degree turns: roadCurveTarget up to 1.8
   if (!bossActive.value && roadCurveEnabled.value) {
     curveChangeTimer.value += realDelta
     if (curveChangeTimer.value >= nextCurveChange.value) {
       if (Math.abs(roadCurveTarget.value) < 0.1) {
-        // Start a new curve — front starts at far horizon
-        roadCurveTarget.value = (Math.random() > 0.5 ? 1 : -1) * (0.8 + Math.random() * 0.5)
-        curveFrontTarget = -80 // front starts at horizon
-        curveFrontZ = -80 // immediately set front position
-        nextCurveChange.value = 2.5 + Math.random() * 1.5
+        // Start a new curve — strong enough for 30-45 degree visual turn
+        roadCurveTarget.value = (Math.random() > 0.5 ? 1 : -1) * (1.2 + Math.random() * 0.6)
+        nextCurveChange.value = 2 + Math.random() * 1.5
       } else {
-        // Straighten out — front stays, curve value drops to 0
+        // Straighten out
         roadCurveTarget.value = 0
         nextCurveChange.value = 5 + Math.random() * 5
       }
       curveChangeTimer.value = 0
     }
-    // Lerp curve value — slow enough to see it develop
-    const lerpSpeed = Math.abs(roadCurveTarget.value) > 0.1 ? Math.min(realDelta * 1.2, 0.08) : Math.min(realDelta * 0.8, 0.05)
+    // Slow lerp so you can see the curve develop from the horizon
+    const lerpSpeed = Math.abs(roadCurveTarget.value) > 0.1 ? Math.min(realDelta * 1.5, 0.1) : Math.min(realDelta * 0.8, 0.05)
     roadCurve.value += (roadCurveTarget.value - roadCurve.value) * lerpSpeed
-    // Propagate curve front toward player at road scroll speed
-    // This makes the curve visually "approach" from the horizon
-    if (curveFrontZ < -2) {
-      curveFrontZ += gameSpeed * 60 * realDelta // front moves toward player
-    } else {
-      curveFrontZ = 0 // front has reached the player — full curve everywhere
-    }
   } else {
     roadCurve.value += (0 - roadCurve.value) * Math.min(realDelta * 1.0, 0.06)
   }
@@ -2464,24 +2452,24 @@ const animate = () => {
     } else if (boss.userData?.retreatPhase) {
       // Retreat back to z=-50 (far away)
       boss.userData.retreatTimer += realDelta
-      const retreatDuration = 3.5
+      const retreatDuration = 4.0
       const t = Math.min(boss.userData.retreatTimer / retreatDuration, 1)
       // Ease-out retreat
       const easeT = 1 - Math.pow(1 - t, 3)
       const startZ = boss.userData.retreatStartZ || 5
-      boss.position.z = startZ + (-50 - startZ) * easeT
+      boss.position.z = startZ + (-60 - startZ) * easeT
       // Straighten X back to center as it retreats
       const targetX = getCurveX(boss.position.z)
       boss.position.x += (targetX - boss.position.x) * 0.1
       if (bossType === 'truck') boss.position.y = getSurfaceY(boss.position.z)
       if (t >= 1) {
         boss.userData.retreatPhase = false
-        boss.position.z = -50
+        boss.position.z = -60
       }
     } else {
       // Idle: hover/sway
       const sway = Math.sin(Date.now() * 0.001) * 3
-      boss.position.z = -50 + sway
+      boss.position.z = -60 + sway
       if (bossType === 'truck') {
         const truckLane = Math.sin(Date.now() * 0.003) * 1.5
         boss.position.x = truckLane + getCurveX(boss.position.z)
@@ -2882,17 +2870,18 @@ const animate = () => {
       else if (obs.mesh.userData.driftX > maxDriftUFO) obs.mesh.userData.ufoSwayDir = -1;
     }
     
-    // Barrel: roll across street like a log
+    // Barrel: roll across street like a log on its side
     if (obs.obstacleType === 'barrel' && obs.mesh.userData.driftDir) {
       obs.mesh.userData.driftX = (obs.mesh.userData.driftX || 0) + obs.mesh.userData.driftDir * obs.mesh.userData.driftSpeed;
       const maxDriftBarrel = laneWidth * 1.2;
       if (obs.mesh.userData.driftX < -maxDriftBarrel || obs.mesh.userData.driftX > maxDriftBarrel) {
         obs.mesh.userData.driftDir *= -1;
       }
-      // Roll: rotate the barrel cylinder child, not the whole group (avoid surface tilt conflict)
-      const barrelChild = obs.mesh.children[0]; // first child is the barrel cylinder
+      // Roll: barrel lies on side (rotated 90 deg Z). Rolling = rotate around local X axis.
+      // Since barrel mesh has rotation.z = PI/2, rotating barrel.rotation.x makes it roll along ground
+      const barrelChild = obs.mesh.children[0]; // barrel cylinder
       if (barrelChild) {
-        barrelChild.rotation.z += obs.mesh.userData.driftDir * obs.mesh.userData.driftSpeed * 4;
+        barrelChild.rotation.x += obs.mesh.userData.driftDir * obs.mesh.userData.driftSpeed * 5;
       }
     }
     // Red car / bus / fireengine: move forward or backward at noticeable speed (slower than player)
@@ -3742,8 +3731,6 @@ const restartGame = () => {
   roadCurveTarget.value = 0
   curveChangeTimer.value = 0
   nextCurveChange.value = 3
-  curveFrontZ = 0
-  curveFrontTarget = 0
   currentStage.value = debugStartStage.value >= 0 ? debugStartStage.value : 0
   stageTime.value = debugStartStage.value >= 0 ? Math.max(0, STAGES[debugStartStage.value].stageDuration - 20) : 0
   bossWarning.value = false
