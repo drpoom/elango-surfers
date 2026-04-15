@@ -111,7 +111,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v4.1.6';
+const VERSION = 'v4.1.7';
 
 // Audio system
 let audioCtx = null;
@@ -510,11 +510,23 @@ function applyStageVisuals(stageIndex) {
     roadMesh.material.map = cobblestoneTexture;
     roadMesh.material.color.set(0x888888);
     roadMesh.material.needsUpdate = true;
+    // Preload fachwerkhaus texture for medieval buildings
+    loadFachwerk();
     // Tint grass darker for medieval
     if (grassMesh) { grassMesh.material.color.set(0x2d5a1e); grassMesh.material.needsUpdate = true; }
     // Darker sky
     if (scene && scene.fog) { scene.fog.color.set(0x4a5568); scene.background = new THREE.Color(0x4a5568); }
-    // Medieval BGM: slow down playback for darker, more ominous feel
+    // Switch building facades to fachwerkhaus
+    if (buildings.length && fachwerkTexture) {
+      buildings.forEach(b => {
+        const mesh = b.children.find(c => c.isMesh)
+        if (mesh && mesh.material && Array.isArray(mesh.material)) {
+          mesh.material[4].map = fachwerkTexture // front face
+          mesh.material[4].color.set(0xd4c4a0) // warm plaster fallback
+          mesh.material[4].needsUpdate = true
+        }
+      })
+    }
     // Switch to medieval BGM
     switchBGMTrack('medieval');
   } else {
@@ -524,7 +536,18 @@ function applyStageVisuals(stageIndex) {
     roadMesh.material.needsUpdate = true;
     if (grassMesh) { grassMesh.material.color.set(0x3a7d2c); grassMesh.material.needsUpdate = true; }
     if (scene && scene.fog) { scene.fog.color.set(0x87ceeb); scene.background = new THREE.Color(0x87ceeb); }
-    // Highway BGM: normal speed
+    // Restore building facades to original textures
+    if (buildings.length) {
+      buildings.forEach((b, i) => {
+        const mesh = b.children.find(c => c.isMesh)
+        if (mesh && mesh.material && Array.isArray(mesh.material)) {
+          const texIdx = i % buildingTextures.length
+          mesh.material[4].map = buildingTextures[texIdx] // front face
+          mesh.material[4].color.set(buildingDominantColors[texIdx])
+          mesh.material[4].needsUpdate = true
+        }
+      })
+    }
     // Switch to highway BGM
     switchBGMTrack('highway');
   }
@@ -564,16 +587,21 @@ const getSurfaceTilt = (z) => {
   return -dist / EARTH_R; // radians, objects lean back
 };
 
-// Road curvature: returns X offset at a given Z depth based on current roadCurve
-// The curve has a 'front' that propagates from far away toward the player,
-// so you can SEE the curve approaching before it reaches you.
-// Road curvature: quadratic offset — straight near player, dramatic bend at distance
+// Road curvature: quadratic offset with approaching front
+// The curve front starts at the horizon and sweeps toward the player,
+// so you can SEE the bend approaching before it reaches you.
+// curveFrontZ: 0 = front at player (full curve), negative = front still approaching
+let curveFrontZ = 0
+
 const getCurveX = (z) => {
   if (!roadCurveEnabled.value) return 0;
   const depth = Math.max(0, -z); // how far ahead (positive)
-  const t = depth / 80; // normalize (0 at player, 1 at horizon)
-  // Quadratic: road stays mostly straight near player, curves sharply at distance
-  return roadCurve.value * t * t * 24; // strong enough for 30-45 degree visual turn
+  const frontDepth = Math.max(0, -curveFrontZ); // depth where curve starts
+  // Smooth transition: behind the front = no curve, ahead = quadratic curve
+  if (depth <= frontDepth) return 0; // player side of front: straight
+  const pastFront = depth - frontDepth; // how far past the front
+  const t = pastFront / 80; // normalize
+  return roadCurve.value * t * t * 24; // strong 30-45 degree turn
 };
 
 // Voice/fly controls
@@ -1451,6 +1479,17 @@ const createBackgroundElements = () => {
     textureLoader.load('assets/building_blue.webp'),
     textureLoader.load('assets/building_green.webp'),
   ];
+  // Medieval fachwerkhaus texture
+  let fachwerkTexture = null;
+  const loadFachwerk = () => {
+    if (!fachwerkTexture) {
+      fachwerkTexture = textureLoader.load('assets/building_fachwerk.webp');
+      fachwerkTexture.wrapS = THREE.RepeatWrapping;
+      fachwerkTexture.wrapT = THREE.RepeatWrapping;
+      fachwerkTexture.colorSpace = THREE.SRGBColorSpace;
+    }
+    return fachwerkTexture;
+  };
   // Set dominant colors as fallback so buildings don't appear dark before texture loads
   const buildingDominantColors = [0xffb6c1, 0x87ceeb, 0x98fb98]; // pink, blue, green
   buildingTextures.forEach((tex, idx) => {
@@ -1866,33 +1905,42 @@ const spawnObstacle = () => {
     
     case 'barrel': {
       group = new THREE.Group();
+      // Barrel lying on its side: cylinder axis along Z (rolling direction)
+      const barrelGroup = new THREE.Group();
+      // Main barrel body
       const barrelGeo = new THREE.CylinderGeometry(0.5, 0.5, 1.0, 12);
       const barrelMat = new THREE.MeshToonMaterial({ color: 0x336699 });
       const barrel = new THREE.Mesh(barrelGeo, barrelMat);
-      // Lay barrel on its side (rotate 90 degrees so cylinder axis is horizontal)
-      barrel.rotation.z = Math.PI / 2;
-      barrel.position.y = 0.5; // center of barrel sits on ground
-      barrel.castShadow = false;
-      group.add(barrel);
-      // Hazard stripes (now on the rolling barrel)
+      barrel.rotation.z = Math.PI / 2; // lay on side
+      barrelGroup.add(barrel);
+      // Hazard stripes on barrel body
       const stripeGeo2 = new THREE.CylinderGeometry(0.52, 0.52, 0.1, 12);
       const stripeMat2 = new THREE.MeshToonMaterial({ color: 0xffcc00 });
-      for (const sy of [0.3, 0.7]) {
-        const stripe = new THREE.Mesh(stripeGeo2, stripeMat2);
-        stripe.rotation.z = Math.PI / 2;
-        stripe.position.y = 0.5;
-        group.add(stripe);
-      }
-      // Barrel lid (end cap)
+      const stripe1 = new THREE.Mesh(stripeGeo2, stripeMat2);
+      stripe1.rotation.z = Math.PI / 2;
+      stripe1.position.z = 0.3; // offset along barrel length
+      barrelGroup.add(stripe1);
+      const stripe2 = new THREE.Mesh(stripeGeo2, stripeMat2);
+      stripe2.rotation.z = Math.PI / 2;
+      stripe2.position.z = -0.3;
+      barrelGroup.add(stripe2);
+      // Barrel lids on each end
       const lidGeo = new THREE.CylinderGeometry(0.48, 0.48, 0.05, 12);
       const lidMat = new THREE.MeshToonMaterial({ color: 0x224466 });
-      const lid = new THREE.Mesh(lidGeo, lidMat);
-      lid.rotation.z = Math.PI / 2;
-      lid.position.y = 0.5;
-      group.add(lid);
+      const lid1 = new THREE.Mesh(lidGeo, lidMat);
+      lid1.rotation.z = Math.PI / 2;
+      lid1.position.z = 0.5;
+      barrelGroup.add(lid1);
+      const lid2 = new THREE.Mesh(lidGeo, lidMat);
+      lid2.rotation.z = Math.PI / 2;
+      lid2.position.z = -0.5;
+      barrelGroup.add(lid2);
+      // Position barrel group: center at ground level (radius 0.5)
+      barrelGroup.position.y = 0.5;
+      group.add(barrelGroup);
       group.position.set(laneX, 0, -50);
       // Barrel rolls sideways across the road
-      group.userData = { driftDir: Math.random() > 0.5 ? 1 : -1, driftSpeed: 0.015 + Math.random() * 0.02 };
+      group.userData = { driftDir: Math.random() > 0.5 ? 1 : -1, driftSpeed: 0.015 + Math.random() * 0.02, barrelGroup };
       break;
     }
   }
@@ -2323,25 +2371,31 @@ const animate = () => {
   }
 
   // === CURVE OSCILLATION (not during boss, or disabled) ===
-  // Curve builds gradually via slow lerp — you see it develop from the distance
-  // 30-45 degree turns: roadCurveTarget up to 1.8
+  // Curve front sweeps from horizon toward player so you can see it approaching
   if (!bossActive.value && roadCurveEnabled.value) {
     curveChangeTimer.value += realDelta
     if (curveChangeTimer.value >= nextCurveChange.value) {
       if (Math.abs(roadCurveTarget.value) < 0.1) {
-        // Start a new curve — strong enough for 30-45 degree visual turn
+        // Start a new curve — front starts at horizon
         roadCurveTarget.value = (Math.random() > 0.5 ? 1 : -1) * (1.2 + Math.random() * 0.6)
-        nextCurveChange.value = 2 + Math.random() * 1.5
+        curveFrontZ = -80 // front starts at horizon, sweeps toward player
+        nextCurveChange.value = 2.5 + Math.random() * 1.5
       } else {
-        // Straighten out
+        // Straighten out — when straight, curve doesn't need a front
         roadCurveTarget.value = 0
         nextCurveChange.value = 5 + Math.random() * 5
       }
       curveChangeTimer.value = 0
     }
-    // Slow lerp so you can see the curve develop from the horizon
+    // Lerp curve value
     const lerpSpeed = Math.abs(roadCurveTarget.value) > 0.1 ? Math.min(realDelta * 1.5, 0.1) : Math.min(realDelta * 0.8, 0.05)
     roadCurve.value += (roadCurveTarget.value - roadCurve.value) * lerpSpeed
+    // Sweep curve front toward player (0 = right at player)
+    // Front moves at road speed so the bend visually approaches
+    if (curveFrontZ < 0) {
+      curveFrontZ += realDelta * 25 // takes ~3.2 seconds to sweep from -80 to 0
+      if (curveFrontZ > 0) curveFrontZ = 0
+    }
   } else {
     roadCurve.value += (0 - roadCurve.value) * Math.min(realDelta * 1.0, 0.06)
   }
@@ -2877,11 +2931,11 @@ const animate = () => {
       if (obs.mesh.userData.driftX < -maxDriftBarrel || obs.mesh.userData.driftX > maxDriftBarrel) {
         obs.mesh.userData.driftDir *= -1;
       }
-      // Roll: barrel lies on side (rotated 90 deg Z). Rolling = rotate around local X axis.
-      // Since barrel mesh has rotation.z = PI/2, rotating barrel.rotation.x makes it roll along ground
-      const barrelChild = obs.mesh.children[0]; // barrel cylinder
-      if (barrelChild) {
-        barrelChild.rotation.x += obs.mesh.userData.driftDir * obs.mesh.userData.driftSpeed * 5;
+      // Roll the inner barrel group around its local Z axis (perpendicular to barrel length)
+      // This makes the cylinder spin like a rolling log
+      const barrelInner = obs.mesh.userData.barrelGroup || obs.mesh.children[0]
+      if (barrelInner) {
+        barrelInner.rotation.z += obs.mesh.userData.driftDir * obs.mesh.userData.driftSpeed * 8
       }
     }
     // Red car / bus / fireengine: move forward or backward at noticeable speed (slower than player)
@@ -3228,13 +3282,15 @@ const animate = () => {
   trees.forEach((tree) => {
     tree.position.z += gameSpeed;
     // Road curve: absolute position from baseX + curve offset
-    tree.position.x = (tree.baseX || tree.position.x) + getCurveX(tree.position.z);
+    const treeCurveOffset = getCurveX(tree.position.z);
+    tree.position.x = (tree.baseX || 0) + treeCurveOffset;
     tree.position.y = (tree.baseY || 0) + getSurfaceY(tree.position.z);
     if (tree.position.z > 10) {
-      const side = tree.position.x > 0 ? 1 : -1;
+      // Determine side from baseX (not position.x which has curve offset)
+      const side = (tree.baseX || 0) > 0 ? 1 : -1;
       tree.position.z = -Math.random() * 80;
-      tree.position.x = side * (8 + Math.random() * 10);
-      tree.baseX = tree.position.x; // update baseX for road curve
+      tree.baseX = side * (8 + Math.random() * 10);
+      tree.position.x = tree.baseX + getCurveX(tree.position.z);
       tree.position.y = (tree.baseY || 0) + getSurfaceY(tree.position.z);
     }
   });
@@ -3242,17 +3298,17 @@ const animate = () => {
   // Animate buildings moving
   buildings.forEach((building) => {
     building.position.z += gameSpeed;
-    // Road curve offset for buildings
     // Road curve: absolute position from baseX + curve offset
-    building.position.x = (building.baseX || building.position.x) + getCurveX(building.position.z);
-    // Curved earth
+    const bldgCurveOffset = getCurveX(building.position.z);
+    building.position.x = (building.baseX || 0) + bldgCurveOffset;
     building.position.y = (building.baseY || 0) + getSurfaceY(building.position.z);
     building.rotation.x = getSurfaceTilt(building.position.z);
     if (building.position.z > 20) {
-      const side = building.position.x > 0 ? 1 : -1;
+      // Determine side from baseX (not position.x which has curve offset)
+      const side = (building.baseX || 0) > 0 ? 1 : -1;
       building.position.z = -20 - Math.random() * 60;
-      building.position.x = side * (15 + Math.random() * 10);
-      building.baseX = building.position.x; // update baseX for road curve
+      building.baseX = side * (15 + Math.random() * 10);
+      building.position.x = building.baseX + getCurveX(building.position.z);
       building.position.y = (building.baseY || 0) + getSurfaceY(building.position.z);
     }
   });
@@ -3731,6 +3787,7 @@ const restartGame = () => {
   roadCurveTarget.value = 0
   curveChangeTimer.value = 0
   nextCurveChange.value = 3
+  curveFrontZ = 0
   currentStage.value = debugStartStage.value >= 0 ? debugStartStage.value : 0
   stageTime.value = debugStartStage.value >= 0 ? Math.max(0, STAGES[debugStartStage.value].stageDuration - 20) : 0
   bossWarning.value = false
