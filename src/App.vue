@@ -134,7 +134,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v4.3.5';
+const VERSION = 'v4.3.6';
 
 // Audio system
 let audioCtx = null;
@@ -2667,7 +2667,7 @@ const animate = () => {
         applyStageVisuals(nextStage)
         createFloatingText(`STAGE ${nextStage + 1}: ${STAGES[nextStage].name}`, player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#ffffff')
         // Reset for new stage — like a new game but score continues
-        gameDuration = 0 // reset speed/difficulty to base
+        gameDuration = 1.5 // reset speed/difficulty but skip spawn grace
         stageTime.value = 0
         // Clear remaining obstacles + coins
         obstacles.forEach(obs => scene.remove(obs.mesh))
@@ -3087,19 +3087,18 @@ const animate = () => {
     scene.userData.eventAlertTimer = 0;
   }
 
-  // During bullet time, stretch spawn interval so objects don't pile up
-  // Grace period: don't spawn obstacles for the first 1.5 seconds
-  if (gameDuration < 1.5) return;
-  if (time - lastSpawnTime > spawnInterval && !bonusNoSpawn && !bossActive.value) {
+  // Grace period: don't spawn obstacles for the first 1.5 seconds (but still move existing ones)
+  const spawnGraceActive = gameDuration < 1.5;
+  if (!spawnGraceActive && time - lastSpawnTime > spawnInterval && !bonusNoSpawn && !bossActive.value) {
     if (Math.random() < 0.7) {
-    if (Math.random() < 0.3) {
-      spawnFloatingObstacle();
-    } else {
-      spawnObstacle();
+      if (Math.random() < 0.3) {
+        spawnFloatingObstacle();
+      } else {
+        spawnObstacle();
+      }
     }
-  }
     if (Math.random() < 0.5 + (gameDuration / 120)) spawnCoin();
-    if (Math.random() < 0.05) spawnPowerup(); // 5% chance per spawn
+    if (Math.random() < 0.05) spawnPowerup();
     lastSpawnTime = time;
   }
 
@@ -3984,8 +3983,6 @@ const restartGame = () => {
   if (bossDefeatTimeout2) { clearTimeout(bossDefeatTimeout2); bossDefeatTimeout2 = null; }
   if (invincibilityTimeout) { clearTimeout(invincibilityTimeout); invincibilityTimeout = null; }
   if (gameOverShakeInterval) { clearInterval(gameOverShakeInterval); gameOverShakeInterval = null; }
-  if (bossDefeatTimeout1) { clearTimeout(bossDefeatTimeout1); bossDefeatTimeout1 = null; }
-  if (bossDefeatTimeout2) { clearTimeout(bossDefeatTimeout2); bossDefeatTimeout2 = null; }
 
   gameOver.value = false;
   showNameEntry.value = false;
@@ -4004,7 +4001,7 @@ const restartGame = () => {
   isCalibrating = false;
   gameSpeed = 0.25;
   spawnInterval = 1.2;
-  gameDuration = 0;
+  gameDuration = 1.5; // skip spawn grace after restart
   // Stage & road curve reset
   roadCurve.value = 0
   roadCurveTarget.value = 0
