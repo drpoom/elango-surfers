@@ -134,7 +134,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v4.3.1';
+const VERSION = 'v4.3.2';
 
 // Audio system
 let audioCtx = null;
@@ -640,7 +640,7 @@ const FLY_MAX_HEIGHT = 4.0; // Max fly height
 const MIC_THRESHOLD = 20; // Volume level to sustain flying (0-128)
 const MIC_PEAK_THRESHOLD = 45; // Spike to start flying
 let gameSpeed = 0.25;
-let lastSpawnTime = 0;
+let lastSpawnTime = -2; // grace period before first spawn
 let spawnInterval = 1.2;
 let gameDuration = 0;
 let comboCount = 0;
@@ -856,8 +856,8 @@ const submitScore = () => {
 };
 
 const isHighScore = computed(() => {
-  // New high score if: score beats current high score OR leaderboard is not full yet
-  return score.value > 0 && (score.value >= highScore.value || leaderboard.value.length < 10 || score.value > (leaderboard.value[leaderboard.value.length - 1]?.score || 0));
+  // Only show name entry when the score is a new personal best
+  return score.value > 0 && score.value >= highScore.value;
 });
 
 // Auto-focus name input when name entry appears
@@ -3066,6 +3066,8 @@ const animate = () => {
   }
 
   // During bullet time, stretch spawn interval so objects don't pile up
+  // Grace period: don't spawn obstacles for the first 1.5 seconds
+  if (gameDuration < 1.5) return;
   if (time - lastSpawnTime > spawnInterval && !bonusNoSpawn && !bossActive.value) {
     if (Math.random() < 0.7) {
     if (Math.random() < 0.3) {
@@ -3925,6 +3927,9 @@ const startCountdown = () => {
       setTimeout(() => {
         countdownActive.value = false;
         countdownLocked = false;
+        // 2-second invincibility after game starts to prevent death loops
+        isInvincible = true;
+        invincibilityTimeout = setTimeout(() => { isInvincible = false; invincibilityTimeout = null; }, 2000);
       }, 500);
     }
   };
@@ -4096,7 +4101,7 @@ const restartGame = () => {
   if (stars) scene.remove(stars);
   scene.userData.starsCreated = false;
   
-  lastSpawnTime = 0;
+  lastSpawnTime = -2; // grace period: first obstacle spawns 2s after game start
   clock.start();
   playSound('start');
 };
@@ -4121,6 +4126,9 @@ onMounted(() => {
       setTimeout(() => {
         countdownActive.value = false;
         countdownLocked = false;
+        // 2-second invincibility after game starts to prevent death loops
+        isInvincible = true;
+        invincibilityTimeout = setTimeout(() => { isInvincible = false; invincibilityTimeout = null; }, 2000);
       }, 500);
     }
   };
