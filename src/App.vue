@@ -2298,18 +2298,24 @@ const animate = () => {
         boss.userData.chargeMissTriggered = false
       }
     } else if (boss.userData?.retreatPhase) {
-      // Retreat back to start position
+      // Retreat back to start position (no collision during retreat)
       boss.userData.retreatTimer += realDelta
       const retreatDuration = bossType === 'truck' ? 2.5 : 4.0
       const t = Math.min(boss.userData.retreatTimer / retreatDuration, 1)
       // Ease-out retreat
       const easeT = 1 - Math.pow(1 - t, 3)
       const startZ = boss.userData.retreatStartZ || 5
+      const startX = boss.userData.retreatStartX || boss.position.x
       boss.position.z = startZ + (-54 - startZ) * easeT
-      // Straighten X back to center as it retreats
-      const targetX = getCurveX(boss.position.z)
-      boss.position.x += (targetX - boss.position.x) * 0.1
-      if (bossType === 'truck') boss.position.y = getSurfaceY(boss.position.z)
+      if (bossType === 'truck') {
+        // Truck: go straight back to center, don't track player
+        boss.position.x = startX + (getCurveX(-54) - startX) * easeT
+        boss.position.y = getSurfaceY(boss.position.z)
+      } else {
+        // Dragon: drift toward road curve center
+        const targetX = getCurveX(boss.position.z)
+        boss.position.x += (targetX - boss.position.x) * 0.1
+      }
       if (t >= 1) {
         boss.userData.retreatPhase = false
         boss.position.z = -54
@@ -2352,14 +2358,16 @@ const animate = () => {
       }
     }
     
-    // Attack timer
-    bossAttackTimer += realDelta
-    if (bossAttackTimer >= bossNextAttack) {
-      bossAttackTimer = 0
-      bossNextAttack = 0.8 + Math.random() * 0.6 // rapid burst interval
-      spawnBossProjectile(bossType)
-      // Screen shake on attack
-      cameraShakeTimer = 0.3; cameraShakeIntensity = 0.15
+    // Attack timer — skip during truck retreat (don't re-trigger charge)
+    if (!(bossType === 'truck' && boss.userData?.retreatPhase)) {
+      bossAttackTimer += realDelta
+      if (bossAttackTimer >= bossNextAttack) {
+        bossAttackTimer = 0
+        bossNextAttack = 0.8 + Math.random() * 0.6 // rapid burst interval
+        spawnBossProjectile(bossType)
+        // Screen shake on attack
+        cameraShakeTimer = 0.3; cameraShakeIntensity = 0.15
+      }
     }
   }
   
