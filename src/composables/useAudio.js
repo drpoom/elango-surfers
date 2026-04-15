@@ -21,12 +21,28 @@ export function useAudio({ currentStage, STAGES }) {
   let isMedievalBGM = false;
   let bgmInterval = null;
 
+  // SFX cache: preloaded Audio objects
+  const sfxCache = {};
+  const SFX_FILES = {
+    truck_honk: 'assets/sfx_truck_honk.ogg',
+    dragon_cry: 'assets/sfx_dragon_cry.ogg',
+    truck_rev: 'assets/sfx_truck_rev.ogg',
+    fire_shoot: 'assets/sfx_fire_shoot.ogg',
+    stage_clear: 'assets/sfx_stage_clear.ogg',
+  };
+
   const initAudio = () => {
     if (audioInitialized) return;
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     audioInitialized = true;
     if (audioCtx.state === 'suspended') {
       audioCtx.resume().catch(err => console.log('Audio resume failed:', err));
+    }
+    // Preload SFX files
+    for (const [key, path] of Object.entries(SFX_FILES)) {
+      sfxCache[key] = new Audio(path);
+      sfxCache[key].preload = 'auto';
+      sfxCache[key].volume = 0.8;
     }
   };
 
@@ -140,7 +156,11 @@ export function useAudio({ currentStage, STAGES }) {
   };
 
   const startBGM = () => {
-    if (!audioCtx || isBGMPlaying || isMuted) return;
+    if (!audioCtx) initAudio();
+    if (!audioCtx) return;
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    if (isBGMPlaying) return;
+    if (isMuted) return;
 
     isBGMPlaying = true;
     const track = getCurrentBGMTrack();
@@ -159,7 +179,7 @@ export function useAudio({ currentStage, STAGES }) {
     }
     bgmSource.connect(bgmGain);
     bgmAudio.currentTime = 0;
-    bgmAudio.play().catch(() => {});
+    bgmAudio.play().catch(e => console.warn('Highway BGM play failed:', e));
 
     // Medieval BGM
     if (!bgmMedievalAudio) {
@@ -175,7 +195,7 @@ export function useAudio({ currentStage, STAGES }) {
     bgmMedievalGain.connect(audioCtx.destination);
     bgmMedievalSource.connect(bgmMedievalGain);
     bgmMedievalAudio.currentTime = 0;
-    bgmMedievalAudio.play().catch(() => {});
+    bgmMedievalAudio.play().catch(e => console.warn('Medieval BGM play failed:', e));
   };
 
   const switchBGMTrack = (track) => {
@@ -213,8 +233,22 @@ export function useAudio({ currentStage, STAGES }) {
     }
   };
 
+  const playSFX = (name, volume = 0.8) => {
+    if (isMuted) return;
+    if (!audioCtx) initAudio();
+    if (!audioCtx) return;
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const audio = sfxCache[name];
+    if (!audio) return;
+    // Clone to allow overlapping plays (e.g. multiple fireballs)
+    const clone = audio.cloneNode();
+    clone.volume = volume;
+    clone.play().catch(() => {});
+  };
+
   return {
     playSound,
+    playSFX,
     startBGM,
     stopBGM,
     switchBGMTrack,

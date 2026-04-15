@@ -141,7 +141,7 @@ import { useCurve } from './composables/useCurve.js'
 import { useMic } from './composables/useMic.js'
 
 // Version - Update this for each release
-const VERSION = 'v4.3.9';
+const VERSION = 'v4.4.0';
 
 // Score & High Score refs
 const score = ref(0);
@@ -280,7 +280,7 @@ function applyStageVisuals(stageIndex) {
 }
 
 // Initialize audio composable
-const { playSound, startBGM, stopBGM, switchBGMTrack, toggleMute, initAudio } = useAudio({ currentStage, STAGES })
+const { playSound, playSFX, startBGM, stopBGM, switchBGMTrack, toggleMute, initAudio } = useAudio({ currentStage, STAGES })
 
 let scene, camera, renderer, player, clock;
 let boss = null;
@@ -2081,6 +2081,7 @@ function spawnBossProjectile(type) {
     bossCharging = true
     bossChargeTimer = 0
     bossChargeTarget = -5
+    playSFX('truck_rev')
     // Lock target: aim for character's current position, then straight line
     if (boss) {
       boss.userData = boss.userData || {}
@@ -2115,6 +2116,7 @@ function spawnBossProjectile(type) {
       bossProjectiles.push(fb)
     })
     createFloatingText('\u{1f525}', new THREE.Vector3((attackLanes[0] - 1) * laneWidth, 2, -5), '#ff6600')
+    playSFX('fire_shoot', 0.5) // per volley, not per bullet
   }
 }
 
@@ -2211,6 +2213,7 @@ const animate = () => {
     bossActive.value = true
     bossHealth.value = 100
     createFloatingText(`\u26A0\uFE0F ${stage.bossType === 'truck' ? 'ROAD RAGE TRUCK' : 'SKY TERROR DRAGON'} \u26A0\uFE0F`, player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#ff4444')
+    playSFX(stage.bossType === 'truck' ? 'truck_honk' : 'dragon_cry')
     spawnBoss(stage.bossType)
   }
 
@@ -2222,6 +2225,7 @@ const animate = () => {
       bossActive.value = false // allow spawning immediately
       bossHealth.value = 0
       createFloatingText('\u2728 STAGE CLEAR! \u2728', player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#44ff44')
+      playSFX('stage_clear')
       // Boss defeat explosion
       if (boss) {
         const bossPos = boss.position.clone()
@@ -2247,6 +2251,7 @@ const animate = () => {
         createFloatingText(`STAGE ${nextStage + 1}: ${STAGES[nextStage].name}`, player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#ffffff')
         // Reset for new stage — like a new game but score continues
         gameDuration = 1.5 // reset speed/difficulty but skip spawn grace
+        gameSpeed = 0.25 // reset to default speed immediately
         stageTime.value = 0
         // Clear remaining obstacles + coins
         obstacles.forEach(obs => scene.remove(obs.mesh))
