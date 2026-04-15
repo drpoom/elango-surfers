@@ -37,7 +37,29 @@
     <div v-if="gameOver" id="game-over">
       <h1>GAME OVER</h1>
       <p>Your Score: {{ score }}</p>
-      <p>Press SPACE or click to restart</p>
+      <p v-if="score >= highScore" style="color: #ffd700; font-weight: bold;">⭐ NEW HIGH SCORE! ⭐</p>
+      <!-- Leaderboard -->
+      <div id="leaderboard" v-if="leaderboard.length > 0">
+        <h3 style="margin:0.5rem 0 0.25rem;color:#ffd700">🏆 Leaderboard</h3>
+        <div v-for="(entry, i) in leaderboard" :key="i" class="lb-entry">
+          <span class="lb-rank">{{ i + 1 }}.</span>
+          <span class="lb-name">{{ entry.name }}</span>
+          <span class="lb-score">{{ entry.score.toLocaleString() }}</span>
+        </div>
+      </div>
+      <!-- Name entry for high score -->
+      <div v-if="showNameEntry" id="name-entry">
+        <p style="color:#ffd700;font-weight:bold;margin-bottom:0.5rem">Enter your name (3 chars):</p>
+        <input 
+          v-model="playerName" 
+          maxlength="3" 
+          placeholder="AAA"
+          @keyup.enter="submitScore"
+          id="name-input"
+        />
+        <button @click="submitScore" :disabled="playerName.trim().length === 0" id="submit-btn">SAVE</button>
+      </div>
+      <p style="margin-top:0.75rem;font-size:0.8rem;color:#aaa">Press SPACE or tap to restart</p>
     </div>
     <div v-if="countdownActive" id="countdown">{{ countdownText }}</div>
     <div v-if="showSettings" id="settings-panel">
@@ -104,14 +126,14 @@
 </template>
 
 <script setup>
-import { onMounted, ref, onUnmounted } from 'vue';
+import { onMounted, ref, computed, onUnmounted, nextTick, watch } from 'vue';
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v4.2.1';
+const VERSION = 'v4.3.0';
 
 // Audio system
 let audioCtx = null;
@@ -781,6 +803,7 @@ onMounted(() => {
   const saved = localStorage.getItem('elangoSurfersHighScore');
   if (saved) highScore.value = parseInt(saved, 10);
   loadProgress();
+  loadLeaderboard();
   checkAchievements();
 });
 
@@ -790,6 +813,61 @@ const saveHighScore = () => {
     localStorage.setItem('elangoSurfersHighScore', highScore.value.toString());
   }
 };
+
+// === LEADERBOARD ===
+const LEADERBOARD_KEY = 'elangoSurfersLeaderboard';
+const LEADERBOARD_VERSION_KEY = 'elangoSurfersLBVersion';
+const leaderboard = ref([]); // top 10 entries: [{name, score, date}]
+const playerName = ref('');
+const showNameEntry = ref(false);
+
+const loadLeaderboard = () => {
+  // Clear leaderboard on new game version
+  const storedVersion = localStorage.getItem(LEADERBOARD_VERSION_KEY);
+  if (storedVersion !== VERSION) {
+    localStorage.removeItem(LEADERBOARD_KEY);
+    localStorage.setItem(LEADERBOARD_VERSION_KEY, VERSION);
+    leaderboard.value = [];
+    return;
+  }
+  const saved = localStorage.getItem(LEADERBOARD_KEY);
+  if (saved) {
+    leaderboard.value = JSON.parse(saved);
+  } else {
+    leaderboard.value = [];
+  }
+};
+
+const saveLeaderboard = () => {
+  localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(leaderboard.value));
+};
+
+const submitScore = () => {
+  const name = playerName.value.trim().toUpperCase();
+  if (name.length < 1) return;
+  const entry = { name: name.substring(0, 3), score: score.value, date: new Date().toLocaleDateString() };
+  leaderboard.value.push(entry);
+  leaderboard.value.sort((a, b) => b.score - a.score);
+  leaderboard.value = leaderboard.value.slice(0, 10); // keep top 10
+  saveLeaderboard();
+  showNameEntry.value = false;
+  playerName.value = '';
+};
+
+const isHighScore = computed(() => {
+  // New high score if: score beats current high score OR leaderboard is not full yet
+  return score.value > 0 && (score.value >= highScore.value || leaderboard.value.length < 10 || score.value > (leaderboard.value[leaderboard.value.length - 1]?.score || 0));
+});
+
+// Auto-focus name input when name entry appears
+watch(showNameEntry, (val) => {
+  if (val) {
+    nextTick(() => {
+      const input = document.getElementById('name-input');
+      if (input) input.focus();
+    });
+  }
+});
 
 const initGame = () => {
   scene = new THREE.Scene();
@@ -2246,7 +2324,9 @@ const triggerGameOver = (shakeIntensity = 0.5) => {
     camera.position.x = originalPos.x + (Math.random() - 0.5) * shakeIntensity * (1 - shakeTime * 2);
     camera.position.y = originalPos.y + (Math.random() - 0.5) * shakeIntensity * (1 - shakeTime * 2);
   }, 30);
-}
+  // Show name entry if high score
+  showNameEntry.value = isHighScore.value;
+};
 
 function spawnBoss(bossType) {
   if (boss) { scene.remove(boss); boss = null; }
@@ -3604,8 +3684,8 @@ const handleSwipe = (direction) => {
 };
 
 const handleTouchStart = (e) => {
-  // Don't intercept touches on UI buttons
-  if (e.target.closest('#mute-btn, #tilt-btn, #mic-btn, #settings-btn, #settings-panel')) return;
+  // Don't intercept touches on UI buttons or name entry
+  if (e.target.closest('#mute-btn, #tilt-btn, #mic-btn, #settings-btn, #settings-panel, #name-entry')) return;
   e.preventDefault();
   touchStartX = e.touches[0].clientX;
   touchStartY = e.touches[0].clientY;
@@ -3613,13 +3693,13 @@ const handleTouchStart = (e) => {
 };
 
 const handleTouchEnd = (e) => {
-  if (e.target.closest('#mute-btn, #tilt-btn, #mic-btn, #settings-btn, #settings-panel')) return;
+  if (e.target.closest('#mute-btn, #tilt-btn, #mic-btn, #settings-btn, #settings-panel, #name-entry')) return;
   e.preventDefault();
   const touchEndX = e.changedTouches[0].clientX;
   const touchEndY = e.changedTouches[0].clientY;
   
-  // If game over, any tap restarts
-  if (gameOver.value) {
+  // If game over, any tap restarts (but not during name entry)
+  if (gameOver.value && !showNameEntry.value) {
     startCountdown();
     return;
   }
@@ -3785,8 +3865,9 @@ const handleKeyDown = (e) => {
   // Initialize audio on first keypress
   initAudio();
   
-  // Restart on Space, Enter, or any key when game over
+  // Restart on Space, Enter, or any key when game over (but not during name entry)
   if (gameOver.value) {
+    if (showNameEntry.value) return; // Don't restart while entering name
     startCountdown();
     return;
   }
@@ -3855,6 +3936,8 @@ const restartGame = () => {
   if (gameOverShakeInterval) { clearInterval(gameOverShakeInterval); gameOverShakeInterval = null; }
 
   gameOver.value = false;
+  showNameEntry.value = false;
+  playerName.value = '';
   score.value = 0;
   currentLane = 1;
   isJumping = false;
@@ -4044,11 +4127,11 @@ onMounted(() => {
     e.preventDefault();
   }, { passive: false, capture: true });
   window.addEventListener('click', (e) => {
-    // Check if click is on settings panel or buttons - if so, don't restart
-    if (e.target.closest('#settings-panel') || e.target.closest('#settings-btn') || e.target.closest('#mute-btn') || e.target.closest('#tilt-btn') || e.target.closest('#mic-btn')) {
+    // Check if click is on settings panel, buttons, or name entry
+    if (e.target.closest('#settings-panel') || e.target.closest('#settings-btn') || e.target.closest('#mute-btn') || e.target.closest('#tilt-btn') || e.target.closest('#mic-btn') || e.target.closest('#name-entry')) {
       return;
     }
-    if (gameOver.value) startCountdown();
+    if (gameOver.value && !showNameEntry.value) startCountdown();
     initAudio();
   });
   
@@ -4231,6 +4314,59 @@ onUnmounted(() => {
   text-align: center;
   border-radius: 1rem;
   z-index: 20;
+  min-width: 280px;
+  max-width: 340px;
+}
+#leaderboard {
+  margin: 0.5rem 0;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.lb-entry {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 0;
+  font-size: 0.85rem;
+  border-bottom: 1px solid #333;
+}
+.lb-rank { color: #888; width: 24px; }
+.lb-name { color: #fff; font-weight: bold; flex: 1; text-align: left; margin-left: 4px; }
+.lb-score { color: #ffd700; font-weight: bold; }
+#name-entry {
+  margin-top: 0.75rem;
+}
+#name-input {
+  width: 60px;
+  padding: 6px 10px;
+  font-size: 1.2rem;
+  text-align: center;
+  text-transform: uppercase;
+  background: #222;
+  color: #ffd700;
+  border: 2px solid #ffd700;
+  border-radius: 6px;
+  outline: none;
+}
+#name-input:focus {
+  border-color: #fff;
+  box-shadow: 0 0 8px rgba(255,215,0,0.5);
+}
+#submit-btn {
+  margin-left: 8px;
+  padding: 6px 16px;
+  font-size: 1rem;
+  background: #ffd700;
+  color: #000;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+}
+#submit-btn:disabled {
+  background: #555;
+  color: #888;
+  cursor: not-allowed;
 }
 #countdown {
   position: absolute;
