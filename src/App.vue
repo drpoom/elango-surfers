@@ -141,7 +141,7 @@ import { useCurve } from './composables/useCurve.js'
 import { useMic } from './composables/useMic.js'
 
 // Version - Update this for each release
-const VERSION = 'v4.4.0';
+const VERSION = 'v4.4.1';
 
 // Score & High Score refs
 const score = ref(0);
@@ -1843,7 +1843,6 @@ let bossChargeTarget = 0
 
 // Pending timeouts that must be cancelled on restart
 let bossDefeatTimeout1 = null
-let bossDefeatTimeout2 = null
 let invincibilityTimeout = null
 let gameOverShakeInterval = null
 let gameOverTime = 0 // timestamp of game over, prevents instant restart
@@ -1898,8 +1897,6 @@ const triggerGameOver = (shakeIntensity = 0.5) => {
   if (boss) { scene.remove(boss); boss = null; }
   // Cancel any pending boss/stage timeouts
   if (bossDefeatTimeout1) { clearTimeout(bossDefeatTimeout1); bossDefeatTimeout1 = null; }
-  if (bossDefeatTimeout2) { clearTimeout(bossDefeatTimeout2); bossDefeatTimeout2 = null; }
-  bossActive.value = false;
   bossDefeated.value = false;
   bossCharging = false;
 
@@ -2222,10 +2219,12 @@ const animate = () => {
     bossHealth.value -= (100 / stage.bossDuration) * realDelta
     if (bossHealth.value <= 0) {
       bossDefeated.value = true
-      bossActive.value = false // allow spawning immediately
+      bossActive.value = false
       bossHealth.value = 0
       createFloatingText('\u2728 STAGE CLEAR! \u2728', player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#44ff44')
       playSFX('stage_clear')
+      // Block spawning immediately — stageTransitioning prevents obstacle/coin/powerup spawns
+      stageTransitioning.value = true
       // Boss defeat explosion
       if (boss) {
         const bossPos = boss.position.clone()
@@ -2243,8 +2242,8 @@ const animate = () => {
       // Clean up boss projectiles
       bossProjectiles.forEach(fb => scene.remove(fb))
       bossProjectiles = []
+      // After 5s: reset speed, clear obstacles, transition to next stage, resume spawning
       bossDefeatTimeout1 = setTimeout(() => {
-        stageTransitioning.value = true
         const nextStage = (currentStage.value + 1) % STAGES.length
         currentStage.value = nextStage
         applyStageVisuals(nextStage)
@@ -2261,13 +2260,10 @@ const animate = () => {
         powerups.forEach(pw => scene.remove(pw.mesh))
         powerups = []
         spawnInterval = 1.2
-        bossDefeatTimeout2 = setTimeout(() => {
-          bossDefeated.value = false
-          stageTransitioning.value = false
-          bossDefeatTimeout2 = null
-        }, 3000)
+        bossDefeated.value = false
+        stageTransitioning.value = false
         bossDefeatTimeout1 = null
-      }, 2000)
+      }, 5000)
     }
   }
 
@@ -3578,7 +3574,6 @@ const restartGame = () => {
 
   // Cancel any pending timeouts from previous game
   if (bossDefeatTimeout1) { clearTimeout(bossDefeatTimeout1); bossDefeatTimeout1 = null; }
-  if (bossDefeatTimeout2) { clearTimeout(bossDefeatTimeout2); bossDefeatTimeout2 = null; }
   if (invincibilityTimeout) { clearTimeout(invincibilityTimeout); invincibilityTimeout = null; }
   if (gameOverShakeInterval) { clearInterval(gameOverShakeInterval); gameOverShakeInterval = null; }
 
