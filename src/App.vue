@@ -134,7 +134,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v4.3.6';
+const VERSION = 'v4.3.7';
 
 // Audio system
 let audioCtx = null;
@@ -2507,6 +2507,8 @@ function spawnBossProjectile(type) {
     if (boss) {
       boss.userData = boss.userData || {}
       boss.userData.chargeTargetX = (currentLane - 1) * laneWidth
+      boss.userData.chargeStartX = boss.position.x
+      boss.userData.chargeStartZ = boss.position.z
       boss.userData.chargeMissTriggered = false
     }
   } else {
@@ -2693,13 +2695,18 @@ const animate = () => {
     const bossType = STAGES[currentStage.value].bossType
     
     if (bossCharging) {
-      // Truck charge — locked target lane at charge start, straight line charge
+      // Truck charge — straight line from start position to target lane at z=0
       bossChargeTimer += realDelta
       const chargeSpeed = gameSpeed * 1.2
       boss.position.z += chargeSpeed
-      // Use locked target X from charge start (no retargeting)
-      const targetX = boss.userData.chargeTargetX + getCurveX(boss.position.z)
-      boss.position.x += (targetX - boss.position.x) * 0.15
+      // Linear interpolation: X moves proportionally to Z progress
+      const startZ = boss.userData.chargeStartZ || -60
+      const startXX = boss.userData.chargeStartX || boss.position.x
+      const targetX = boss.userData.chargeTargetX
+      const totalDist = Math.abs(0 - startZ) // distance from start Z to player Z (0)
+      const traveled = Math.abs(boss.position.z - startZ)
+      const progress = Math.min(traveled / totalDist, 1)
+      boss.position.x = startXX + (targetX - startXX) * progress
       // Clamp X to road width
       boss.position.x = Math.max(-laneWidth * 1.5, Math.min(laneWidth * 1.5, boss.position.x))
       if (bossType === 'truck') boss.position.y = getSurfaceY(boss.position.z)
