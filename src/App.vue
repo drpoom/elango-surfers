@@ -141,7 +141,7 @@ import { useCurve } from './composables/useCurve.js'
 import { useMic } from './composables/useMic.js'
 
 // Version - Update this for each release
-const VERSION = 'v4.4.2';
+const VERSION = 'v4.4.3';
 
 // Score & High Score refs
 const score = ref(0);
@@ -2148,7 +2148,7 @@ const animate = () => {
   const delta = realDelta;
   const time = clock.getElapsedTime();
   
-  gameDuration += delta;
+  if (!gameOver.value && !stageTransitioning.value && !countdownLocked) gameDuration += delta;
   dayCycleTime = (dayCycleTime + delta) % DAY_DURATION;
   
   // === STAGE TIME TRACKING ===
@@ -2249,7 +2249,7 @@ const animate = () => {
         applyStageVisuals(nextStage)
         createFloatingText(`STAGE ${nextStage + 1}: ${STAGES[nextStage].name}`, player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#ffffff')
         // Reset for new stage — like a new game but score continues
-        gameDuration = 1.5 // reset speed/difficulty but skip spawn grace
+        gameDuration = 0 // fresh spawn grace for new stage
         gameSpeed = 0.25 // reset to default speed immediately
         stageTime.value = 0
         // Clear remaining obstacles + coins
@@ -2683,7 +2683,7 @@ const animate = () => {
 
   // Grace period: don't spawn obstacles for the first 1.5 seconds (but still move existing ones)
   const spawnGraceActive = gameDuration < 1.5;
-  if (!spawnGraceActive && time - lastSpawnTime > spawnInterval && !bonusNoSpawn && !bossActive.value) {
+  if (!spawnGraceActive && time - lastSpawnTime > spawnInterval && !bonusNoSpawn && !bossActive.value && !stageTransitioning.value) {
     if (Math.random() < 0.7) {
       if (Math.random() < 0.3) {
         spawnFloatingObstacle();
@@ -3594,7 +3594,7 @@ const restartGame = () => {
   isCalibrating = false;
   gameSpeed = 0.25;
   spawnInterval = 1.2;
-  gameDuration = 1.5; // skip spawn grace after restart
+  gameDuration = 0; // fresh start, spawn grace active
   // Stage & road curve reset
   roadCurve.value = 0
   roadCurveTarget.value = 0
