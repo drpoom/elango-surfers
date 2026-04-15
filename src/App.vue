@@ -136,8 +136,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { useAudio } from './composables/useAudio.js'
 import { useLeaderboard } from './composables/useLeaderboard.js'
 import { useAchievements } from './composables/useAchievements.js'
-import { DAY_DURATION, jumpStrength, slideDuration, laneWidth, FLY_LIFT, FLY_GRAVITY, FLY_MAX_HEIGHT, MIC_THRESHOLD, MIC_PEAK_THRESHOLD, minSwipeDistance, TILT_THRESHOLD, TILT_LR_THRESHOLD, TILT_LANE_COOLDOWN, CALIBRATION_MAX_SAMPLES } from './gameConstants.js'
-import { EARTH_R } from './gameConstants.js'
+import { EARTH_R, STAGES, DAY_DURATION, jumpStrength, slideDuration, laneWidth, FLY_LIFT, FLY_GRAVITY, FLY_MAX_HEIGHT, MIC_THRESHOLD, MIC_PEAK_THRESHOLD, minSwipeDistance, TILT_THRESHOLD, TILT_LR_THRESHOLD, TILT_LANE_COOLDOWN, CALIBRATION_MAX_SAMPLES } from './gameConstants.js'
 import { useCurve } from './composables/useCurve.js'
 import { useMic } from './composables/useMic.js'
 
@@ -188,27 +187,6 @@ let isInvincible = false;
 let dayCycleTime = 0;
 
 // Stage system
-const STAGES = [
-  {
-    id: 'highway',
-    name: 'The Modern Highway',
-    roadTexture: null,
-    difficultyMultiplier: 1.0,
-    bossType: 'truck',
-    bossDuration: 25,
-    stageDuration: 60,
-  },
-  {
-    id: 'medieval',
-    name: 'The Medieval Path',
-    roadTexture: 'cobblestone',
-    difficultyMultiplier: 1.3,
-    bossType: 'dragon',
-    bossDuration: 25,
-    stageDuration: 60,
-  }
-]
-
 // === STAGE VISUAL TRANSITIONS ===
 let cobblestoneTexture = null;
 let originalGroundTexture = null;
@@ -410,7 +388,6 @@ const toggleFovWarp = () => {
   }
 };
 
-// Mic input — extracted to useMic.js
 // Mic input — extracted to useMic.js
 const { micEnabledRef, initMic, toggleMic: _toggleMic, getMicVolume } = useMic()
 const toggleMic = () => _toggleMic(() => { isFlying = false })

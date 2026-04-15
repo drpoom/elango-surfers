@@ -20,3 +20,24 @@ export const TILT_THRESHOLD = 20      // degrees tilt to trigger action
 export const TILT_LR_THRESHOLD = 15   // degrees for left/right
 export const TILT_LANE_COOLDOWN = 300  // ms between lane changes from tilt
 export const CALIBRATION_MAX_SAMPLES = 60  // ~3 seconds at 20Hz
+
+export const STAGES = [
+  {
+    id: 'highway',
+    name: 'The Modern Highway',
+    roadTexture: null,
+    difficultyMultiplier: 1.0,
+    bossType: 'truck',
+    bossDuration: 25,
+    stageDuration: 60,
+  },
+  {
+    id: 'medieval',
+    name: 'The Medieval Path',
+    roadTexture: 'cobblestone',
+    difficultyMultiplier: 1.3,
+    bossType: 'dragon',
+    bossDuration: 25,
+    stageDuration: 60,
+  }
+]
