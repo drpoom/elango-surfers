@@ -111,7 +111,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // Version - Update this for each release
-const VERSION = 'v4.1.8';
+const VERSION = 'v4.1.9';
 
 // Audio system
 let audioCtx = null;
@@ -1533,6 +1533,10 @@ const createBackgroundElements = () => {
     );
     tree.baseY = treeBaseY;
     tree.baseX = tree.position.x; // store for road curve
+    // Store initial position for restart
+    tree.userData.initX = tree.position.x;
+    tree.userData.initZ = treeZ;
+    tree.userData.initBaseX = tree.baseX;
     scene.add(tree);
     trees.push(tree);
   }
@@ -1583,6 +1587,10 @@ const createBackgroundElements = () => {
     scene.add(buildingGroup);
     buildingGroup.baseY = height / 2;
     buildingGroup.baseX = buildingGroup.position.x; // store for road curve
+    // Store initial position for restart
+    buildingGroup.userData.initX = buildingGroup.position.x;
+    buildingGroup.userData.initZ = bldgZ;
+    buildingGroup.userData.initBaseX = buildingGroup.baseX;
     buildings.push(buildingGroup);
   }
 };
@@ -3848,9 +3856,24 @@ const restartGame = () => {
     savedSubstageState.coins.forEach(coin => scene.remove(coin.mesh));
     savedSubstageState = null;
   }
-  // Restore buildings/trees visibility
-  buildings.forEach(b => { b.visible = true; });
-  trees.forEach(t => { t.visible = true; });
+  // Restore buildings/trees visibility and reset positions
+  buildings.forEach(b => { 
+    b.visible = true; 
+    // Reset to initial spawn positions
+    if (b.userData.initZ !== undefined) {
+      b.position.z = b.userData.initZ;
+      b.position.x = b.userData.initX;
+      b.baseX = b.userData.initBaseX;
+    }
+  });
+  trees.forEach(t => { 
+    t.visible = true;
+    if (t.userData.initZ !== undefined) {
+      t.position.z = t.userData.initZ;
+      t.position.x = t.userData.initX;
+      t.baseX = t.userData.initBaseX;
+    }
+  });
   eventAlertTextRef.value = '';
   
   // Update stats
