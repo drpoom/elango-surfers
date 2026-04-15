@@ -2358,8 +2358,9 @@ const animate = () => {
       }
     }
     
-    // Attack timer — skip during truck retreat (don't re-trigger charge)
-    if (!(bossType === 'truck' && boss.userData?.retreatPhase)) {
+    // Attack timer — skip during truck charge AND retreat (truck uses charge cycles, not projectile spam)
+    const truckBusy = bossType === 'truck' && (bossCharging || boss.userData?.retreatPhase)
+    if (!truckBusy) {
       bossAttackTimer += realDelta
       if (bossAttackTimer >= bossNextAttack) {
         bossAttackTimer = 0
