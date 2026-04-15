@@ -237,9 +237,14 @@ function applyStageVisuals(stageIndex) {
       buildings.forEach(b => {
         const mesh = b.children.find(c => c.isMesh)
         if (mesh && mesh.material && Array.isArray(mesh.material)) {
-          mesh.material[4].map = fachwerkTexture // front face
-          mesh.material[4].color.set(0xd4c4a0) // warm plaster fallback
-          mesh.material[4].needsUpdate = true
+          // Facade can be at index 0 (left building), 1 (right building), or 4 (front)
+          for (const idx of [0, 1, 4]) {
+            if (mesh.material[idx].map) { // only swap facade-textured faces
+              mesh.material[idx].map = fachwerkTexture
+              mesh.material[idx].color.set(0xd4c4a0)
+              mesh.material[idx].needsUpdate = true
+            }
+          }
         }
       })
     }
@@ -258,9 +263,14 @@ function applyStageVisuals(stageIndex) {
         const mesh = b.children.find(c => c.isMesh)
         if (mesh && mesh.material && Array.isArray(mesh.material)) {
           const texIdx = i % buildingTextures.length
-          mesh.material[4].map = buildingTextures[texIdx] // front face
-          mesh.material[4].color.set(buildingDominantColors[texIdx])
-          mesh.material[4].needsUpdate = true
+          // Facade can be at index 0, 1, or 4
+          for (const idx of [0, 1, 4]) {
+            if (mesh.material[idx].map) {
+              mesh.material[idx].map = buildingTextures[texIdx]
+              mesh.material[idx].color.set(buildingDominantColors[texIdx])
+              mesh.material[idx].needsUpdate = true
+            }
+          }
         }
       })
     }
@@ -1230,17 +1240,21 @@ const createBackgroundElements = () => {
     const facadeTex = buildingTextures[texIdx];
     const facadeDominant = buildingDominantColors[texIdx]; // fallback color before texture loads
     const buildingGeo = new THREE.BoxGeometry(width, height, width);
-    // Multi-material: right, left, top, bottom, front, back
-    const sideMat = new THREE.MeshToonMaterial({ 
-      color: buildingColors[Math.floor(Math.random() * buildingColors.length)] 
+    // Determine side early so we can texture the camera-visible face
+    const side = Math.random() > 0.5 ? 1 : -1;
+    // Multi-material: +X right, -X left, +Y top, -Y bottom, +Z front, -Z back
+    // Camera-visible side gets facade texture
+    const sideMat = new THREE.MeshToonMaterial({
+      color: buildingColors[Math.floor(Math.random() * buildingColors.length)]
     });
-    // Front uses texture with dominant color fallback so it's not dark before load
-    const frontMat = new THREE.MeshToonMaterial({ 
+    const frontMat = new THREE.MeshToonMaterial({
       map: facadeTex,
       color: facadeDominant
     });
     const topMat = new THREE.MeshToonMaterial({ color: 0x555555 });
-    const buildingMats = [sideMat, sideMat, topMat, topMat, frontMat, sideMat];
+    const buildingMats = side < 0
+      ? [frontMat, sideMat, topMat, topMat, frontMat, sideMat]  // left building: +X face visible
+      : [sideMat, frontMat, topMat, topMat, frontMat, sideMat]  // right building: -X face visible
     const building = new THREE.Mesh(buildingGeo, buildingMats);
     building.castShadow = true;
     building.receiveShadow = true;
@@ -1253,7 +1267,6 @@ const createBackgroundElements = () => {
     roof.position.y = height / 2 + 0.15;
     buildingGroup.add(roof);
     
-    const side = Math.random() > 0.5 ? 1 : -1;
     const bldgZ = -20 - Math.random() * 60;
     buildingGroup.position.set(
       side * (10 + Math.random() * 10),
@@ -2057,21 +2070,21 @@ function spawnBoss(bossType) {
     }
   }
   
-  group.position.set(0, bossType === 'truck' ? 0 : 5, -40)
+  group.position.set(0, bossType === 'truck' ? 0 : 5, -36)
   scene.add(group)
   boss = group
 }
 
 function spawnBossProjectile(type) {
   if (type === 'truck') {
-    // Truck charges — locks onto player's lane at charge start (no retargeting)
+    // Truck charges — aim for character, then ram straight without changing trajectory
     bossCharging = true
     bossChargeTimer = 0
     bossChargeTarget = -5
-    // Lock target lane X at charge start — straight line charge
+    // Lock target: aim for character's current position, then straight line
     if (boss) {
       boss.userData = boss.userData || {}
-      boss.userData.chargeTargetX = (currentLane - 1) * laneWidth
+      boss.userData.chargeTargetX = player.position.x // aim for character position
       boss.userData.chargeStartX = boss.position.x
       boss.userData.chargeStartZ = boss.position.z
       boss.userData.chargeMissTriggered = false
@@ -2263,7 +2276,7 @@ const animate = () => {
       const chargeSpeed = gameSpeed * 1.2
       boss.position.z += chargeSpeed
       // Linear interpolation: X moves proportionally to Z progress
-      const startZ = boss.userData.chargeStartZ || -60
+      const startZ = boss.userData.chargeStartZ || -54
       const startXX = boss.userData.chargeStartX || boss.position.x
       const targetX = boss.userData.chargeTargetX
       const totalDist = Math.abs(0 - startZ) // distance from start Z to player Z (0)
@@ -2285,29 +2298,30 @@ const animate = () => {
         boss.userData.chargeMissTriggered = false
       }
     } else if (boss.userData?.retreatPhase) {
-      // Retreat back to z=-50 (far away)
+      // Retreat back to start position
       boss.userData.retreatTimer += realDelta
-      const retreatDuration = 4.0
+      const retreatDuration = bossType === 'truck' ? 2.5 : 4.0
       const t = Math.min(boss.userData.retreatTimer / retreatDuration, 1)
       // Ease-out retreat
       const easeT = 1 - Math.pow(1 - t, 3)
       const startZ = boss.userData.retreatStartZ || 5
-      boss.position.z = startZ + (-60 - startZ) * easeT
+      boss.position.z = startZ + (-54 - startZ) * easeT
       // Straighten X back to center as it retreats
       const targetX = getCurveX(boss.position.z)
       boss.position.x += (targetX - boss.position.x) * 0.1
       if (bossType === 'truck') boss.position.y = getSurfaceY(boss.position.z)
       if (t >= 1) {
         boss.userData.retreatPhase = false
-        boss.position.z = -60
+        boss.position.z = -54
       }
     } else {
       // Idle: hover/sway
       const sway = Math.sin(Date.now() * 0.001) * 3
-      boss.position.z = -60 + sway
+      boss.position.z = -54 + sway
       if (bossType === 'truck') {
-        const truckLane = Math.sin(Date.now() * 0.003) * 1.5
-        boss.position.x = truckLane + getCurveX(boss.position.z)
+        // Truck: swivel left-right, tracking player lane
+        const swivelX = Math.sin(Date.now() * 0.003) * 1.5
+        boss.position.x = swivelX + getCurveX(boss.position.z)
         boss.position.y = getSurfaceY(boss.position.z)
         boss.rotation.y = 0
       } else {
