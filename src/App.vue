@@ -133,323 +133,19 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
+import { useAudio } from './composables/useAudio.js'
+import { useLeaderboard } from './composables/useLeaderboard.js'
+import { useAchievements } from './composables/useAchievements.js'
+
 // Version - Update this for each release
 const VERSION = 'v4.3.8';
-
-// Audio system
-let audioCtx = null;
-let isMuted = false;
-let audioInitialized = false;
-let bgmAudio = null;
-let bgmGain = null;
-let bgmSource = null;
-let bgmMedievalAudio = null; // medieval stage BGM
-let bgmMedievalSource = null;
-let bgmMedievalGain = null;
-let isBGMPlaying = false;
-let isMedievalBGM = false; // which BGM is currently playing
-let bgmInterval = null;
-
-const initAudio = () => {
-  if (audioInitialized) return;
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  audioInitialized = true;
-  // Resume context if suspended (browser autoplay policy)
-  if (audioCtx.state === 'suspended') {
-    audioCtx.resume().catch(err => console.log('Audio resume failed:', err));
-  }
-  // BGM starts after countdown "GO!" or on first player movement
-};
-
-const playSound = (type, pitchMod = 1) => {
-  if (isMuted) return;
-  
-  // Initialize audio on first sound if not already done
-  if (!audioCtx) {
-    initAudio();
-  }
-  
-  if (!audioCtx || audioCtx.state === 'suspended') {
-    if (audioCtx) audioCtx.resume();
-    return;
-  }
-  
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  osc.connect(gain);
-  gain.connect(audioCtx.destination);
-  
-  const now = audioCtx.currentTime;
-  
-  switch (type) {
-    case 'jump':
-      osc.frequency.setValueAtTime(300, now);
-      osc.frequency.exponentialRampToValueAtTime(600, now + 0.1);
-      gain.gain.setValueAtTime(0.3, now);
-      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
-      osc.start(now);
-      osc.stop(now + 0.1);
-      break;
-    case 'coin':
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(1200, now);
-      osc.frequency.setValueAtTime(1600, now + 0.1);
-      gain.gain.setValueAtTime(0.3, now);
-      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
-      osc.start(now);
-      osc.stop(now + 0.2);
-      break;
-    case 'crash':
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(150, now);
-      osc.frequency.exponentialRampToValueAtTime(50, now + 0.3);
-      gain.gain.setValueAtTime(0.4, now);
-      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
-      osc.start(now);
-      osc.stop(now + 0.3);
-      break;
-    case 'start':
-      osc.type = 'square';
-      osc.frequency.setValueAtTime(440, now);
-      osc.frequency.setValueAtTime(554, now + 0.1);
-      osc.frequency.setValueAtTime(659, now + 0.2);
-      gain.gain.setValueAtTime(0.2, now);
-      gain.gain.linearRampToValueAtTime(0, now + 0.4);
-      osc.start(now);
-      osc.stop(now + 0.4);
-      break;
-    case 'powerup':
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(400 * pitchMod, now);
-      osc.frequency.exponentialRampToValueAtTime(800 * pitchMod, now + 0.15);
-      gain.gain.setValueAtTime(0.3, now);
-      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
-      osc.start(now);
-      osc.stop(now + 0.3);
-      break;
-    case 'achievement':
-      osc.type = 'square';
-      osc.frequency.setValueAtTime(523, now);
-      osc.frequency.setValueAtTime(659, now + 0.1);
-      osc.frequency.setValueAtTime(784, now + 0.2);
-      osc.frequency.setValueAtTime(1047, now + 0.3);
-      gain.gain.setValueAtTime(0.2, now);
-      gain.gain.linearRampToValueAtTime(0, now + 0.5);
-      osc.start(now);
-      osc.stop(now + 0.5);
-      break;
-    case 'shield_hit':
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(200, now);
-      osc.frequency.exponentialRampToValueAtTime(100, now + 0.2);
-      gain.gain.setValueAtTime(0.3, now);
-      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
-      osc.start(now);
-      osc.stop(now + 0.2);
-      break;
-  }
-};
-
-const toggleMute = () => {
-  isMuted = !isMuted;
-  const muteBtn = document.getElementById('mute-btn');
-  if (muteBtn) {
-    muteBtn.textContent = isMuted ? '🔇' : '🔊';
-  }
-  if (audioCtx) {
-    if (isMuted) {
-      audioCtx.suspend();
-    } else {
-      audioCtx.resume();
-      // Restart BGM if it stopped
-      if (!isBGMPlaying) {
-        startBGM();
-      }
-    }
-  }
-};
-
-// Action BGM - supports highway and medieval tracks
-const getCurrentBGMTrack = () => {
-  // Medieval stage uses different BGM
-  const stage = STAGES[currentStage.value]
-  return (stage && stage.roadTexture === 'cobblestone') ? 'medieval' : 'highway'
-}
-
-const startBGM = () => {
-  if (!audioCtx || isBGMPlaying || isMuted) return;
-  
-  isBGMPlaying = true;
-  const track = getCurrentBGMTrack()
-  isMedievalBGM = (track === 'medieval')
-  
-  // Highway BGM
-  bgmGain = audioCtx.createGain();
-  bgmGain.gain.value = isMedievalBGM ? 0 : 0.35;
-  bgmGain.connect(audioCtx.destination);
-  
-  if (!bgmAudio) {
-    bgmAudio = new Audio('assets/game_music.ogg');
-    bgmAudio.loop = true;
-    bgmAudio.volume = 1;
-    bgmSource = audioCtx.createMediaElementSource(bgmAudio);
-  }
-  bgmSource.connect(bgmGain);
-  bgmAudio.currentTime = 0;
-  bgmAudio.play().catch(() => {});
-  
-  // Medieval BGM
-  if (!bgmMedievalAudio) {
-    bgmMedievalAudio = new Audio('assets/medieval_music.ogg');
-    bgmMedievalAudio.loop = true;
-    bgmMedievalAudio.volume = 1;
-  }
-  if (!bgmMedievalSource) {
-    bgmMedievalSource = audioCtx.createMediaElementSource(bgmMedievalAudio);
-  }
-  bgmMedievalGain = audioCtx.createGain();
-  bgmMedievalGain.gain.value = isMedievalBGM ? 0.35 : 0;
-  bgmMedievalGain.connect(audioCtx.destination);
-  bgmMedievalSource.connect(bgmMedievalGain);
-  bgmMedievalAudio.currentTime = 0;
-  bgmMedievalAudio.play().catch(() => {});
-};
-
-// Crossfade between BGM tracks on stage change
-const switchBGMTrack = (track) => {
-  if (!audioCtx || !isBGMPlaying) return;
-  const toMedieval = (track === 'medieval')
-  if (toMedieval === isMedievalBGM) return // already on this track
-  isMedievalBGM = toMedieval
-  // Fade over 2 seconds
-  const fadeTime = audioCtx.currentTime + 2
-  if (bgmGain) bgmGain.gain.linearRampToValueAtTime(toMedieval ? 0 : 0.35, fadeTime)
-  if (bgmMedievalGain) bgmMedievalGain.gain.linearRampToValueAtTime(toMedieval ? 0.35 : 0, fadeTime)
-};
-
-const stopBGM = () => {
-  isBGMPlaying = false;
-  isMedievalBGM = false;
-  if (bgmAudio) {
-    bgmAudio.pause();
-    bgmAudio.currentTime = 0;
-  }
-  if (bgmMedievalAudio) {
-    bgmMedievalAudio.pause();
-    bgmMedievalAudio.currentTime = 0;
-  }
-  if (bgmGain) {
-    try { bgmGain.disconnect(); } catch(e) {}
-    bgmGain = null;
-  }
-  if (bgmMedievalGain) {
-    try { bgmMedievalGain.disconnect(); } catch(e) {}
-    bgmMedievalGain = null;
-    // Don't null bgmMedievalSource — createMediaElementSource can only be called once per element
-  }
-  if (bgmInterval) {
-    clearTimeout(bgmInterval);
-    bgmInterval = null;
-  }
-};
-
 const toggleSettings = () => {
   showSettings.value = !showSettings.value;
 };
 
-// Achievement system
-const ACHIEVEMENTS = [
-  { id: 'first_coin', name: 'First Coin!', desc: 'Collect your first coin', unlocked: false, condition: (stats) => stats.totalCoins >= 1 },
-  { id: 'coin_100', name: 'Coin Collector', desc: 'Collect 100 coins total', unlocked: false, condition: (stats) => stats.totalCoins >= 100 },
-  { id: 'survive_60', name: 'Survivor', desc: 'Survive 60 seconds', unlocked: false, condition: (stats) => stats.maxTime >= 60 },
-  { id: 'combo_5', name: 'Combo Master', desc: 'Get 5x combo', unlocked: false, condition: (stats) => stats.maxCombo >= 5 },
-  { id: 'score_5000', name: 'High Flyer', desc: 'Score 5000 points', unlocked: false, condition: (stats) => stats.maxScore >= 5000 },
-  { id: 'powerup_first', name: 'Powered Up', desc: 'Collect first power-up', unlocked: false, condition: (stats) => stats.powerupsCollected >= 1 },
-  { id: 'powerup_10', name: 'Power User', desc: 'Collect 10 power-ups', unlocked: false, condition: (stats) => stats.powerupsCollected >= 10 },
-  { id: 'night_runner', name: 'Night Runner', desc: 'Play at night', unlocked: false, condition: (stats) => stats.nightTime >= 10 },
-  { id: 'skin_unlock', name: 'Fashion Forward', desc: 'Unlock a skin', unlocked: false, condition: (stats) => stats.skinsUnlocked >= 1 },
-  { id: 'hat_unlock', name: 'Hat Collector', desc: 'Unlock a hat', unlocked: false, condition: (stats) => stats.hatsUnlocked >= 1 },
-  { id: 'perfect_run', name: 'Untouchable', desc: 'Get 1000 points without dying', unlocked: false, condition: (stats) => stats.bestRun >= 1000 },
-  { id: 'magnet_master', name: 'Magnet Master', desc: 'Collect 20 coins with magnet', unlocked: false, condition: (stats) => stats.magnetCoins >= 20 }
-];
+// Achievement system — extracted to useAchievements.js
+// Composable instantiated after createFloatingText + player are defined
 
-let gameStats = {
-  totalCoins: 0,
-  maxTime: 0,
-  maxCombo: 0,
-  maxScore: 0,
-  powerupsCollected: 0,
-  nightTime: 0,
-  skinsUnlocked: 0,
-  hatsUnlocked: 0,
-  bestRun: 0,
-  magnetCoins: 0
-};
-
-const loadProgress = () => {
-  const saved = localStorage.getItem('elangoSurfersProgress');
-  if (saved) {
-    const data = JSON.parse(saved);
-    gameStats = { ...gameStats, ...data.stats };
-    unlockedSkins.value = data.unlockedSkins || [0];
-    unlockedHats.value = data.unlockedHats || [];
-    currentSkin.value = data.currentSkin || 0;
-    currentHat.value = data.currentHat || null;
-  }
-};
-
-const saveProgress = () => {
-  localStorage.setItem('elangoSurfersProgress', JSON.stringify({
-    stats: gameStats,
-    unlockedSkins: unlockedSkins.value,
-    unlockedHats: unlockedHats.value,
-    currentSkin: currentSkin.value,
-    currentHat: currentHat.value
-  }));
-};
-
-const checkAchievements = () => {
-  ACHIEVEMENTS.forEach(ach => {
-    if (!ach.unlocked && ach.condition(gameStats)) {
-      ach.unlocked = true;
-      achievements.value.push(ach);
-      playSound('achievement');
-      createFloatingText('🏆 ' + ach.name, player.position.clone().add(new THREE.Vector3(0, 2, 0)));
-      
-      // Unlock rewards
-      if (ach.id === 'coin_100') {
-        if (!unlockedSkins.value.includes(1)) {
-          unlockedSkins.value.push(1);
-          gameStats.skinsUnlocked++;
-          createFloatingText('🎨 Skin Unlocked!', player.position.clone().add(new THREE.Vector3(0, 2.5, 0)));
-        }
-      }
-      if (ach.id === 'score_5000') {
-        if (!unlockedHats.value.includes('cap')) {
-          unlockedHats.value.push('cap');
-          gameStats.hatsUnlocked++;
-          createFloatingText('🎩 Hat Unlocked!', player.position.clone().add(new THREE.Vector3(0, 2.5, 0)));
-        }
-      }
-      saveProgress();
-    }
-  });
-};
-
-const score = ref(0);
-const highScore = ref(0);
-const gameOver = ref(false);
-const countdownActive = ref(false);
-const countdownText = ref('');
-const showSettings = ref(false);
-const debugStartStage = ref(-1);
-const tiltEnabledRef = ref(true);
-const micEnabledRef = ref(false);
-const achievements = ref([]);
-const unlockedSkins = ref([0]);
-const currentSkin = ref(0);
-const unlockedHats = ref([]);
-const currentHat = ref(null);
 const fovWarpRef = ref(false);
 const roadCurveEnabled = ref(true);
 
@@ -576,6 +272,9 @@ function applyStageVisuals(stageIndex) {
   }
 }
 
+// Initialize audio composable
+const { playSound, startBGM, stopBGM, switchBGMTrack, toggleMute, initAudio } = useAudio({ currentStage, STAGES })
+
 let scene, camera, renderer, player, clock;
 let boss = null;
 let obstacles = [];
@@ -583,6 +282,16 @@ let coins = [];
 let powerups = [];
 let particles = [];
 let floatingTexts = [];
+
+// Initialize achievement composable (uses lazy getters for player + createFloatingText)
+const {
+  ACHIEVEMENTS, gameStats, achievements, unlockedSkins, currentSkin,
+  unlockedHats, currentHat, loadProgress, saveProgress, checkAchievements
+} = useAchievements({
+  playSound,
+  createFloatingText: (...args) => createFloatingText(...args),
+  getPlayer: () => player
+})
 let currentLane = 1;
 let isJumping = false;
 let jumpVelocity = 0;
@@ -815,60 +524,7 @@ const saveHighScore = () => {
   }
 };
 
-// === LEADERBOARD ===
-const LEADERBOARD_KEY = 'elangoSurfersLeaderboard';
-const LEADERBOARD_VERSION_KEY = 'elangoSurfersLBVersion';
-const leaderboard = ref([]); // top 10 entries: [{name, score, date}]
-const playerName = ref('');
-const showNameEntry = ref(false);
-
-const loadLeaderboard = () => {
-  // Clear leaderboard on new game version
-  const storedVersion = localStorage.getItem(LEADERBOARD_VERSION_KEY);
-  if (storedVersion !== VERSION) {
-    localStorage.removeItem(LEADERBOARD_KEY);
-    localStorage.setItem(LEADERBOARD_VERSION_KEY, VERSION);
-    leaderboard.value = [];
-    return;
-  }
-  const saved = localStorage.getItem(LEADERBOARD_KEY);
-  if (saved) {
-    leaderboard.value = JSON.parse(saved);
-  } else {
-    leaderboard.value = [];
-  }
-};
-
-const saveLeaderboard = () => {
-  localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(leaderboard.value));
-};
-
-const submitScore = () => {
-  const name = playerName.value.trim().toUpperCase();
-  if (name.length < 1) return;
-  const entry = { name: name.substring(0, 3), score: score.value, date: new Date().toLocaleDateString() };
-  leaderboard.value.push(entry);
-  leaderboard.value.sort((a, b) => b.score - a.score);
-  leaderboard.value = leaderboard.value.slice(0, 10); // keep top 10
-  saveLeaderboard();
-  showNameEntry.value = false;
-  playerName.value = '';
-};
-
-const isHighScore = computed(() => {
-  // Only show name entry when the score is a new personal best
-  return score.value > 0 && score.value >= highScore.value;
-});
-
-// Auto-focus name input when name entry appears
-watch(showNameEntry, (val) => {
-  if (val) {
-    nextTick(() => {
-      const input = document.getElementById('name-input');
-      if (input) input.focus();
-    });
-  }
-});
+// === LEADERBOARD === (extracted to useLeaderboard.js — instantiated below after score/highScore refs)
 
 const initGame = () => {
   scene = new THREE.Scene();
