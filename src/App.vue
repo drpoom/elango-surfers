@@ -139,6 +139,7 @@ import { useAchievements } from './composables/useAchievements.js'
 import { DAY_DURATION, jumpStrength, slideDuration, laneWidth, FLY_LIFT, FLY_GRAVITY, FLY_MAX_HEIGHT, MIC_THRESHOLD, MIC_PEAK_THRESHOLD, minSwipeDistance, TILT_THRESHOLD, TILT_LR_THRESHOLD, TILT_LANE_COOLDOWN, CALIBRATION_MAX_SAMPLES } from './gameConstants.js'
 import { EARTH_R } from './gameConstants.js'
 import { useCurve } from './composables/useCurve.js'
+import { useMic } from './composables/useMic.js'
 
 // Version - Update this for each release
 const VERSION = 'v4.3.8';
@@ -307,10 +308,6 @@ const gravity = 0.015;
 // Surface/curve math extracted to useCurve.js
 
 // Voice/fly controls
-let micStream = null;
-let micAnalyser = null;
-let micDataArray = null;
-let micEnabled = false;
 let isFlying = false;
 let flyVelocity = 0;
 let gameSpeed = 0.25;
@@ -413,49 +410,10 @@ const toggleFovWarp = () => {
   }
 };
 
-// Voice/fly - mic input
-const initMic = async () => {
-  if (micStream) return; // Already initialized
-  try {
-    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const source = audioCtx.createMediaStreamSource(micStream);
-    micAnalyser = audioCtx.createAnalyser();
-    micAnalyser.fftSize = 256;
-    source.connect(micAnalyser);
-    micDataArray = new Uint8Array(micAnalyser.frequencyBinCount);
-    micEnabled = true;
-    micEnabledRef.value = true;
-  } catch (e) {
-    console.log('Mic not available:', e);
-  }
-};
-
-const toggleMic = async () => {
-  if (micEnabled) {
-    // Disable mic
-    if (micStream) {
-      micStream.getTracks().forEach(t => t.stop());
-      micStream = null;
-    }
-    micAnalyser = null;
-    micDataArray = null;
-    micEnabled = false;
-    micEnabledRef.value = false;
-    isFlying = false;
-  } else {
-    await initMic();
-  }
-};
-
-const getMicVolume = () => {
-  if (!micAnalyser || !micDataArray) return 0;
-  micAnalyser.getByteFrequencyData(micDataArray);
-  let sum = 0;
-  for (let i = 0; i < micDataArray.length; i++) sum += micDataArray[i];
-  return sum / micDataArray.length;
-};
-
+// Mic input — extracted to useMic.js
+// Mic input — extracted to useMic.js
+const { micEnabledRef, initMic, toggleMic: _toggleMic, getMicVolume } = useMic()
+const toggleMic = () => _toggleMic(() => { isFlying = false })
 // Environment elements
 let clouds = [];
 let trees = [];
