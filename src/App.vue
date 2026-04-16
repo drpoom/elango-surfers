@@ -280,7 +280,15 @@ function applyStageVisuals(stageIndex) {
 }
 
 // Initialize audio composable
-const { playSound, playSFX, startBGM, stopBGM, switchBGMTrack, toggleMute, initAudio } = useAudio({ currentStage, STAGES })
+const { playSound, playSFX, startBGM, stopBGM, switchBGMTrack, toggleMute, initAudio, isBGMPlaying, bgmStarted } = useAudio({ currentStage, STAGES })
+
+// Attempt BGM start from a user gesture context (resolves autoplay policy)
+const tryStartBGMFromGesture = () => {
+  initAudio();
+  if (!bgmStarted && !isBGMPlaying) {
+    startBGM();
+  }
+};
 
 let scene, camera, renderer, player, clock;
 let boss = null;
@@ -3314,6 +3322,7 @@ const handleTouchStart = (e) => {
   touchStartX = e.touches[0].clientX;
   touchStartY = e.touches[0].clientY;
   initAudio(); // Start audio on first touch
+  tryStartBGMFromGesture(); // Retry BGM if autoplay blocked it
 };
 
 const handleTouchEnd = (e) => {
@@ -3490,6 +3499,7 @@ const handleKeyDown = (e) => {
   
   // Initialize audio on first keypress
   initAudio();
+  tryStartBGMFromGesture(); // Retry BGM if autoplay blocked it
   
   // Restart on Space, Enter, or any key when game over (but not during name entry)
   if (gameOver.value) {
@@ -3794,16 +3804,19 @@ onMounted(() => {
     }
     if (gameOver.value && !showNameEntry.value && Date.now() - gameOverTime >= 1000) startCountdown();
     initAudio();
+    tryStartBGMFromGesture();
   });
   
   // Also initialize audio on any keypress
   window.addEventListener('keydown', () => {
     initAudio();
+    tryStartBGMFromGesture();
   }, { once: true });
   
   // Initialize audio on touch
   window.addEventListener('touchstart', () => {
     initAudio();
+    tryStartBGMFromGesture();
   }, { once: true, passive: true });
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;

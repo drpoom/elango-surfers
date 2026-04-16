@@ -155,12 +155,18 @@ export function useAudio({ currentStage, STAGES }) {
     return (stage && stage.roadTexture === 'cobblestone') ? 'medieval' : 'highway';
   };
 
+  let bgmStarted = false; // track whether BGM has ever started successfully
+
   const startBGM = () => {
     if (!audioCtx) initAudio();
     if (!audioCtx) return;
-    if (audioCtx.state === 'suspended') audioCtx.resume();
-    if (isBGMPlaying) return;
-    if (isMuted) return;
+    if (audioCtx.state === 'suspended') {
+      // Must resume from a user gesture — return false so caller can retry
+      audioCtx.resume();
+      if (!bgmStarted) return false;
+    }
+    if (isBGMPlaying) return true;
+    if (isMuted) return false;
 
     isBGMPlaying = true;
     const track = getCurrentBGMTrack();
@@ -179,7 +185,13 @@ export function useAudio({ currentStage, STAGES }) {
     }
     bgmSource.connect(bgmGain);
     bgmAudio.currentTime = 0;
-    bgmAudio.play().catch(e => console.warn('Highway BGM play failed:', e));
+    const highwayPromise = bgmAudio.play();
+    if (highwayPromise) {
+      highwayPromise.then(() => { bgmStarted = true; }).catch(e => {
+        console.warn('Highway BGM play failed:', e);
+        return false;
+      });
+    }
 
     // Medieval BGM
     if (!bgmMedievalAudio) {
@@ -195,7 +207,15 @@ export function useAudio({ currentStage, STAGES }) {
     bgmMedievalGain.connect(audioCtx.destination);
     bgmMedievalSource.connect(bgmMedievalGain);
     bgmMedievalAudio.currentTime = 0;
-    bgmMedievalAudio.play().catch(e => console.warn('Medieval BGM play failed:', e));
+    const medievalPromise = bgmMedievalAudio.play();
+    if (medievalPromise) {
+      medievalPromise.then(() => { bgmStarted = true; }).catch(e => {
+        console.warn('Medieval BGM play failed:', e);
+        return false;
+      });
+    }
+
+    return true;
   };
 
   const switchBGMTrack = (track) => {
@@ -210,6 +230,7 @@ export function useAudio({ currentStage, STAGES }) {
 
   const stopBGM = () => {
     isBGMPlaying = false;
+    bgmStarted = false;
     isMedievalBGM = false;
     if (bgmAudio) {
       bgmAudio.pause();
@@ -256,5 +277,6 @@ export function useAudio({ currentStage, STAGES }) {
     initAudio,
     get isMuted() { return isMuted; },
     get isBGMPlaying() { return isBGMPlaying; },
+    get bgmStarted() { return bgmStarted; },
   };
 }
