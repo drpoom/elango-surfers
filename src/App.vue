@@ -141,7 +141,7 @@ import { useCurve } from './composables/useCurve.js'
 import { useMic } from './composables/useMic.js'
 
 // Version - Update this for each release
-const VERSION = 'v4.5.0';
+const VERSION = 'v4.5.1';
 
 // Score & High Score refs
 const score = ref(0);
@@ -151,6 +151,7 @@ const highScore = ref(0);
 const gameOver = ref(false);
 const countdownActive = ref(false);
 const countdownText = ref('');
+let countdownLocked = false; // prevents input during countdown
 const showSettings = ref(false);
 const debugStartStage = ref(-1);
 const tiltEnabledRef = ref(true);
