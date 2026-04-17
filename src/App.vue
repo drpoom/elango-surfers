@@ -141,7 +141,7 @@ import { useCurve } from './composables/useCurve.js'
 import { useMic } from './composables/useMic.js'
 
 // Version - Update this for each release
-const VERSION = 'v4.5.2';
+const VERSION = 'v4.5.3';
 
 // Score & High Score refs
 const score = ref(0);
@@ -2231,7 +2231,6 @@ const animate = () => {
       bossActive.value = false
       bossWarning.value = false
       bossHealth.value = 0
-      console.log('[BOSS-DEFEATED] bossActive:', bossActive.value, 'bossDefeated:', bossDefeated.value, 'gameOver:', gameOver.value, 'gameDuration:', gameDuration)
       createFloatingText('\u2728 STAGE CLEAR! \u2728', player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#44ff44')
       playSFX('stage_clear')
       // Block spawning immediately — stageTransitioning prevents obstacle/coin/powerup spawns
@@ -2276,7 +2275,7 @@ const animate = () => {
             countdownLocked = false
             stageTransitioning.value = false // unlock game loop
             bossWarning.value = false // defensive: ensure cleared
-            console.log('[STAGE-RESUME] countdown done, stage:', currentStage.value, 'gameDuration:', gameDuration, 'lastSpawnTime:', lastSpawnTime, 'time:', clock.getElapsedTime(), 'spawnInterval:', spawnInterval, 'bossActive:', bossActive.value, 'stageTransitioning:', stageTransitioning.value, 'countdownLocked:', countdownLocked, 'bonusNoSpawn:', bonusNoSpawn, 'gameOver:', gameOver.value);
+
             // 2-second invincibility after stage starts
             isInvincible = true
             gameStartTime = Date.now()
@@ -2717,18 +2716,6 @@ const animate = () => {
 
   // Grace period: don't spawn obstacles for the first 1.5 seconds (but still move existing ones)
   const spawnGraceActive = gameDuration < 1.5;
-  if (!stageTransitioning.value && !countdownLocked) {
-    const willSpawn = !spawnGraceActive && (time - lastSpawnTime) > spawnInterval && !bonusNoSpawn && !bossActive.value;
-    if (!willSpawn) {
-      // Log why we CAN'T spawn (throttled to ~2/sec)
-      if (!window._lastSpawnLog || Date.now() - window._lastSpawnLog > 500) {
-        console.log('[SPAWN-BLOCKED]', { grace: spawnGraceActive, timeDiff: (time-lastSpawnTime).toFixed(2), interval: spawnInterval.toFixed(2), bonusNoSpawn, bossActive: bossActive.value, stage: currentStage.value, gameDuration: gameDuration.toFixed(1) });
-        window._lastSpawnLog = Date.now();
-      }
-    }
-  }
-  const spawnCheck = { spawnGraceActive, timeDiff: (time - lastSpawnTime).toFixed(3), spawnInterval: spawnInterval.toFixed(3), bonusNoSpawn, bossActive: bossActive.value, stageTransitioning: stageTransitioning.value, countdownLocked, gameOver: gameOver.value, currentStage: currentStage.value, gameDuration: gameDuration.toFixed(1), stageTime: stageTime.value.toFixed(1) };
-  if (!window._spawnDebugLog || Date.now() - window._spawnDebugLog > 2000) { console.log('[SPAWN-CHECK]', JSON.stringify(spawnCheck)); window._spawnDebugLog = Date.now(); }
   if (!spawnGraceActive && time - lastSpawnTime > spawnInterval && !bonusNoSpawn && !bossActive.value && !stageTransitioning.value) {
     if (Math.random() < 0.7) {
       if (Math.random() < 0.3) {
@@ -2739,7 +2726,6 @@ const animate = () => {
     }
     if (Math.random() < 0.5 + (gameDuration / 120)) spawnCoin();
     if (Math.random() < 0.05) spawnPowerup();
-    console.log('[SPAWNED] obstacles/coins/powerups');
     lastSpawnTime = time;
   }
 
@@ -3871,21 +3857,6 @@ onMounted(() => {
   window.addEventListener('keydown', (e) => {
     if (e.key === 'p' || e.key === 'P') {
       toggleSettings();
-    }
-    // DEBUG: G = god mode (invincible + kill boss instantly)
-    if (e.key === 'g' || e.key === 'G') {
-      isInvincible = !isInvincible;
-      console.log('[DEBUG-GOD] invincible:', isInvincible);
-      if (bossActive.value && !bossDefeated.value) {
-        bossHealth.value = 1; // will hit <=0 next frame
-        console.log('[DEBUG-GOD] boss HP set to 1, will die next frame');
-      }
-    }
-    // DEBUG: F = fast-forward to boss (skip to stage time 55s)
-    if (e.key === 'f' || e.key === 'F') {
-      stageTime.value = STAGES[currentStage.value].stageDuration - 5;
-      gameDuration = 55;
-      console.log('[DEBUG-FAST] stageTime:', stageTime.value, 'gameDuration:', gameDuration);
     }
   });
   
