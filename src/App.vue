@@ -2231,6 +2231,7 @@ const animate = () => {
       bossActive.value = false
       bossWarning.value = false
       bossHealth.value = 0
+      console.log('[BOSS-DEFEATED] bossActive:', bossActive.value, 'bossDefeated:', bossDefeated.value, 'gameOver:', gameOver.value, 'gameDuration:', gameDuration)
       createFloatingText('\u2728 STAGE CLEAR! \u2728', player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#44ff44')
       playSFX('stage_clear')
       // Block spawning immediately — stageTransitioning prevents obstacle/coin/powerup spawns
@@ -2726,6 +2727,8 @@ const animate = () => {
       }
     }
   }
+  const spawnCheck = { spawnGraceActive, timeDiff: (time - lastSpawnTime).toFixed(3), spawnInterval: spawnInterval.toFixed(3), bonusNoSpawn, bossActive: bossActive.value, stageTransitioning: stageTransitioning.value, countdownLocked, gameOver: gameOver.value, currentStage: currentStage.value, gameDuration: gameDuration.toFixed(1), stageTime: stageTime.value.toFixed(1) };
+  if (!window._spawnDebugLog || Date.now() - window._spawnDebugLog > 2000) { console.log('[SPAWN-CHECK]', JSON.stringify(spawnCheck)); window._spawnDebugLog = Date.now(); }
   if (!spawnGraceActive && time - lastSpawnTime > spawnInterval && !bonusNoSpawn && !bossActive.value && !stageTransitioning.value) {
     if (Math.random() < 0.7) {
       if (Math.random() < 0.3) {
@@ -3684,15 +3687,15 @@ const resetStage = (preserveScore = false, targetStage = -1) => {
 
   // Clear all game objects
   obstacles.forEach(obs => { obs.mesh.traverse(c => { if (c.geometry && c.geometry !== sharedCoinGeo) c.geometry.dispose(); }); scene.remove(obs.mesh); });
-  obstacles = [];
+  obstacles.length = 0;
   coins.forEach(coin => scene.remove(coin.mesh));
-  coins = [];
+  coins.length = 0;
   powerups.forEach(pw => scene.remove(pw.mesh));
-  powerups = [];
+  powerups.length = 0;
   bossProjectiles.forEach(fb => scene.remove(fb));
-  bossProjectiles = [];
+  bossProjectiles.length = 0;
   particles.forEach(p => scene.remove(p));
-  particles = [];
+  particles.length = 0;
   floatingTexts.forEach(t => scene.remove(t));
   floatingTexts = [];
   achievements.value = [];
@@ -3868,6 +3871,21 @@ onMounted(() => {
   window.addEventListener('keydown', (e) => {
     if (e.key === 'p' || e.key === 'P') {
       toggleSettings();
+    }
+    // DEBUG: G = god mode (invincible + kill boss instantly)
+    if (e.key === 'g' || e.key === 'G') {
+      isInvincible = !isInvincible;
+      console.log('[DEBUG-GOD] invincible:', isInvincible);
+      if (bossActive.value && !bossDefeated.value) {
+        bossHealth.value = 1; // will hit <=0 next frame
+        console.log('[DEBUG-GOD] boss HP set to 1, will die next frame');
+      }
+    }
+    // DEBUG: F = fast-forward to boss (skip to stage time 55s)
+    if (e.key === 'f' || e.key === 'F') {
+      stageTime.value = STAGES[currentStage.value].stageDuration - 5;
+      gameDuration = 55;
+      console.log('[DEBUG-FAST] stageTime:', stageTime.value, 'gameDuration:', gameDuration);
     }
   });
   
