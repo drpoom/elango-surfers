@@ -141,7 +141,7 @@ import { useCurve } from './composables/useCurve.js'
 import { useMic } from './composables/useMic.js'
 
 // Version - Update this for each release
-const VERSION = 'v4.5.4';
+const VERSION = 'v4.5.5';
 
 // Score & High Score refs
 const score = ref(0);
@@ -2716,7 +2716,27 @@ const animate = () => {
 
   // Grace period: don't spawn obstacles for the first 1.5 seconds (but still move existing ones)
   const spawnGraceActive = gameDuration < 1.5;
-  if (!spawnGraceActive && time - lastSpawnTime > spawnInterval && !bonusNoSpawn && !bossActive.value && !stageTransitioning.value) {
+  
+  const willSpawn = !spawnGraceActive && (time - lastSpawnTime) > spawnInterval && !bonusNoSpawn && !bossActive.value && !stageTransitioning.value;
+  if (!willSpawn && !countdownLocked) {
+    if (!window._spawnLogTimer || Date.now() - window._spawnLogTimer > 1000) {
+      console.log('[SPAWN-DEBUG]', {
+        spawnGraceActive,
+        timeSinceLastSpawn: time - lastSpawnTime,
+        spawnInterval,
+        bonusNoSpawn,
+        bossActive: bossActive.value,
+        stageTransitioning: stageTransitioning.value,
+        gameDuration,
+        lastSpawnTime,
+        time,
+        obstaclesLen: obstacles.length
+      });
+      window._spawnLogTimer = Date.now();
+    }
+  }
+
+  if (willSpawn) {
     if (Math.random() < 0.7) {
       if (Math.random() < 0.3) {
         spawnFloatingObstacle();
@@ -2726,6 +2746,7 @@ const animate = () => {
     }
     if (Math.random() < 0.5 + (gameDuration / 120)) spawnCoin();
     if (Math.random() < 0.05) spawnPowerup();
+    console.log('[SPAWN-TRIGGERED] obstacles:', obstacles.length);
     lastSpawnTime = time;
   }
 
