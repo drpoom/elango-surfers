@@ -141,7 +141,7 @@ import { useCurve } from './composables/useCurve.js'
 import { useMic } from './composables/useMic.js'
 
 // Version - Update this for each release
-const VERSION = 'v4.4.6';
+const VERSION = 'v4.4.7';
 
 // Score & High Score refs
 const score = ref(0);
@@ -2333,7 +2333,7 @@ const animate = () => {
         // Finally unlock the game loop
         stageTransitioning.value = false
         bossDefeatTimeout1 = null
-      }, 5000)
+      }, 2000)
     }
   }
 
@@ -2451,8 +2451,8 @@ const animate = () => {
     fb.position.y += (fb.userData.targetY - fb.position.y) * 0.04 // converge to target height
     fb.rotation.y += 0.1
     
-    // Skip collision if game over, countdown, or grace period
-    if (gameOver.value || countdownLocked || Date.now() - gameStartTime < 2000) continue;
+    // Skip collision if game over, countdown, grace period, or stage transition
+    if (gameOver.value || countdownLocked || stageTransitioning.value || Date.now() - gameStartTime < 2000) continue;
     // Collision with player
     const dist = player.position.distanceTo(fb.position)
     if (dist < 1.5) {
@@ -2860,8 +2860,8 @@ const animate = () => {
       }
     }
 
-    // Skip collision if game over, countdown, or grace period
-    if (gameOver.value || countdownLocked || Date.now() - gameStartTime < 2000) return;
+    // Skip collision if game over, countdown, grace period, or stage transition
+    if (gameOver.value || countdownLocked || stageTransitioning.value || Date.now() - gameStartTime < 2000) return;
     // Horizontal + Z distance (ignore Y for collision range check)
     const dx = player.position.x - obs.mesh.position.x;
     const dz = player.position.z - obs.mesh.position.z;
