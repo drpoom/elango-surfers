@@ -2275,7 +2275,7 @@ const animate = () => {
             countdownLocked = false
             stageTransitioning.value = false // unlock game loop
             bossWarning.value = false // defensive: ensure cleared
-            console.log('[STAGE-RESUME] countdown done, stage:', currentStage.value, 'gameDuration:', gameDuration, 'lastSpawnTime:', lastSpawnTime, 'time:', clock.getElapsedTime());
+            console.log('[STAGE-RESUME] countdown done, stage:', currentStage.value, 'gameDuration:', gameDuration, 'lastSpawnTime:', lastSpawnTime, 'time:', clock.getElapsedTime(), 'spawnInterval:', spawnInterval, 'bossActive:', bossActive.value, 'stageTransitioning:', stageTransitioning.value, 'countdownLocked:', countdownLocked, 'bonusNoSpawn:', bonusNoSpawn, 'gameOver:', gameOver.value);
             // 2-second invincibility after stage starts
             isInvincible = true
             gameStartTime = Date.now()
@@ -2716,7 +2716,16 @@ const animate = () => {
 
   // Grace period: don't spawn obstacles for the first 1.5 seconds (but still move existing ones)
   const spawnGraceActive = gameDuration < 1.5;
-  if (!stageTransitioning.value && !countdownLocked && Math.random() < 0.1) console.log('[SPAWN-CHECK]', { gameDuration: gameDuration.toFixed(1), spawnGraceActive, lastSpawnTime: lastSpawnTime.toFixed(1), time: time.toFixed(1), spawnInterval: spawnInterval.toFixed(2), bossActive: bossActive.value, bonusNoSpawn, diff: (time-lastSpawnTime).toFixed(2) });
+  if (!stageTransitioning.value && !countdownLocked) {
+    const willSpawn = !spawnGraceActive && (time - lastSpawnTime) > spawnInterval && !bonusNoSpawn && !bossActive.value;
+    if (!willSpawn) {
+      // Log why we CAN'T spawn (throttled to ~2/sec)
+      if (!window._lastSpawnLog || Date.now() - window._lastSpawnLog > 500) {
+        console.log('[SPAWN-BLOCKED]', { grace: spawnGraceActive, timeDiff: (time-lastSpawnTime).toFixed(2), interval: spawnInterval.toFixed(2), bonusNoSpawn, bossActive: bossActive.value, stage: currentStage.value, gameDuration: gameDuration.toFixed(1) });
+        window._lastSpawnLog = Date.now();
+      }
+    }
+  }
   if (!spawnGraceActive && time - lastSpawnTime > spawnInterval && !bonusNoSpawn && !bossActive.value && !stageTransitioning.value) {
     if (Math.random() < 0.7) {
       if (Math.random() < 0.3) {
