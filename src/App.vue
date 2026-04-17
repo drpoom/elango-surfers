@@ -141,7 +141,7 @@ import { useCurve } from './composables/useCurve.js'
 import { useMic } from './composables/useMic.js'
 
 // Version - Update this for each release
-const VERSION = 'v4.5.1';
+const VERSION = 'v4.5.2';
 
 // Score & High Score refs
 const score = ref(0);
@@ -2229,6 +2229,7 @@ const animate = () => {
     if (bossHealth.value <= 0) {
       bossDefeated.value = true
       bossActive.value = false
+      bossWarning.value = false
       bossHealth.value = 0
       createFloatingText('\u2728 STAGE CLEAR! \u2728', player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#44ff44')
       playSFX('stage_clear')
@@ -2273,9 +2274,12 @@ const animate = () => {
             countdownActive.value = false
             countdownLocked = false
             stageTransitioning.value = false // unlock game loop
+            bossWarning.value = false // defensive: ensure cleared
             // 2-second invincibility after stage starts
             isInvincible = true
             gameStartTime = Date.now()
+            gameDuration = 1.5 // skip spawn grace (countdown already provided delay)
+            lastSpawnTime = clock.getElapsedTime() - spawnInterval // trigger spawn immediately
             const graceGeo = new THREE.SphereGeometry(1.2, 16, 16)
             const graceMat = new THREE.MeshToonMaterial({ color: 0x44ff44, transparent: true, opacity: 0.3, side: THREE.DoubleSide })
             const graceMesh = new THREE.Mesh(graceGeo, graceMat)
