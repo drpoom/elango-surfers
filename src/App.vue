@@ -2275,6 +2275,7 @@ const animate = () => {
             countdownLocked = false
             stageTransitioning.value = false // unlock game loop
             bossWarning.value = false // defensive: ensure cleared
+            console.log('[STAGE-RESUME] countdown done, stage:', currentStage.value, 'gameDuration:', gameDuration, 'lastSpawnTime:', lastSpawnTime, 'time:', clock.getElapsedTime());
             // 2-second invincibility after stage starts
             isInvincible = true
             gameStartTime = Date.now()
@@ -2715,6 +2716,7 @@ const animate = () => {
 
   // Grace period: don't spawn obstacles for the first 1.5 seconds (but still move existing ones)
   const spawnGraceActive = gameDuration < 1.5;
+  if (!stageTransitioning.value && !countdownLocked && Math.random() < 0.1) console.log('[SPAWN-CHECK]', { gameDuration: gameDuration.toFixed(1), spawnGraceActive, lastSpawnTime: lastSpawnTime.toFixed(1), time: time.toFixed(1), spawnInterval: spawnInterval.toFixed(2), bossActive: bossActive.value, bonusNoSpawn, diff: (time-lastSpawnTime).toFixed(2) });
   if (!spawnGraceActive && time - lastSpawnTime > spawnInterval && !bonusNoSpawn && !bossActive.value && !stageTransitioning.value) {
     if (Math.random() < 0.7) {
       if (Math.random() < 0.3) {
@@ -2725,6 +2727,7 @@ const animate = () => {
     }
     if (Math.random() < 0.5 + (gameDuration / 120)) spawnCoin();
     if (Math.random() < 0.05) spawnPowerup();
+    console.log('[SPAWNED] obstacles/coins/powerups');
     lastSpawnTime = time;
   }
 
