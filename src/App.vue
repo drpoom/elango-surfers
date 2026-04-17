@@ -40,7 +40,7 @@
       <p v-if="score >= highScore" style="color: #ffd700; font-weight: bold;">⭐ NEW HIGH SCORE! ⭐</p>
       <!-- Leaderboard -->
       <div id="leaderboard" v-if="leaderboard.length > 0">
-        <h3 style="margin:0.5rem 0 0.25rem;color:#ffd700">🏆 Leaderboard</h3>
+        <h3 style="margin:0.5rem 0 0.25rem;color:#ffd700">🌍 GLOBAL Leaderboard <span v-if="syncStatus === 'syncing'" style="color:#888;font-size:0.7em">⏳ syncing…</span><span v-if="syncStatus === 'error'" style="color:#f66;font-size:0.7em">📡 offline</span></h3>
         <div v-for="(entry, i) in leaderboard" :key="i" class="lb-entry">
           <span class="lb-rank">{{ i + 1 }}.</span>
           <span class="lb-name">{{ entry.name }}</span>
@@ -439,7 +439,7 @@ onMounted(() => {
   const saved = localStorage.getItem('elangoSurfersHighScore');
   if (saved) highScore.value = parseInt(saved, 10);
   loadProgress();
-  loadLeaderboard();
+  loadLeaderboard(); // async — loads global + local, non-blocking
   checkAchievements();
 });
 
@@ -451,7 +451,7 @@ const saveHighScore = () => {
 };
 
 // === LEADERBOARD === (extracted to useLeaderboard.js)
-const { leaderboard, playerName, showNameEntry, isHighScore, submitScore, loadLeaderboard } = useLeaderboard({ VERSION, score, highScore })
+const { leaderboard, playerName, showNameEntry, isHighScore, submitScore, loadLeaderboard, syncStatus } = useLeaderboard({ VERSION, score, highScore })
 
 const initGame = () => {
   scene = new THREE.Scene();

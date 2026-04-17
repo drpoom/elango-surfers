@@ -91,7 +91,7 @@
 }
 #leaderboard {
   margin: 0.5rem 0;
-  max-height: 200px;
+  max-height: 280px;
   overflow-y: auto;
 }
 .lb-entry {
