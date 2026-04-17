@@ -141,7 +141,7 @@ import { useCurve } from './composables/useCurve.js'
 import { useMic } from './composables/useMic.js'
 
 // Version - Update this for each release
-const VERSION = 'v4.5.3';
+const VERSION = 'v4.5.4';
 
 // Score & High Score refs
 const score = ref(0);
@@ -1892,17 +1892,17 @@ const triggerGameOver = (shakeIntensity = 0.5) => {
   trees.forEach(t => { t.visible = true; });
   // Immediately remove all game objects from scene so they can't interfere on restart
   obstacles.forEach(obs => { obs.mesh.traverse(c => { if (c.geometry && c.geometry !== sharedCoinGeo) c.geometry.dispose(); }); scene.remove(obs.mesh); });
-  obstacles = [];
+  obstacles.length = 0;
   coins.forEach(coin => scene.remove(coin.mesh));
-  coins = [];
+  coins.length = 0;
   powerups.forEach(pw => scene.remove(pw.mesh));
-  powerups = [];
+  powerups.length = 0;
   bossProjectiles.forEach(fb => scene.remove(fb));
-  bossProjectiles = [];
+  bossProjectiles.length = 0;
   particles.forEach(p => scene.remove(p));
-  particles = [];
+  particles.length = 0;
   floatingTexts.forEach(t => scene.remove(t));
-  floatingTexts = [];
+  floatingTexts.length = 0;
   if (boss) { scene.remove(boss); boss = null; }
   // Cancel any pending boss/stage timeouts
   if (bossDefeatTimeout1) { clearTimeout(bossDefeatTimeout1); bossDefeatTimeout1 = null; }
