@@ -2314,6 +2314,22 @@ const animate = () => {
         particles = []
         floatingTexts.forEach(t => scene.remove(t))
         floatingTexts = []
+        // Reset bonus zone environment (defensive — shouldn't be active during boss)
+        bonusCoins.forEach(bc => scene.remove(bc.mesh))
+        bonusCoins = []
+        scene.userData.bonusEnvActive = false
+        if (scene.userData.nyanCat) { scene.remove(scene.userData.nyanCat); scene.userData.nyanCat = null; scene.userData.nyanCatTime = 0 }
+        if (originalRoadMaterial) {
+          const roadCheck = scene.getObjectByName('road')
+          if (roadCheck) { roadCheck.material.dispose(); roadCheck.material = originalRoadMaterial; originalRoadMaterial = null }
+        }
+        // Reset fog event if running
+        if (activeEvent) { activeEvent = null; eventTimer = 0; eventDuration = 0; fogDensity = 0; edgeGlowIntensity = 0 }
+        // Reset road curve for clean start
+        roadCurve.value = 0
+        roadCurveTarget.value = 0
+        curveChangeTimer.value = 0
+        nextCurveChange.value = 3
         // Finally unlock the game loop
         stageTransitioning.value = false
         bossDefeatTimeout1 = null
