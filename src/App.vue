@@ -2256,20 +2256,65 @@ const animate = () => {
         currentStage.value = nextStage
         applyStageVisuals(nextStage)
         createFloatingText(`STAGE ${nextStage + 1}: ${STAGES[nextStage].name}`, player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#ffffff')
-        // Reset for new stage — like a new game but score continues
-        gameDuration = 1.5 // skip spawn grace (5s pause was enough)
-        gameSpeed = 0.25 // reset to default speed immediately
+        // Full reset for new stage — like a new game but score continues
+        gameDuration = 0 // reset to 0 so spawn grace works naturally (1.5s)
+        gameSpeed = 0.25
         stageTime.value = 0
-        lastSpawnTime = clock.getElapsedTime() // reset spawn timer
-        // Clear remaining obstacles + coins
+        lastSpawnTime = clock.getElapsedTime() + 1.5 // skip spawn grace period
+        // Clear remaining obstacles + coins + powerups
         obstacles.forEach(obs => scene.remove(obs.mesh))
         obstacles = []
         coins.forEach(coin => scene.remove(coin.mesh))
         coins = []
         powerups.forEach(pw => scene.remove(pw.mesh))
         powerups = []
+        // Clear boss projectiles that may still be flying
+        bossProjectiles.forEach(fb => scene.remove(fb))
+        bossProjectiles = []
+        // Clear bonus zone state
+        bonusNoSpawn = false
+        if (savedSubstageState) {
+          savedSubstageState.obstacles.forEach(obs => scene.remove(obs.mesh))
+          savedSubstageState.coins.forEach(coin => scene.remove(coin.mesh))
+          savedSubstageState = null
+        }
         spawnInterval = 1.2
+        // Reset all boss state
+        bossActive.value = false
         bossDefeated.value = false
+        bossWarning.value = false
+        bossHealth.value = 100
+        bossCharging = false
+        bossChargeTimer = 0
+        bossChargeTarget = 0
+        bossAttackTimer = 0
+        bossNextAttack = 3
+        // Reset powerup effects that may carry over
+        scoreMultiplier = 1
+        magnetRange = 0
+        if (isInvincible) {
+          isInvincible = false
+          const shield = player.getObjectByName('shield-aura')
+          if (shield) player.remove(shield)
+        }
+        activePowerup = null
+        powerupEndTime = 0
+        powerupIcon = ''
+        powerupName = ''
+        powerupTimeLeft.value = 0
+        // Clear bonus portal if active
+        if (bonusPortal) { scene.remove(bonusPortal.mesh); bonusPortal = null; }
+        bonusPortalSpawned = false
+        inBonusZone = false
+        bonusTimer = 0
+        inBonusZoneRef.value = false
+        bonusTimerRef.value = 0
+        // Clear particles + floating text
+        particles.forEach(p => scene.remove(p))
+        particles = []
+        floatingTexts.forEach(t => scene.remove(t))
+        floatingTexts = []
+        // Finally unlock the game loop
         stageTransitioning.value = false
         bossDefeatTimeout1 = null
       }, 5000)

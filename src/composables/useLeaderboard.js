@@ -71,8 +71,9 @@ export function useLeaderboard({ VERSION, score, highScore }) {
 
   const fetchGlobal = async () => {
     try {
+      // Only fetch scores matching current game version
       const res = await fetch(
-        `${SUPABASE_URL}/rest/v1/scores?select=name,score,created_at&order=score.desc,created_at.asc&limit=${MAX_LEADERBOARD}`,
+        `${SUPABASE_URL}/rest/v1/scores?select=name,score,created_at&game_version=eq.${encodeURIComponent(VERSION)}&order=score.desc,created_at.asc&limit=${MAX_LEADERBOARD}`,
         { headers: supabaseHeaders() }
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -89,7 +90,7 @@ export function useLeaderboard({ VERSION, score, highScore }) {
       const res = await fetch(`${SUPABASE_URL}/rest/v1/scores`, {
         method: 'POST',
         headers: supabaseHeaders(),
-        body: JSON.stringify({ name, score: scoreVal, hash }),
+        body: JSON.stringify({ name, score: scoreVal, hash, game_version: VERSION }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return true;
