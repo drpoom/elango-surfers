@@ -28,6 +28,26 @@ export function useCurve({ roadCurveEnabled, roadCurve }) {
     return -EARTH_R * Math.sin(angle);
   };
 
+  const getSurfaceTilt = (z) => {
+    const dist = Math.max(0, -z);
+    if (dist < 5) return 0;
+    return -dist / EARTH_R; // radians, objects lean back
+  };
+
+  // curveFrontZ: 0 = front at player (full curve), negative = front still approaching
+  // Using ref so mutations from App.vue propagate into getCurveX reads
+  const curveFrontZ = ref(0);
+
+  const getCurveX = (z) => {
+    if (!roadCurveEnabled.value) return 0;
+    const depth = Math.max(0, -z); // how far ahead (positive)
+    const frontDepth = Math.max(0, -curveFrontZ.value); // depth where curve starts
+    if (depth <= frontDepth) return 0; // player side of front: straight
+    const pastFront = depth - frontDepth;
+    const t = pastFront / 80;
+    return roadCurve.value * t * t * 24;
+  };
+
   return {
     getSurfaceY,
     getSurfaceZ,
