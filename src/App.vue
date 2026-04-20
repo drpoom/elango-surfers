@@ -141,7 +141,7 @@ import { useCurve } from './composables/useCurve.js'
 import { useMic } from './composables/useMic.js'
 
 // Version - Update this for each release
-const VERSION = 'v4.5.7';
+const VERSION = 'v4.5.8';
 
 // Score & High Score refs
 const score = ref(0);
@@ -203,6 +203,7 @@ let dayCycleTime = 0;
 // Stage system
 // === STAGE VISUAL TRANSITIONS ===
 let cobblestoneTexture = null;
+let grassTileTex = null;
 let originalGroundTexture = null;
 let originalGroundColor = null;
 
@@ -790,7 +791,7 @@ const createGround = () => {
   
   // Add colorful grass borders with AI texture
   // Priority load: grass (large surface area)
-  const grassTileTex = textureLoader.load('assets/grass_tile.webp');
+  grassTileTex = textureLoader.load('assets/grass_tile.webp');
   grassTileTex.wrapS = THREE.RepeatWrapping;
   grassTileTex.wrapT = THREE.RepeatWrapping;
   grassTileTex.repeat.set(10, 25);
@@ -3245,6 +3246,7 @@ const animate = () => {
   // === SCROLL ROAD TEXTURE ===
   if (groundTexture) {
     groundTexture.offset.y -= gameSpeed * 0.15;
+    if (grassTileTex) grassTileTex.offset.y -= gameSpeed * 0.15;
   }
   
   // === CHARACTER ANIMATION ===
