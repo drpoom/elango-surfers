@@ -1,8 +1,36 @@
 # Project Tasks: Elango Surfers
 
-## Bug: Obstacles don't spawn after boss defeat
+## Bug Fix: Obstacle Spawn After Stage Transition (INVESTIGATION NEEDED)
+
+### Root Cause Analysis (by Mickey)
+The spawn logic appears correct on paper, but obstacles are NOT spawning after stage transitions. The `willSpawn` condition at line 2720 requires ALL of these to be true:
+- `!spawnGraceActive` (gameDuration >= 1.5)
+- `(time - lastSpawnTime) > spawnInterval`
+- `!bonusNoSpawn`
+- `!bossActive.value`
+- `!stageTransitioning.value`
+
+**Hypothesis:** The `setTimeout` callback at line 2276-2295 (which sets `gameDuration = 1.5` and `stageTransitioning.value = false`) is **not firing** or is being blocked. This would leave:
+- `gameDuration = 0` (from resetStage)
+- `spawnGraceActive = true` (because 0 < 1.5)
+- **Result:** Spawns blocked FOREVER
+
+**Alternative:** One of the state flags (`bossActive.value`, `stageTransitioning.value`, `bonusNoSpawn`) is stuck `true` after the transition.
+
+### Fix Plan
+- [ ] **[Byte] Add Critical Debug Logging**: Add console logs to confirm the setTimeout callback executes:
+  - Line 2278 (inside setTimeout): `console.log('[TIMEOUT-FIRED] Setting gameDuration=1.5, stageTransitioning=false')`
+  - Line 2281: Log the actual values being set
+  - This will confirm if the callback runs or is blocked
+- [ ] **[Byte] Add State Flag Logging**: Add a 1-second interval log that prints all `willSpawn` conditions to identify which one is stuck
+- [ ] **[Byte] Implement Fix]: Once root cause confirmed, fix the blocking condition
+- [ ] **[Scout] Verify Fix]: Play through boss fight, defeat boss, confirm obstacles spawn within 1 second of "GO!"
+
+---
+
+## Bug: Obstacles don't spawn after boss defeat (PREVIOUS FIX ATTEMPT - v4.5.6 - DID NOT WORK)
 - [ ] **[Byte] Implement Spawn Fix**: In `src/App.vue`, move the initialization of `gameDuration = 1.5` and `lastSpawnTime = clock.getElapsedTime() - spawnInterval` from the delayed `setTimeout` callback (approx line 2282) to the immediate block where `stageTransitioning.value = false` is set (approx line 2276). This ensures the spawn grace period is bypassed exactly when the game loop resumes.
-- [ ] **[Scout] Verify Boss Spawn Fix**: Play through to a boss fight, defeat the boss, and confirm that obstacles spawn immediately after the "GO!" countdown.
+- [ ] **[Scout] Verify Boss Spawn Fix**: Play through to a boss fight, defeat the boss, and confirm that obstacles spawn immediately after the "GO!" countdown ends.
 
 ## Elango Surfers
 

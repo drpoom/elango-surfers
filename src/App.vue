@@ -2274,6 +2274,9 @@ const animate = () => {
           isInvincible = true
           gameStartTime = Date.now()
           setTimeout(() => {
+            console.log('[TIMEOUT-FIRED] Callback executing. Setting gameDuration=1.5, stageTransitioning=false');
+            console.log('[TIMEOUT-FIRED] gameDuration before:', gameDuration, 'after: 1.5');
+            console.log('[TIMEOUT-FIRED] stageTransitioning before:', stageTransitioning.value, 'after: false');
             countdownActive.value = false
             countdownLocked = false
             stageTransitioning.value = false // unlock game loop
@@ -2750,6 +2753,15 @@ const animate = () => {
     countdownLocked,
     gameSpeed,
   });
+
+  // Add this ONCE, right after __spawnDebug definition
+  if (!window._spawnStateInterval) {
+    window._spawnStateInterval = setInterval(() => {
+      const debug = window.__spawnDebug();
+      const willSpawn = !debug.spawnGraceActive && debug.timeSinceLastSpawn > debug.spawnInterval && !debug.bonusNoSpawn && !debug.bossActive && !debug.stageTransitioning;
+      console.log('[SPAWN-STATE] willSpawn:', willSpawn, debug);
+    }, 1000);
+  }
 
   if (willSpawn) {
     if (Math.random() < 0.7) {
