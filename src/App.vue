@@ -1226,7 +1226,7 @@ const createBackgroundElements = () => {
     tree.position.set(
       side * (8 + Math.random() * 10),
       treeBaseY + getSurfaceY(treeZ),
-      treeZ
+      getSurfaceZ(treeZ)
     );
     tree.baseY = treeBaseY;
     tree.baseX = tree.position.x; // store for road curve
@@ -1282,7 +1282,7 @@ const createBackgroundElements = () => {
     buildingGroup.position.set(
       side * (10 + Math.random() * 10),
       height / 2 + getSurfaceY(bldgZ),
-      bldgZ
+      getSurfaceZ(bldgZ)
     );
     scene.add(buildingGroup);
     buildingGroup.baseY = height / 2;
@@ -3132,10 +3132,10 @@ const animate = () => {
     if (tree.position.z > 10) {
       // Determine side from baseX (not position.x which has curve offset)
       const side = (tree.baseX || 0) > 0 ? 1 : -1;
-      tree.position.z = -Math.random() * 80;
-      tree.baseX = side * (8 + Math.random() * 10);
-      tree.position.x = tree.baseX + getCurveX(tree.position.z);
-      tree.position.y = (tree.baseY || 0) + getSurfaceY(tree.position.z);
+    tree.position.z = getSurfaceZ(-Math.random() * 80);
+    tree.baseX = side * (8 + Math.random() * 10);
+    tree.position.x = tree.baseX + getCurveX(tree.position.z);
+    tree.position.y = (tree.baseY || 0) + getSurfaceY(tree.position.z);
     }
   });
   
@@ -3150,7 +3150,7 @@ const animate = () => {
     if (building.position.z > 20) {
       // Determine side from baseX (not position.x which has curve offset)
       const side = (building.baseX || 0) > 0 ? 1 : -1;
-      building.position.z = -20 - Math.random() * 60;
+      building.position.z = getSurfaceZ(-20 - Math.random() * 60);
       building.baseX = side * (15 + Math.random() * 10);
       building.position.x = building.baseX + getCurveX(building.position.z);
       building.position.y = (building.baseY || 0) + getSurfaceY(building.position.z);
