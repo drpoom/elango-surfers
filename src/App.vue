@@ -2270,17 +2270,16 @@ const animate = () => {
         } else if (count === 0) {
           countdownText.value = 'GO!'
           playSound('start')
+          // 2-second invincibility after stage starts
+          isInvincible = true
+          gameStartTime = Date.now()
+          gameDuration = 1.5 // skip spawn grace (countdown already provided delay)
+          lastSpawnTime = clock.getElapsedTime() - spawnInterval // trigger spawn immediately
           setTimeout(() => {
             countdownActive.value = false
             countdownLocked = false
             stageTransitioning.value = false // unlock game loop
             bossWarning.value = false // defensive: ensure cleared
-
-            // 2-second invincibility after stage starts
-            isInvincible = true
-            gameStartTime = Date.now()
-            gameDuration = 1.5 // skip spawn grace (countdown already provided delay)
-            lastSpawnTime = clock.getElapsedTime() - spawnInterval // trigger spawn immediately
             const graceGeo = new THREE.SphereGeometry(1.2, 16, 16)
             const graceMat = new THREE.MeshToonMaterial({ color: 0x44ff44, transparent: true, opacity: 0.3, side: THREE.DoubleSide })
             const graceMesh = new THREE.Mesh(graceGeo, graceMat)
