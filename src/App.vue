@@ -2279,6 +2279,7 @@ const animate = () => {
             stageTransitioning.value = false // unlock game loop
             gameDuration = 1.5
             lastSpawnTime = clock.getElapsedTime() - spawnInterval
+            console.log('[STAGE-RESUME] gameDuration:', gameDuration, 'lastSpawnTime:', lastSpawnTime, 'time:', clock.getElapsedTime(), 'spawnInterval:', spawnInterval, 'stageTransitioning:', stageTransitioning.value);
             bossWarning.value = false // defensive: ensure cleared
             const graceGeo = new THREE.SphereGeometry(1.2, 16, 16)
             const graceMat = new THREE.MeshToonMaterial({ color: 0x44ff44, transparent: true, opacity: 0.3, side: THREE.DoubleSide })
@@ -2734,6 +2735,21 @@ const animate = () => {
       window._spawnLogTimer = Date.now();
     }
   }
+  // Expose for debugging
+  window.__spawnDebug = () => ({
+    spawnGraceActive,
+    timeSinceLastSpawn: time - lastSpawnTime,
+    spawnInterval,
+    bonusNoSpawn,
+    bossActive: bossActive.value,
+    stageTransitioning: stageTransitioning.value,
+    gameDuration,
+    lastSpawnTime,
+    time,
+    obstaclesLen: obstacles.length,
+    countdownLocked,
+    gameSpeed,
+  });
 
   if (willSpawn) {
     if (Math.random() < 0.7) {
@@ -3596,6 +3612,7 @@ const resetStage = (preserveScore = false, targetStage = -1) => {
   gameSpeed = 0.25;
   spawnInterval = 1.2;
   gameDuration = 0;
+  console.log('[RESET-STAGE] gameDuration reset to 0, lastSpawnTime:', lastSpawnTime);
   lastSpawnTime = -2; // grace period: first obstacle 2s after start
 
   // Stage
