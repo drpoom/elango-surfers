@@ -435,6 +435,18 @@ let skyTextures = {};
 let mountainMesh;
 let textureLoader = new THREE.TextureLoader();
 
+// Medieval fachwerkhaus texture loader
+let fachwerkTexture = null;
+const loadFachwerk = () => {
+  if (!fachwerkTexture) {
+    fachwerkTexture = textureLoader.load('assets/building_fachwerk.webp');
+    fachwerkTexture.wrapS = THREE.RepeatWrapping;
+    fachwerkTexture.wrapT = THREE.RepeatWrapping;
+    fachwerkTexture.colorSpace = THREE.SRGBColorSpace;
+  }
+  return fachwerkTexture;
+};
+
 window.addEventListener('error', (e) => { console.log('GLOBAL ERROR:', e.message, 'at', e.filename + ':' + e.lineno + ':' + e.colno); });
 onMounted(() => {
   const saved = localStorage.getItem('elangoSurfersHighScore');
@@ -1174,17 +1186,6 @@ const createBackgroundElements = () => {
     textureLoader.load('assets/building_blue.webp'),
     textureLoader.load('assets/building_green.webp'),
   ];
-  // Medieval fachwerkhaus texture
-  let fachwerkTexture = null;
-  const loadFachwerk = () => {
-    if (!fachwerkTexture) {
-      fachwerkTexture = textureLoader.load('assets/building_fachwerk.webp');
-      fachwerkTexture.wrapS = THREE.RepeatWrapping;
-      fachwerkTexture.wrapT = THREE.RepeatWrapping;
-      fachwerkTexture.colorSpace = THREE.SRGBColorSpace;
-    }
-    return fachwerkTexture;
-  };
   // Set dominant colors as fallback so buildings don't appear dark before texture loads
   const buildingDominantColors = [0xffb6c1, 0x87ceeb, 0x98fb98]; // pink, blue, green
   buildingTextures.forEach((tex, idx) => {
