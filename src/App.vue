@@ -141,7 +141,7 @@ import { useCurve } from './composables/useCurve.js'
 import { useMic } from './composables/useMic.js'
 
 // Version - Update this for each release
-const VERSION = 'v4.5.5';
+const VERSION = 'v4.5.6';
 
 // Score & High Score refs
 const score = ref(0);
@@ -2273,12 +2273,12 @@ const animate = () => {
           // 2-second invincibility after stage starts
           isInvincible = true
           gameStartTime = Date.now()
-          gameDuration = 1.5 // skip spawn grace (countdown already provided delay)
-          lastSpawnTime = clock.getElapsedTime() - spawnInterval // trigger spawn immediately
           setTimeout(() => {
             countdownActive.value = false
             countdownLocked = false
             stageTransitioning.value = false // unlock game loop
+            gameDuration = 1.5
+            lastSpawnTime = clock.getElapsedTime() - spawnInterval
             bossWarning.value = false // defensive: ensure cleared
             const graceGeo = new THREE.SphereGeometry(1.2, 16, 16)
             const graceMat = new THREE.MeshToonMaterial({ color: 0x44ff44, transparent: true, opacity: 0.3, side: THREE.DoubleSide })
