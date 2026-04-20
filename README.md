@@ -2,7 +2,7 @@
 
 **An infinite runner game — built entirely by open-source AI models, communicated over Telegram.**
 
-Play it: **[elango-surfers.drpoom.com](https://elango-surfers.drpoom.com/)**
+Play it: **[www.drpoom.com/Elango-surfers](https://www.drpoom.com/Elango-surfers)**
 
 ---
 
