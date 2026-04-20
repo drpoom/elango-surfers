@@ -3246,7 +3246,7 @@ const animate = () => {
   // === SCROLL ROAD TEXTURE ===
   if (groundTexture) {
     groundTexture.offset.y -= gameSpeed * 0.15;
-    if (grassTileTex) grassTileTex.offset.y -= gameSpeed * 0.15;
+    if (grassTileTex) grassTileTex.offset.y += gameSpeed * 0.15;
   }
   
   // === CHARACTER ANIMATION ===
