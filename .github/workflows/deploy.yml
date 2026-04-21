@@ -8,21 +8,20 @@ on:
       - 'v*'
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: "pages"
   cancel-in-progress: false
 
 jobs:
-  # Build job
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout main
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -39,71 +38,52 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: ./dist
-
-  # Deploy job - handles both dev (main) and release (tags)
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
       - name: Checkout gh-pages branch
         uses: actions/checkout@v4
         with:
           ref: gh-pages
+          path: gh-pages-branch
           fetch-depth: 0
-          path: gh-pages-content
 
-      - name: Download built artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: github-pages
-          path: ./dist
-
-      - name: Prepare deployment for dev (main branch pushes)
+      - name: Deploy dev folder (main branch only)
         if: github.ref == 'refs/heads/main'
         run: |
-          # Copy existing gh-pages content (preserves root release)
-          cp -r gh-pages-content/* . 2>/dev/null || true
-          cp -r gh-pages-content/.[!.]* . 2>/dev/null || true
-          
-          # Update dev folder with new build
+          cd gh-pages-branch
+          # Remove old dev folder
           rm -rf dev
+          # Copy new build to dev folder
           mkdir -p dev
-          cp -r dist/* dev/
-          
-          # Clean up
-          rm -rf gh-pages-content dist
+          cp -r ../dist/* dev/
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Commit and push
+          git add -f dev/
+          if ! git diff --staged --quiet; then
+            git commit -m "deploy(dev): latest build from main [skip ci]"
+            git push origin gh-pages
+          else
+            echo "No changes to commit"
+          fi
 
-      - name: Prepare deployment for release (version tags)
+      - name: Deploy root (version tags only)
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          # Copy existing gh-pages content (preserves dev folder)
-          cp -r gh-pages-content/* . 2>/dev/null || true
-          cp -r gh-pages-content/.[!.]* . 2>/dev/null || true
-          
-          # Update root with new release build
-          # Keep dev folder, .nojekyll, etc.
+          cd gh-pages-branch
+          # Keep dev folder, update root files
+          # Remove old root files
           rm -f index.html favicon.svg icons.svg
-          rm -rf assets
-          cp -r dist/* .
-          
-          # Clean up
-          rm -rf gh-pages-content dist
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: '.'
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          rm -rf assets dist
+          # Copy new build to root
+          cp -r ../dist/* .
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Commit and push (excluding dev folder from this commit)
+          git add -f index.html favicon.svg icons.svg assets
+          if ! git diff --staged --quiet; then
+            git commit -m "deploy(release): ${{ github.ref_name }}"
+            git push origin gh-pages
+          else
+            echo "No changes to commit"
+          fi
