@@ -17,7 +17,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -42,38 +42,19 @@ jobs:
 
       - name: Prepare deployment structure
         run: |
-          # Create staging directory
           mkdir -p deploy-staging
           
-          # For main branch: include dev/ folder
+          # Always deploy current build to root
+          cp -r dist/* deploy-staging/
+          
+          # For main branch: also include dev/ folder
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
             mkdir -p deploy-staging/dev
             cp -r dist/* deploy-staging/dev/
-            # Also keep existing root files by fetching gh-pages
-            git fetch origin gh-pages
-            git checkout gh-pages -- . 2>/dev/null || true
-            # Copy existing root files (except dev folder)
-            for f in index.html favicon.svg icons.svg assets; do
-              if [ -e "$f" ] && [ "$f" != "dev" ]; then
-                cp -r "$f" deploy-staging/ 2>/dev/null || true
-              fi
-            done
-            # Remove dev from fetched content (we already have new one)
-            rm -rf deploy-staging/dev 2>/dev/null || true
-            mkdir -p deploy-staging/dev
-            cp -r dist/* deploy-staging/dev/
           fi
           
-          # For tags: deploy to root
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            cp -r dist/* deploy-staging/
-            # Keep existing dev folder
-            git fetch origin gh-pages
-            git checkout gh-pages -- dev 2>/dev/null || true
-            if [ -d "dev" ]; then
-              cp -r dev deploy-staging/
-            fi
-          fi
+          # For tags: root only (already done above)
+          echo "Deploying to root"
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
@@ -81,7 +62,7 @@ jobs:
           path: ./deploy-staging
 
   deploy:
-    needs: build
+    needs: build-and-deploy
     runs-on: ubuntu-latest
     environment:
       name: github-pages
