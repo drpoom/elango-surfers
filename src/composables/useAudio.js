@@ -29,7 +29,33 @@ export function useAudio({ currentStage, STAGES }) {
     truck_rev: 'assets/sfx_truck_rev.ogg',
     fire_shoot: 'assets/sfx_fire_shoot.ogg',
     stage_clear: 'assets/sfx_stage_clear.ogg',
+    // Stage 3 SFX
+    crash_wood: 'assets/sfx-crash-wood.ogg',
+    crash_glass: 'assets/sfx-crash-glass.ogg',
+    crash_metal: 'assets/sfx-crash-metal.ogg',
+    assembly: 'assets/sfx-assembly.ogg',
+    portal_whoosh: 'assets/sfx-portal-whoosh.ogg',
+    cash_register: 'assets/sfx-cash-register.ogg',
+    // Intercom clips (loaded as array)
+    intercom: [
+      'assets/sfx-intercom-1.ogg',
+      'assets/sfx-intercom-2.ogg',
+      'assets/sfx-intercom-3.ogg',
+      'assets/sfx-intercom-4.ogg',
+      'assets/sfx-intercom-5.ogg',
+    ],
   };
+  
+  // Stage 3 BGM and ambient
+  let ambientAudio = null;
+  let ambientGain = null;
+  let bgmIkeaAudio = null;
+  let bgmIkeaGain = null;
+  let isStage3BGM = false;
+  
+  // Intercom randomizer state
+  let intercomTimer = 0;
+  let intercomInterval = 25000; // 25 seconds average
 
   const initAudio = () => {
     if (audioInitialized) return;
@@ -40,9 +66,19 @@ export function useAudio({ currentStage, STAGES }) {
     }
     // Preload SFX files
     for (const [key, path] of Object.entries(SFX_FILES)) {
-      sfxCache[key] = new Audio(path);
-      sfxCache[key].preload = 'auto';
-      sfxCache[key].volume = 0.8;
+      if (Array.isArray(path)) {
+        // Intercom clips - preload as array
+        sfxCache[key] = path.map(p => {
+          const audio = new Audio(p);
+          audio.preload = 'auto';
+          audio.volume = 0.8;
+          return audio;
+        });
+      } else {
+        sfxCache[key] = new Audio(path);
+        sfxCache[key].preload = 'auto';
+        sfxCache[key].volume = 0.8;
+      }
     }
   };
 
@@ -128,6 +164,24 @@ export function useAudio({ currentStage, STAGES }) {
         gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
         osc.start(now);
         osc.stop(now + 0.2);
+        break;
+      case 'crash_wood':
+        playSFX('crash_wood', 0.9);
+        break;
+      case 'crash_glass':
+        playSFX('crash_glass', 0.9);
+        break;
+      case 'crash_metal':
+        playSFX('crash_metal', 0.9);
+        break;
+      case 'assembly':
+        playSFX('assembly', 0.7);
+        break;
+      case 'portal_whoosh':
+        playSFX('portal_whoosh', 0.8);
+        break;
+      case 'cash_register':
+        playSFX('cash_register', 0.8);
         break;
     }
   };
@@ -266,6 +320,84 @@ export function useAudio({ currentStage, STAGES }) {
     clone.volume = volume;
     clone.play().catch(() => {});
   };
+  
+  // Stage 3: IKEA-pocalypse BGM and ambient controls
+  const startStage3Audio = () => {
+    if (!audioCtx) initAudio();
+    if (!audioCtx || isMuted) return;
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    
+    isStage3BGM = true;
+    
+    // IKEA polka BGM
+    if (!bgmIkeaAudio) {
+      bgmIkeaAudio = new Audio('assets/bgm-ikea-polka.ogg');
+      bgmIkeaAudio.loop = true;
+      bgmIkeaAudio.volume = 1;
+    }
+    if (!bgmIkeaGain) {
+      bgmIkeaGain = audioCtx.createGain();
+      bgmIkeaGain.gain.value = 0.5;
+      bgmIkeaGain.connect(audioCtx.destination);
+      const source = audioCtx.createMediaElementSource(bgmIkeaAudio);
+      source.connect(bgmIkeaGain);
+    }
+    bgmIkeaAudio.currentTime = 0;
+    bgmIkeaAudio.play().catch(e => console.warn('IKEA BGM play failed:', e));
+    
+    // Conveyor ambient hum
+    if (!ambientAudio) {
+      ambientAudio = new Audio('assets/ambient-conveyor-hum.ogg');
+      ambientAudio.loop = true;
+      ambientAudio.volume = 1;
+    }
+    if (!ambientGain) {
+      ambientGain = audioCtx.createGain();
+      ambientGain.gain.value = 0.3;
+      ambientGain.connect(audioCtx.destination);
+      const ambientSource = audioCtx.createMediaElementSource(ambientAudio);
+      ambientSource.connect(ambientGain);
+    }
+    ambientAudio.currentTime = 0;
+    ambientAudio.play().catch(e => console.warn('Ambient hum play failed:', e));
+  };
+  
+  const stopStage3Audio = () => {
+    isStage3BGM = false;
+    if (bgmIkeaAudio) {
+      bgmIkeaAudio.pause();
+      bgmIkeaAudio.currentTime = 0;
+    }
+    if (ambientAudio) {
+      ambientAudio.pause();
+      ambientAudio.currentTime = 0;
+    }
+    if (bgmIkeaGain) {
+      try { bgmIkeaGain.disconnect(); } catch(e) {}
+      bgmIkeaGain = null;
+    }
+    if (ambientGain) {
+      try { ambientGain.disconnect(); } catch(e) {}
+      ambientGain = null;
+    }
+  };
+  
+  // Intercom randomizer - call this every frame in animate loop
+  const updateIntercom = (delta, isStage3) => {
+    if (!isStage3 || isMuted || !audioCtx) return;
+    intercomTimer += delta * 1000;
+    if (intercomTimer >= intercomInterval) {
+      intercomTimer = 0;
+      intercomInterval = 20000 + Math.random() * 10000; // 20-30 seconds
+      const clips = sfxCache.intercom;
+      if (clips && clips.length > 0) {
+        const clip = clips[Math.floor(Math.random() * clips.length)];
+        const clone = clip.cloneNode();
+        clone.volume = 0.6;
+        clone.play().catch(() => {});
+      }
+    }
+  };
 
   return {
     playSound,
@@ -275,6 +407,9 @@ export function useAudio({ currentStage, STAGES }) {
     switchBGMTrack,
     toggleMute,
     initAudio,
+    startStage3Audio,
+    stopStage3Audio,
+    updateIntercom,
     get isMuted() { return isMuted; },
     get isBGMPlaying() { return isBGMPlaying; },
     get bgmStarted() { return bgmStarted; },
