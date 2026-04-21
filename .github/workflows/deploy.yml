@@ -8,7 +8,7 @@ on:
       - 'v*'
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
@@ -44,52 +44,65 @@ jobs:
         with:
           path: ./dist
 
-  # Deploy dev folder to gh-pages branch
-  deploy-dev:
+  # Deploy job - handles both dev (main) and release (tags)
+  deploy:
     needs: build
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout gh-pages
-        uses: actions/checkout@v4
-        with:
-          ref: gh-pages
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: github-pages
-          path: ./temp-dist
-
-      - name: Update dev folder
-        run: |
-          set -e
-          rm -rf dev
-          mkdir -p dev
-          cp -r temp-dist/* dev/
-          rm -rf temp-dist
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f dev/
-          git diff --staged --quiet || git commit -m "deploy(dev): latest build from main [skip ci]"
-          git push origin gh-pages
-
-  # Deploy release to root
-  deploy-release:
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Download artifact
+      - name: Checkout gh-pages branch
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          fetch-depth: 0
+          path: gh-pages-content
+
+      - name: Download built artifact
         uses: actions/download-artifact@v4
         with:
           name: github-pages
           path: ./dist
+
+      - name: Prepare deployment for dev (main branch pushes)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          # Copy existing gh-pages content (preserves root release)
+          cp -r gh-pages-content/* . 2>/dev/null || true
+          cp -r gh-pages-content/.[!.]* . 2>/dev/null || true
+          
+          # Update dev folder with new build
+          rm -rf dev
+          mkdir -p dev
+          cp -r dist/* dev/
+          
+          # Clean up
+          rm -rf gh-pages-content dist
+
+      - name: Prepare deployment for release (version tags)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          # Copy existing gh-pages content (preserves dev folder)
+          cp -r gh-pages-content/* . 2>/dev/null || true
+          cp -r gh-pages-content/.[!.]* . 2>/dev/null || true
+          
+          # Update root with new release build
+          # Keep dev folder, .nojekyll, etc.
+          rm -f index.html favicon.svg icons.svg
+          rm -rf assets
+          cp -r dist/* .
+          
+          # Clean up
+          rm -rf gh-pages-content dist
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
 
       - name: Deploy to GitHub Pages
         id: deployment
