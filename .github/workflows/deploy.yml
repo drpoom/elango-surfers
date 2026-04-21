@@ -8,7 +8,7 @@ on:
       - 'v*'
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
@@ -17,15 +17,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout main
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Set up Node
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -40,51 +40,53 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Checkout gh-pages branch
-        uses: actions/checkout@v4
+      - name: Prepare deployment structure
+        run: |
+          # Create staging directory
+          mkdir -p deploy-staging
+          
+          # For main branch: include dev/ folder
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            mkdir -p deploy-staging/dev
+            cp -r dist/* deploy-staging/dev/
+            # Also keep existing root files by fetching gh-pages
+            git fetch origin gh-pages
+            git checkout gh-pages -- . 2>/dev/null || true
+            # Copy existing root files (except dev folder)
+            for f in index.html favicon.svg icons.svg assets; do
+              if [ -e "$f" ] && [ "$f" != "dev" ]; then
+                cp -r "$f" deploy-staging/ 2>/dev/null || true
+              fi
+            done
+            # Remove dev from fetched content (we already have new one)
+            rm -rf deploy-staging/dev 2>/dev/null || true
+            mkdir -p deploy-staging/dev
+            cp -r dist/* deploy-staging/dev/
+          fi
+          
+          # For tags: deploy to root
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            cp -r dist/* deploy-staging/
+            # Keep existing dev folder
+            git fetch origin gh-pages
+            git checkout gh-pages -- dev 2>/dev/null || true
+            if [ -d "dev" ]; then
+              cp -r dev deploy-staging/
+            fi
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          ref: gh-pages
-          path: gh-pages-branch
-          fetch-depth: 0
+          path: ./deploy-staging
 
-      - name: Deploy dev folder (main branch only)
-        if: github.ref == 'refs/heads/main'
-        run: |
-          cd gh-pages-branch
-          rm -rf dev
-          mkdir -p dev
-          cp -r ../dist/* dev/
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f dev/
-          if ! git diff --staged --quiet; then
-            git commit -m "deploy(dev): latest build from main [skip ci]"
-            git push origin gh-pages
-          else
-            echo "No changes to commit"
-          fi
-
-      - name: Deploy root (version tags only)
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
-          cd gh-pages-branch
-          rm -f index.html favicon.svg icons.svg
-          rm -rf assets dist
-          cp -r ../dist/* .
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f index.html favicon.svg icons.svg assets
-          if ! git diff --staged --quiet; then
-            git commit -m "deploy(release): ${{ github.ref_name }}"
-            git push origin gh-pages
-          else
-            echo "No changes to commit"
-          fi
-
-      # Trigger GitHub Pages rebuild
-      - name: Trigger Pages rebuild
-        run: |
-          curl -X POST \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/repos/${{ github.repository }}/pages/builds"
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
