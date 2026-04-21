@@ -8,7 +8,7 @@ on:
       - 'v*'
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -55,6 +55,7 @@ jobs:
         with:
           ref: gh-pages
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download artifact
         uses: actions/download-artifact@v4
@@ -64,14 +65,15 @@ jobs:
 
       - name: Update dev folder
         run: |
+          set -e
           rm -rf dev
           mkdir -p dev
           cp -r temp-dist/* dev/
           rm -rf temp-dist
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add dev/
-          git commit -m "deploy(dev): latest build from main [skip ci]" || echo "No changes"
+          git add -f dev/
+          git diff --staged --quiet || git commit -m "deploy(dev): latest build from main [skip ci]"
           git push origin gh-pages
 
   # Deploy release to root
