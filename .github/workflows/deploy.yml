@@ -9,6 +9,8 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 concurrency:
   group: "pages"
@@ -49,15 +51,11 @@ jobs:
         if: github.ref == 'refs/heads/main'
         run: |
           cd gh-pages-branch
-          # Remove old dev folder
           rm -rf dev
-          # Copy new build to dev folder
           mkdir -p dev
           cp -r ../dist/* dev/
-          # Configure git
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          # Commit and push
           git add -f dev/
           if ! git diff --staged --quiet; then
             git commit -m "deploy(dev): latest build from main [skip ci]"
@@ -70,16 +68,11 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
           cd gh-pages-branch
-          # Keep dev folder, update root files
-          # Remove old root files
           rm -f index.html favicon.svg icons.svg
           rm -rf assets dist
-          # Copy new build to root
           cp -r ../dist/* .
-          # Configure git
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          # Commit and push (excluding dev folder from this commit)
           git add -f index.html favicon.svg icons.svg assets
           if ! git diff --staged --quiet; then
             git commit -m "deploy(release): ${{ github.ref_name }}"
@@ -87,3 +80,11 @@ jobs:
           else
             echo "No changes to commit"
           fi
+
+      # Trigger GitHub Pages rebuild
+      - name: Trigger Pages rebuild
+        run: |
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/${{ github.repository }}/pages/builds"
