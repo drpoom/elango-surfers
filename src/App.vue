@@ -147,7 +147,7 @@ import { useCurve } from './composables/useCurve.js'
 import { useMic } from './composables/useMic.js'
 
 // Version - Update this for each release
-const VERSION = 'v4.5.13';
+const VERSION = 'v5.0.0';
 
 // Score & High Score refs
 const score = ref(0);
@@ -229,7 +229,7 @@ function applyStageVisuals(stageIndex) {
     originalGroundColor = roadMesh.material.color.getHex();
   }
   
-  if (stage.roadTexture === 'cobblestone') {
+  if (stage.roadType === 'cobblestone') {
     // Load cobblestone texture if not cached
     if (!cobblestoneTexture) {
       cobblestoneTexture = textureLoader.load('assets/road_cobblestone.webp');
@@ -241,27 +241,14 @@ function applyStageVisuals(stageIndex) {
     roadMesh.material.color.set(0x888888);
     roadMesh.material.needsUpdate = true;
     // Preload fachwerkhaus texture for medieval buildings
-    loadFachwerk();
+    loadFachwerk(() => {
+      // Apply fachwerk to buildings once texture is ready
+      applyFachwerkToBuildings();
+    });
     // Tint grass darker for medieval
     if (grassMesh) { grassMesh.material.color.set(0x2d5a1e); grassMesh.material.needsUpdate = true; }
     // Darker sky
     if (scene && scene.fog) { scene.fog.color.set(0x4a5568); scene.background = new THREE.Color(0x4a5568); }
-    // Switch building facades to fachwerkhaus
-    if (buildings.length && fachwerkTexture) {
-      buildings.forEach(b => {
-        const mesh = b.children.find(c => c.isMesh)
-        if (mesh && mesh.material && Array.isArray(mesh.material)) {
-          // Facade can be at index 0 (left building), 1 (right building), or 4 (front)
-          for (const idx of [0, 1, 4]) {
-            if (mesh.material[idx].map) { // only swap facade-textured faces
-              mesh.material[idx].map = fachwerkTexture
-              mesh.material[idx].color.set(0xd4c4a0)
-              mesh.material[idx].needsUpdate = true
-            }
-          }
-        }
-      })
-    }
     // Switch to medieval BGM
     switchBGMTrack('medieval');
   } else if (stage.id === 3) {
@@ -275,16 +262,17 @@ function applyStageVisuals(stageIndex) {
     if (scene && scene.fog) { scene.fog.color.set(0xE8E8E8); scene.background = new THREE.Color(0xE8E8E8); }
     // Preload Stage 3 obstacle textures
     loadStage3Textures();
-    // Restore building facades to original (modern)
+    // Apply IKEA building facades (random blue/yellow for variety)
     if (buildings.length) {
       buildings.forEach((b, i) => {
         const mesh = b.children.find(c => c.isMesh)
         if (mesh && mesh.material && Array.isArray(mesh.material)) {
-          const texIdx = i % buildingTextures.length
+          // Randomly assign blue or yellow IKEA texture
+          const ikeaTexture = (i % 2 === 0) ? stage3Textures.buildingIkeaBlue : stage3Textures.buildingIkeaYellow
           for (const idx of [0, 1, 4]) {
             if (mesh.material[idx].map) {
-              mesh.material[idx].map = buildingTextures[texIdx]
-              mesh.material[idx].color.set(buildingDominantColors[texIdx])
+              mesh.material[idx].map = ikeaTexture
+              mesh.material[idx].color.set(0xffffff)
               mesh.material[idx].needsUpdate = true
             }
           }
@@ -484,14 +472,36 @@ let textureLoader = new THREE.TextureLoader();
 
 // Medieval fachwerkhaus texture loader
 let fachwerkTexture = null;
-const loadFachwerk = () => {
-  if (!fachwerkTexture) {
-    fachwerkTexture = textureLoader.load('assets/building_fachwerk.webp');
-    fachwerkTexture.wrapS = THREE.RepeatWrapping;
-    fachwerkTexture.wrapT = THREE.RepeatWrapping;
-    fachwerkTexture.colorSpace = THREE.SRGBColorSpace;
+const loadFachwerk = (callback) => {
+  if (fachwerkTexture) {
+    if (callback) callback();
+    return fachwerkTexture;
   }
+  fachwerkTexture = textureLoader.load('assets/building_fachwerk.webp', () => {
+    if (callback) callback();
+  });
+  fachwerkTexture.wrapS = THREE.RepeatWrapping;
+  fachwerkTexture.wrapT = THREE.RepeatWrapping;
+  fachwerkTexture.colorSpace = THREE.SRGBColorSpace;
   return fachwerkTexture;
+};
+
+// Helper to swap building facades to fachwerk
+const applyFachwerkToBuildings = () => {
+  if (!buildings.length || !fachwerkTexture) return;
+  buildings.forEach(b => {
+    const mesh = b.children.find(c => c.isMesh)
+    if (mesh && mesh.material && Array.isArray(mesh.material)) {
+      // Facade can be at index 0 (left building), 1 (right building), or 4 (front)
+      for (const idx of [0, 1, 4]) {
+        if (mesh.material[idx].map) { // only swap facade-textured faces
+          mesh.material[idx].map = fachwerkTexture
+          mesh.material[idx].color.set(0xd4c4a0)
+          mesh.material[idx].needsUpdate = true
+        }
+      }
+    }
+  })
 };
 
 // Stage 3 (IKEA) obstacle textures
@@ -528,6 +538,12 @@ const loadStage3Textures = () => {
   // T3-07: Wardrobe portal (2-frame spritesheet) - load once, animation later
   stage3Textures.wardrobePortal = textureLoader.load(textureBase + 'obstacle-wardrobe-portal.webp');
   stage3Textures.wardrobePortal.colorSpace = THREE.SRGBColorSpace;
+  
+  // IKEA building facade textures
+  stage3Textures.buildingIkeaBlue = textureLoader.load(textureBase + 'building_ikea_blue.webp');
+  stage3Textures.buildingIkeaBlue.colorSpace = THREE.SRGBColorSpace;
+  stage3Textures.buildingIkeaYellow = textureLoader.load(textureBase + 'building_ikea_yellow.webp');
+  stage3Textures.buildingIkeaYellow.colorSpace = THREE.SRGBColorSpace;
 };
 
 window.addEventListener('error', (e) => { console.log('GLOBAL ERROR:', e.message, 'at', e.filename + ':' + e.lineno + ':' + e.colno); });
@@ -2317,6 +2333,16 @@ function spawnBoss(bossType) {
       w.position.set(x, 0.4, z)
       group.add(w)
     }
+  } else if (bossType === 'giantMeatball') {
+    // Giant meatball boss — large sphere with meatball texture
+    const meatballGeo = new THREE.SphereGeometry(2.5, 16, 16)
+    const meatballMat = new THREE.MeshPhongMaterial({ 
+      map: stage3Textures.meatball,
+      color: 0xffffff
+    })
+    const meatball = new THREE.Mesh(meatballGeo, meatballMat)
+    meatball.position.y = 2.5
+    group.add(meatball)
   } else {
     // Dragon boss — detailed polygon dragon
     const dMat = new THREE.MeshPhongMaterial({ color: 0x9933ff, emissive: 0x4400aa, emissiveIntensity: 0.25 })
@@ -4284,6 +4310,7 @@ const restartGame = () => {
   tiltCalibrationSamples = [];
   isCalibrating = false;
   resetStage(false); // full reset, score = 0
+  applyStageVisuals(0);
   clock.start();
   playSound('start');
 };
