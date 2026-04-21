@@ -4,14 +4,14 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -34,22 +34,25 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Deploy to gh-pages branch
+      # Deploy dev folder on every main push
+      - name: Deploy dev (latest build)
+        if: github.ref == 'refs/heads/main'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          publish_branch: gh-pages
+          destination_dir: dev
+          keep_files: true
+          commit_message: 'deploy(dev): latest build from main [skip ci]'
+
+      # Deploy root on version tags
+      - name: Deploy release (root)
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
           publish_branch: gh-pages
           keep_files: true
-
-      - name: Deploy dev version
-        run: |
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git fetch origin gh-pages
-          git checkout gh-pages
-          rm -rf dev
-          cp -r dist dev
-          git add dev/
-          git commit -m "deploy: update dev/ to latest build [skip ci]" || echo "No changes to commit"
-          git push origin gh-pages
+          commit_message: 'deploy(release): ${{ github.ref_name }}'
