@@ -2,8 +2,6 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches:
-      - main
     tags:
       - 'v*'
 
@@ -43,39 +41,9 @@ jobs:
       - name: Prepare deployment structure
         run: |
           mkdir -p deploy-staging
-          
-          # TAG DEPLOYMENT (stable release): Deploy to ROOT only
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            echo "📦 Tag deployment: ${{ github.ref_name }} → ROOT"
-            cp -r dist/* deploy-staging/
-            echo "✅ Root deployment prepared"
-          
-          # MAIN BRANCH DEPLOYMENT (dev): Deploy to DEV/ only, preserve ROOT
-          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            echo "🔧 Main branch deployment → DEV/ only"
-            
-            # Clone existing gh-pages to preserve root content
-            echo "📥 Fetching existing gh-pages branch..."
-            if git clone --depth 1 --branch gh-pages \
-              https://github.com/${{ github.repository }}.git deploy-staging 2>&1; then
-              echo "✅ Cloned gh-pages successfully"
-            else
-              echo "⚠️ Clone failed, creating fresh deploy-staging"
-              rm -rf deploy-staging
-              mkdir -p deploy-staging
-            fi
-            
-            # Add dev/ folder with new build
-            echo "📦 Adding dev/ folder..."
-            mkdir -p deploy-staging/dev
-            cp -r dist/* deploy-staging/dev/
-            
-            echo "✅ Dev deployment prepared"
-            echo "📋 Root preserved: $(ls deploy-staging/ | grep -v dev | wc -l) items"
-            echo "📋 Dev folder: $(ls deploy-staging/dev/ | wc -l) items"
-          fi
-          
-          echo "📋 Final deployment structure:"
+          echo "📦 Tag deployment: ${{ github.ref_name }} → ROOT"
+          cp -r dist/* deploy-staging/
+          echo "✅ Root deployment prepared"
           ls -la deploy-staging/
 
       - name: Upload artifact
