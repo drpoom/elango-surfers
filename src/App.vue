@@ -147,7 +147,7 @@ import { useCurve } from './composables/useCurve.js'
 import { useMic } from './composables/useMic.js'
 
 // Version - Update this for each release
-const VERSION = 'v5.0.0';
+const VERSION = 'v5.0.1';
 
 // Score & High Score refs
 const score = ref(0);
@@ -238,8 +238,13 @@ function applyStageVisuals(stageIndex) {
       cobblestoneTexture.repeat.set(1, 10);
       cobblestoneTexture.colorSpace = THREE.SRGBColorSpace;
     }
-    roadMesh.material.map = cobblestoneTexture;
-    roadMesh.material.color.set(0x888888);
+    // Replace the toon material with standard material for cobblestone
+    roadMesh.material = new THREE.MeshStandardMaterial({
+      map: cobblestoneTexture,
+      color: 0xffffff,  // White - let texture show through
+      roughness: 0.8,
+      metalness: 0.1
+    });
     roadMesh.material.needsUpdate = true;
     // Preload fachwerkhaus texture for medieval buildings
     loadFachwerk(() => {
@@ -254,8 +259,15 @@ function applyStageVisuals(stageIndex) {
     switchBGMTrack('medieval');
   } else if (stage.id === 3) {
     // Stage 3: IKEA-pocalypse - conveyor road with Swedish flag colors
-    roadMesh.material.map = originalGroundTexture;
-    roadMesh.material.color.set(0x005B99); // IKEA blue
+    if (!stage3Textures.conveyor) {
+      stage3Textures.conveyor = textureLoader.load('assets/stage3/road-conveyor.webp');
+      stage3Textures.conveyor.wrapS = THREE.RepeatWrapping;
+      stage3Textures.conveyor.wrapT = THREE.RepeatWrapping;
+      stage3Textures.conveyor.repeat.set(1, 10);
+      stage3Textures.conveyor.colorSpace = THREE.SRGBColorSpace;
+    }
+    roadMesh.material.map = stage3Textures.conveyor;
+    roadMesh.material.color.set(0xffffff); // White - let texture show
     roadMesh.material.needsUpdate = true;
     // Tint grass for IKEA parking lot
     if (grassMesh) { grassMesh.material.color.set(0x3a5a2c); grassMesh.material.needsUpdate = true; }
@@ -545,6 +557,13 @@ const loadStage3Textures = () => {
   stage3Textures.buildingIkeaBlue.colorSpace = THREE.SRGBColorSpace;
   stage3Textures.buildingIkeaYellow = textureLoader.load(textureBase + 'building_ikea_yellow.webp');
   stage3Textures.buildingIkeaYellow.colorSpace = THREE.SRGBColorSpace;
+  
+  // Conveyor belt texture for road
+  stage3Textures.conveyor = textureLoader.load(textureBase + 'road-conveyor.webp');
+  stage3Textures.conveyor.wrapS = THREE.RepeatWrapping;
+  stage3Textures.conveyor.wrapT = THREE.RepeatWrapping;
+  stage3Textures.conveyor.repeat.set(1, 10);
+  stage3Textures.conveyor.colorSpace = THREE.SRGBColorSpace;
 };
 
 window.addEventListener('error', (e) => { console.log('GLOBAL ERROR:', e.message, 'at', e.filename + ':' + e.lineno + ':' + e.colno); });
