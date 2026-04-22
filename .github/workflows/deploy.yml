@@ -44,11 +44,16 @@ jobs:
         run: |
           mkdir -p deploy-staging
           
-          # For main branch: deploy to dev/ folder only (development/testing)
+          # For main branch: fetch existing root, then add dev/ folder
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            # Clone existing gh-pages to preserve root
+            git clone --depth 1 https://github.com/${{ github.repository }}.git deploy-staging
+            cd deploy-staging
+            git checkout gh-pages 2>/dev/null || git checkout --orphan gh-pages
+            cd ..
             mkdir -p deploy-staging/dev
             cp -r dist/* deploy-staging/dev/
-            echo "Deploying to dev/ (development branch)"
+            echo "Deploying to dev/ (preserving root)"
           fi
           
           # For tags (releases): deploy to root only (stable release)
