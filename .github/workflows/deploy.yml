@@ -44,17 +44,18 @@ jobs:
         run: |
           mkdir -p deploy-staging
           
-          # Always deploy current build to root
-          cp -r dist/* deploy-staging/
-          
-          # For main branch: also include dev/ folder
+          # For main branch: deploy to dev/ folder only (development/testing)
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
             mkdir -p deploy-staging/dev
             cp -r dist/* deploy-staging/dev/
+            echo "Deploying to dev/ (development branch)"
           fi
           
-          # For tags: root only (already done above)
-          echo "Deploying to root"
+          # For tags (releases): deploy to root only (stable release)
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            cp -r dist/* deploy-staging/
+            echo "Deploying to root (stable release ${{ github.ref_name }})"
+          fi
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
