@@ -236,6 +236,7 @@ function applyStageVisuals(stageIndex) {
       cobblestoneTexture.wrapS = THREE.RepeatWrapping;
       cobblestoneTexture.wrapT = THREE.RepeatWrapping;
       cobblestoneTexture.repeat.set(1, 10);
+      cobblestoneTexture.colorSpace = THREE.SRGBColorSpace;
     }
     roadMesh.material.map = cobblestoneTexture;
     roadMesh.material.color.set(0x888888);
@@ -2345,9 +2346,19 @@ function spawnBoss(bossType) {
     group.add(meatball)
   } else {
     // Dragon boss — detailed polygon dragon
-    const dMat = new THREE.MeshPhongMaterial({ color: 0x9933ff, emissive: 0x4400aa, emissiveIntensity: 0.25 })
-    const dMatDark = new THREE.MeshPhongMaterial({ color: 0x6622aa, emissive: 0x330066, emissiveIntensity: 0.2 })
-    const dMatBelly = new THREE.MeshPhongMaterial({ color: 0xcc88ff, emissive: 0x8844cc, emissiveIntensity: 0.15 })
+    // Stage 2 (index 1) = red fire dragon, other stages = purple
+    const isStage2Dragon = (currentStage.value === 1)
+    const dragonColor = isStage2Dragon ? 0xff3300 : 0x9933ff
+    const dragonEmissive = isStage2Dragon ? 0xaa2200 : 0x4400aa
+    const dragonColorDark = isStage2Dragon ? 0xaa2200 : 0x6622aa
+    const dragonEmissiveDark = isStage2Dragon ? 0x661100 : 0x330066
+    const dragonColorBelly = isStage2Dragon ? 0xff6644 : 0xcc88ff
+    const dragonEmissiveBelly = isStage2Dragon ? 0xcc4400 : 0x8844cc
+    const dragonWingColor = isStage2Dragon ? 0xcc4400 : 0x7722cc
+    
+    const dMat = new THREE.MeshPhongMaterial({ color: dragonColor, emissive: dragonEmissive, emissiveIntensity: 0.25 })
+    const dMatDark = new THREE.MeshPhongMaterial({ color: dragonColorDark, emissive: dragonEmissiveDark, emissiveIntensity: 0.2 })
+    const dMatBelly = new THREE.MeshPhongMaterial({ color: dragonColorBelly, emissive: dragonEmissiveBelly, emissiveIntensity: 0.15 })
     // Body — elongated ellipsoid
     const bodyGeo = new THREE.SphereGeometry(1, 8, 6)
     bodyGeo.scale(1.2, 0.8, 2.0)
@@ -2392,7 +2403,7 @@ function spawnBoss(bossType) {
     rh.rotation.z = -0.4
     group.add(rh)
     // Wings — large bat-like (3 segments each)
-    const wingMat = new THREE.MeshPhongMaterial({ color: 0x7722cc, side: THREE.DoubleSide, transparent: true, opacity: 0.85 })
+    const wingMat = new THREE.MeshPhongMaterial({ color: dragonWingColor, side: THREE.DoubleSide, transparent: true, opacity: 0.85 })
     // Left wing — 3 triangular flaps
     for (let s = 0; s < 3; s++) {
       const wGeo = new THREE.BufferGeometry()
