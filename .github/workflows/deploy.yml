@@ -44,23 +44,35 @@ jobs:
         run: |
           mkdir -p deploy-staging
           
-          # For main branch: fetch existing root, then add dev/ folder
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            # Clone existing gh-pages to preserve root
-            git clone --depth 1 https://github.com/${{ github.repository }}.git deploy-staging
-            cd deploy-staging
-            git checkout gh-pages 2>/dev/null || git checkout --orphan gh-pages
-            cd ..
+          # TAG DEPLOYMENT (stable release): Deploy to ROOT only
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "📦 Tag deployment: ${{ github.ref_name }} → ROOT"
+            cp -r dist/* deploy-staging/
+            echo "✅ Root deployment prepared"
+          
+          # MAIN BRANCH DEPLOYMENT (dev): Deploy to DEV/ only, preserve ROOT
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "🔧 Main branch deployment → DEV/ only"
+            
+            # Clone existing gh-pages to preserve root content
+            echo "📥 Fetching existing gh-pages branch..."
+            git clone --depth 1 --branch gh-pages \
+              https://github.com/${{ github.repository }}.git deploy-staging 2>/dev/null || {
+                echo "⚠️ No gh-pages branch found, creating fresh"
+                rm -rf deploy-staging
+                mkdir -p deploy-staging
+              }
+            
+            # Add dev/ folder with new build
+            echo "📦 Adding dev/ folder..."
             mkdir -p deploy-staging/dev
             cp -r dist/* deploy-staging/dev/
-            echo "Deploying to dev/ (preserving root)"
+            
+            echo "✅ Dev deployment prepared (root preserved)"
           fi
           
-          # For tags (releases): deploy to root only (stable release)
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            cp -r dist/* deploy-staging/
-            echo "Deploying to root (stable release ${{ github.ref_name }})"
-          fi
+          echo "📋 Deployment structure:"
+          ls -la deploy-staging/
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
