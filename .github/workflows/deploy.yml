@@ -56,22 +56,26 @@ jobs:
             
             # Clone existing gh-pages to preserve root content
             echo "📥 Fetching existing gh-pages branch..."
-            git clone --depth 1 --branch gh-pages \
-              https://github.com/${{ github.repository }}.git deploy-staging 2>/dev/null || {
-                echo "⚠️ No gh-pages branch found, creating fresh"
-                rm -rf deploy-staging
-                mkdir -p deploy-staging
-              }
+            if git clone --depth 1 --branch gh-pages \
+              https://github.com/${{ github.repository }}.git deploy-staging 2>&1; then
+              echo "✅ Cloned gh-pages successfully"
+            else
+              echo "⚠️ Clone failed, creating fresh deploy-staging"
+              rm -rf deploy-staging
+              mkdir -p deploy-staging
+            fi
             
             # Add dev/ folder with new build
             echo "📦 Adding dev/ folder..."
             mkdir -p deploy-staging/dev
             cp -r dist/* deploy-staging/dev/
             
-            echo "✅ Dev deployment prepared (root preserved)"
+            echo "✅ Dev deployment prepared"
+            echo "📋 Root preserved: $(ls deploy-staging/ | grep -v dev | wc -l) items"
+            echo "📋 Dev folder: $(ls deploy-staging/dev/ | wc -l) items"
           fi
           
-          echo "📋 Deployment structure:"
+          echo "📋 Final deployment structure:"
           ls -la deploy-staging/
 
       - name: Upload artifact
