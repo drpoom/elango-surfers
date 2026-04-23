@@ -20,7 +20,6 @@
       <div id="near-miss" v-if="nearMissTextRef">{{ nearMissTextRef }}</div>
       <div id="event-alert" v-if="eventAlertTextRef">{{ eventAlertTextRef }}</div>
       <div id="bonus-zone" v-if="inBonusZoneRef">&#x1F308; BONUS ZONE! {{ Math.ceil(bonusTimerRef) }}s</div>
-      <div id="showroom-zone" v-if="inShowroomRef" style="color:#ff69b4;font-size:24px;font-weight:bold;text-shadow:0 0 10px #ff69b4">&#x2728; SHOWROOM! x2 SCORE {{ Math.ceil(showroomTimerRef) }}s</div>
     </div>
     <div id="curve-indicator" v-if="!gameOver && Math.abs(roadCurve) > 0.15"
          :style="{ opacity: Math.min(Math.abs(roadCurve) * 1.5, 1) }">
@@ -74,9 +73,6 @@
         </label>
         <label style="color:#fff;font-size:16px;display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px">
           <input type="checkbox" v-model="roadCurveEnabled" style="width:20px;height:20px;cursor:pointer" /> Road Curves
-        </label>
-        <label style="color:#fff;font-size:16px;display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px">
-          <input type="checkbox" v-model="reduceMotionRef" @change="saveScreenEffects" style="width:20px;height:20px;cursor:pointer" /> Reduce Motion
         </label>
       </div>
       <div class="settings-section" style="border-bottom:1px solid #444;padding-bottom:1rem;margin-bottom:1rem">
@@ -140,14 +136,13 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { useAudio } from './composables/useAudio.js'
 import { useLeaderboard } from './composables/useLeaderboard.js'
 import { useAchievements } from './composables/useAchievements.js'
-import { reduceMotionRef, initScreenEffects, saveScreenEffects } from './composables/useScreenEffects.js'
-import { EARTH_R, DAY_DURATION, jumpStrength, slideDuration, laneWidth, FLY_LIFT, FLY_GRAVITY, FLY_MAX_HEIGHT, MIC_THRESHOLD, MIC_PEAK_THRESHOLD, minSwipeDistance, TILT_THRESHOLD, TILT_LR_THRESHOLD, TILT_LANE_COOLDOWN, CALIBRATION_MAX_SAMPLES } from './gameConstants.js'
-import { STAGES } from './data/stages.js'
+import { usePlayer, createPlayer as createPlayerModel, updatePlayerAnimation, updatePlayerHat, updatePlayerSkin } from './composables/usePlayer.js'
+import { EARTH_R, STAGES, DAY_DURATION, jumpStrength, slideDuration, laneWidth, FLY_LIFT, FLY_GRAVITY, FLY_MAX_HEIGHT, MIC_THRESHOLD, MIC_PEAK_THRESHOLD, minSwipeDistance, TILT_THRESHOLD, TILT_LR_THRESHOLD, TILT_LANE_COOLDOWN, CALIBRATION_MAX_SAMPLES } from './gameConstants.js'
 import { useCurve } from './composables/useCurve.js'
 import { useMic } from './composables/useMic.js'
 
 // Version - Update this for each release
-const VERSION = 'v5.0.1';
+const VERSION = 'v4.5.2';
 
 // Score & High Score refs
 const score = ref(0);
@@ -200,12 +195,6 @@ let eventAlertTextRef = ref('');
 let inBonusZoneRef = ref(false);
 let bonusTimerRef = ref(0);
 let scoreMultiplier = 1;
-// Showroom shortcut (20% of bonus portals)
-let inShowroom = false;
-let inShowroomRef = ref(false);
-let showroomTimer = 0;
-let showroomTimerRef = ref(0);
-let isShowroomPortal = false;
 let magnetRange = 0;
 let isInvincible = false;
 
@@ -215,7 +204,6 @@ let dayCycleTime = 0;
 // Stage system
 // === STAGE VISUAL TRANSITIONS ===
 let cobblestoneTexture = null;
-let grassTileTex = null;
 let originalGroundTexture = null;
 let originalGroundColor = null;
 
@@ -229,71 +217,41 @@ function applyStageVisuals(stageIndex) {
     originalGroundColor = roadMesh.material.color.getHex();
   }
   
-  if (stage.roadType === 'cobblestone') {
+  if (stage.roadTexture === 'cobblestone') {
     // Load cobblestone texture if not cached
     if (!cobblestoneTexture) {
       cobblestoneTexture = textureLoader.load('assets/road_cobblestone.webp');
       cobblestoneTexture.wrapS = THREE.RepeatWrapping;
       cobblestoneTexture.wrapT = THREE.RepeatWrapping;
       cobblestoneTexture.repeat.set(1, 10);
-      cobblestoneTexture.colorSpace = THREE.SRGBColorSpace;
     }
-    // Replace the toon material with standard material for cobblestone
-    roadMesh.material = new THREE.MeshStandardMaterial({
-      map: cobblestoneTexture,
-      color: 0xffffff,  // White - let texture show through
-      roughness: 0.8,
-      metalness: 0.1
-    });
+    roadMesh.material.map = cobblestoneTexture;
+    roadMesh.material.color.set(0x888888);
     roadMesh.material.needsUpdate = true;
     // Preload fachwerkhaus texture for medieval buildings
-    loadFachwerk(() => {
-      // Apply fachwerk to buildings once texture is ready
-      applyFachwerkToBuildings();
-    });
+    loadFachwerk();
     // Tint grass darker for medieval
     if (grassMesh) { grassMesh.material.color.set(0x2d5a1e); grassMesh.material.needsUpdate = true; }
     // Darker sky
     if (scene && scene.fog) { scene.fog.color.set(0x4a5568); scene.background = new THREE.Color(0x4a5568); }
-    // Switch to medieval BGM
-    switchBGMTrack('medieval');
-  } else if (stage.id === 3) {
-    // Stage 3: IKEA-pocalypse - conveyor road with Swedish flag colors
-    if (!stage3Textures.conveyor) {
-      stage3Textures.conveyor = textureLoader.load('assets/stage3/road-conveyor.webp');
-      stage3Textures.conveyor.wrapS = THREE.RepeatWrapping;
-      stage3Textures.conveyor.wrapT = THREE.RepeatWrapping;
-      stage3Textures.conveyor.repeat.set(1, 10);
-      stage3Textures.conveyor.colorSpace = THREE.SRGBColorSpace;
-    }
-    roadMesh.material.map = stage3Textures.conveyor;
-    roadMesh.material.color.set(0xffffff); // White - let texture show
-    roadMesh.material.needsUpdate = true;
-    // Tint grass for IKEA parking lot
-    if (grassMesh) { grassMesh.material.color.set(0x3a5a2c); grassMesh.material.needsUpdate = true; }
-    // Fluorescent lighting sky
-    if (scene && scene.fog) { scene.fog.color.set(0xE8E8E8); scene.background = new THREE.Color(0xE8E8E8); }
-    // Preload Stage 3 obstacle textures
-    loadStage3Textures();
-    // Apply IKEA building facades (random blue/yellow for variety)
-    if (buildings.length) {
-      buildings.forEach((b, i) => {
+    // Switch building facades to fachwerkhaus
+    if (buildings.length && fachwerkTexture) {
+      buildings.forEach(b => {
         const mesh = b.children.find(c => c.isMesh)
         if (mesh && mesh.material && Array.isArray(mesh.material)) {
-          // Randomly assign blue or yellow IKEA texture
-          const ikeaTexture = (i % 2 === 0) ? stage3Textures.buildingIkeaBlue : stage3Textures.buildingIkeaYellow
+          // Facade can be at index 0 (left building), 1 (right building), or 4 (front)
           for (const idx of [0, 1, 4]) {
-            if (mesh.material[idx].map) {
-              mesh.material[idx].map = ikeaTexture
-              mesh.material[idx].color.set(0xffffff)
+            if (mesh.material[idx].map) { // only swap facade-textured faces
+              mesh.material[idx].map = fachwerkTexture
+              mesh.material[idx].color.set(0xd4c4a0)
               mesh.material[idx].needsUpdate = true
             }
           }
         }
       })
     }
-    // Switch to IKEA/upbeat BGM
-    switchBGMTrack('highway');
+    // Switch to medieval BGM
+    switchBGMTrack('medieval');
   } else {
     // Highway: restore original
     roadMesh.material.map = originalGroundTexture;
@@ -324,7 +282,7 @@ function applyStageVisuals(stageIndex) {
 }
 
 // Initialize audio composable
-const { playSound, playSFX, startBGM, stopBGM, switchBGMTrack, toggleMute, initAudio, isBGMPlaying, bgmStarted, startStage3Audio, stopStage3Audio, updateIntercom } = useAudio({ currentStage, STAGES })
+const { playSound, playSFX, startBGM, stopBGM, switchBGMTrack, toggleMute, initAudio, isBGMPlaying, bgmStarted } = useAudio({ currentStage, STAGES })
 
 // Attempt BGM start from a user gesture context (resolves autoplay policy)
 const tryStartBGMFromGesture = () => {
@@ -351,16 +309,29 @@ const {
   createFloatingText: (...args) => createFloatingText(...args),
   getPlayer: () => player
 })
-let currentLane = 1;
-let isJumping = false;
-let jumpVelocity = 0;
-let isSliding = false;
-let slideTimer = 0;
-// Slippery floor effect
-let isSlippery = false;
-let slipperyTimer = 0;
-let slideVelocity = 0;
+// Initialize player composable
+const {
+  playerState,
+  handleJump: playerHandleJump,
+  handleSlide: playerHandleSlide,
+  moveLeft,
+  moveRight
+} = usePlayer()
+
+// Local state (synced with composable for game logic)
+let currentLane = playerState.currentLane.value;
+let isJumping = playerState.isJumping.value;
+let jumpVelocity = playerState.jumpVelocity.value;
+let isSliding = playerState.isSliding.value;
+let slideTimer = playerState.slideTimer.value;
 const gravity = 0.015;
+
+// Watch for composable state changes and sync local vars
+watch(() => playerState.currentLane.value, v => currentLane = v);
+watch(() => playerState.isJumping.value, v => isJumping = v);
+watch(() => playerState.jumpVelocity.value, v => jumpVelocity = v);
+watch(() => playerState.isSliding.value, v => isSliding = v);
+watch(() => playerState.slideTimer.value, v => slideTimer = v);
 
 // Surface/curve math extracted to useCurve.js
 
@@ -401,7 +372,6 @@ let bonusPortal = null;
 let inBonusZone = false;
 let bonusTimer = 0;
 let bonusPortalSpawned = false;
-let bonusPortalType = 'bonus'; // 'bonus' or 'showroom'
 
 // Edge glow (red vignette at max difficulty)
 let edgeGlowIntensity = 0;
@@ -483,94 +453,10 @@ let skyTextures = {};
 let mountainMesh;
 let textureLoader = new THREE.TextureLoader();
 
-// Medieval fachwerkhaus texture loader
-let fachwerkTexture = null;
-const loadFachwerk = (callback) => {
-  if (fachwerkTexture) {
-    if (callback) callback();
-    return fachwerkTexture;
-  }
-  fachwerkTexture = textureLoader.load('assets/building_fachwerk.webp', () => {
-    if (callback) callback();
-  });
-  fachwerkTexture.wrapS = THREE.RepeatWrapping;
-  fachwerkTexture.wrapT = THREE.RepeatWrapping;
-  fachwerkTexture.colorSpace = THREE.SRGBColorSpace;
-  return fachwerkTexture;
-};
-
-// Helper to swap building facades to fachwerk
-const applyFachwerkToBuildings = () => {
-  if (!buildings.length || !fachwerkTexture) return;
-  buildings.forEach(b => {
-    const mesh = b.children.find(c => c.isMesh)
-    if (mesh && mesh.material && Array.isArray(mesh.material)) {
-      // Facade can be at index 0 (left building), 1 (right building), or 4 (front)
-      for (const idx of [0, 1, 4]) {
-        if (mesh.material[idx].map) { // only swap facade-textured faces
-          mesh.material[idx].map = fachwerkTexture
-          mesh.material[idx].color.set(0xd4c4a0)
-          mesh.material[idx].needsUpdate = true
-        }
-      }
-    }
-  })
-};
-
-// Stage 3 (IKEA) obstacle textures
-let stage3Textures = {};
-const loadStage3Textures = () => {
-  if (Object.keys(stage3Textures).length > 0) return; // already loaded
-  
-  const textureBase = 'assets/stage3/';
-  
-  // T3-03: Meatball
-  stage3Textures.meatball = textureLoader.load(textureBase + 'obstacle-meatball.webp');
-  stage3Textures.meatball.colorSpace = THREE.SRGBColorSpace;
-  
-  // T3-04: Allen key (5-frame spritesheet) - load once, animation later
-  stage3Textures.allenKey = textureLoader.load(textureBase + 'obstacle-allen-key.webp');
-  stage3Textures.allenKey.colorSpace = THREE.SRGBColorSpace;
-  
-  // T3-05: Shopping cart (3-frame spritesheet) - load once, animation later
-  stage3Textures.shoppingCart = textureLoader.load(textureBase + 'obstacle-shopping-cart.webp');
-  stage3Textures.shoppingCart.colorSpace = THREE.SRGBColorSpace;
-  
-  // T3-06: Bookshelf tower (4-frame spritesheet) - load once, animation later
-  stage3Textures.bookshelfTower = textureLoader.load(textureBase + 'obstacle-bookshelf-tower.webp');
-  stage3Textures.bookshelfTower.colorSpace = THREE.SRGBColorSpace;
-  
-  // T3-08: Flatpack stack
-  stage3Textures.flatpackStack = textureLoader.load(textureBase + 'obstacle-flatpack-stack.webp');
-  stage3Textures.flatpackStack.colorSpace = THREE.SRGBColorSpace;
-  
-  // T3-10: Price tag banner (hanging obstacle)
-  stage3Textures.priceTagBanner = textureLoader.load(textureBase + 'obstacle-price-tag-banner.webp');
-  stage3Textures.priceTagBanner.colorSpace = THREE.SRGBColorSpace;
-  
-  // T3-07: Wardrobe portal (2-frame spritesheet) - load once, animation later
-  stage3Textures.wardrobePortal = textureLoader.load(textureBase + 'obstacle-wardrobe-portal.webp');
-  stage3Textures.wardrobePortal.colorSpace = THREE.SRGBColorSpace;
-  
-  // IKEA building facade textures
-  stage3Textures.buildingIkeaBlue = textureLoader.load(textureBase + 'building_ikea_blue.webp');
-  stage3Textures.buildingIkeaBlue.colorSpace = THREE.SRGBColorSpace;
-  stage3Textures.buildingIkeaYellow = textureLoader.load(textureBase + 'building_ikea_yellow.webp');
-  stage3Textures.buildingIkeaYellow.colorSpace = THREE.SRGBColorSpace;
-  
-  // Conveyor belt texture for road
-  stage3Textures.conveyor = textureLoader.load(textureBase + 'road-conveyor.webp');
-  stage3Textures.conveyor.wrapS = THREE.RepeatWrapping;
-  stage3Textures.conveyor.wrapT = THREE.RepeatWrapping;
-  stage3Textures.conveyor.repeat.set(1, 10);
-  stage3Textures.conveyor.colorSpace = THREE.SRGBColorSpace;
-};
-
 window.addEventListener('error', (e) => { console.log('GLOBAL ERROR:', e.message, 'at', e.filename + ':' + e.lineno + ':' + e.colno); });
 onMounted(() => {
   const saved = localStorage.getItem('elangoSurfersHighScore');
   if (saved) highScore.value = parseInt(saved, 10);
-  initScreenEffects();
   loadProgress();
   loadLeaderboard(); // async — loads global + local, non-blocking
   checkAchievements();
@@ -690,150 +576,13 @@ const initGame = () => {
   createBackgroundElements();
 
   // === ANIMATED CHARACTER (with AI texture skin) ===
-  const playerGroup = new THREE.Group();
-  const skinColors = [0xff6b35, 0x4ecdc4, 0xff6b9d, 0xa8e6cf, 0xdced21];
-  const skinColor = skinColors[currentSkin.value];
+  // Create player using composable
+  player = createPlayerModel(scene);
   
-  // Torso - with clothing texture if available
-  const torsoGeo = new THREE.CapsuleGeometry(0.35, 0.6, 8, 8);
-  const torsoMat = new THREE.MeshToonMaterial({ color: skinColor });
-  const torso = new THREE.Mesh(torsoGeo, torsoMat);
-  torso.castShadow = true;
-  torso.name = 'torso';
-  playerGroup.add(torso);
+  // Update skin and hat from composable state
+  updatePlayerSkin(player, currentSkin.value);
+  updatePlayerHat(player, currentHat.value);
   
-  // Head group (rotates to face direction)
-  const headGroup = new THREE.Group();
-  headGroup.name = 'head-group';
-  headGroup.position.y = 0.7;
-  
-  const headGeo = new THREE.SphereGeometry(0.32, 16, 16);
-  const headMat = new THREE.MeshToonMaterial({ color: 0xffd93d });
-  const head = new THREE.Mesh(headGeo, headMat);
-  head.castShadow = true;
-  headGroup.add(head);
-  
-  // Eyes
-  const eyeWhiteGeo = new THREE.SphereGeometry(0.1, 8, 8);
-  const eyeWhiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-  const eyePupilGeo = new THREE.SphereGeometry(0.06, 8, 8);
-  const eyePupilMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
-  
-  const leftEyeWhite = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat);
-  leftEyeWhite.position.set(-0.12, 0.05, 0.25);
-  headGroup.add(leftEyeWhite);
-  const leftPupil = new THREE.Mesh(eyePupilGeo, eyePupilMat);
-  leftPupil.position.set(-0.12, 0.05, 0.3);
-  leftPupil.name = 'left-pupil';
-  headGroup.add(leftPupil);
-  
-  const rightEyeWhite = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat);
-  rightEyeWhite.position.set(0.12, 0.05, 0.25);
-  headGroup.add(rightEyeWhite);
-  const rightPupil = new THREE.Mesh(eyePupilGeo, eyePupilMat);
-  rightPupil.position.set(0.12, 0.05, 0.3);
-  rightPupil.name = 'right-pupil';
-  headGroup.add(rightPupil);
-  
-  const mouthGeo = new THREE.TorusGeometry(0.08, 0.02, 4, 8, Math.PI);
-  const mouthMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
-  const mouth = new THREE.Mesh(mouthGeo, mouthMat);
-  mouth.position.set(0, -0.08, 0.28);
-  mouth.rotation.x = Math.PI;
-  headGroup.add(mouth);
-  
-  playerGroup.add(headGroup);
-  
-  // Arms
-  const armGeo = new THREE.CapsuleGeometry(0.1, 0.4, 4, 4);
-  const armMat = new THREE.MeshToonMaterial({ color: skinColor });
-  const leftArmPivot = new THREE.Group();
-  leftArmPivot.position.set(-0.45, 0.2, 0);
-  leftArmPivot.name = 'left-arm';
-  const leftArm = new THREE.Mesh(armGeo, armMat);
-  leftArm.position.y = -0.25;
-  leftArm.castShadow = true;
-  leftArmPivot.add(leftArm);
-  playerGroup.add(leftArmPivot);
-  
-  const rightArmPivot = new THREE.Group();
-  rightArmPivot.position.set(0.45, 0.2, 0);
-  rightArmPivot.name = 'right-arm';
-  const rightArm = new THREE.Mesh(armGeo, armMat);
-  rightArm.position.y = -0.25;
-  rightArm.castShadow = true;
-  rightArmPivot.add(rightArm);
-  playerGroup.add(rightArmPivot);
-  
-  // Legs
-  const legGeo = new THREE.CapsuleGeometry(0.12, 0.35, 4, 4);
-  const legMat = new THREE.MeshToonMaterial({ color: 0x333333 });
-  const leftLegPivot = new THREE.Group();
-  leftLegPivot.position.set(-0.18, -0.5, 0);
-  leftLegPivot.name = 'left-leg';
-  const leftLeg = new THREE.Mesh(legGeo, legMat);
-  leftLeg.position.y = -0.25;
-  leftLeg.castShadow = true;
-  leftLegPivot.add(leftLeg);
-  playerGroup.add(leftLegPivot);
-  
-  const rightLegPivot = new THREE.Group();
-  rightLegPivot.position.set(0.18, -0.5, 0);
-  rightLegPivot.name = 'right-leg';
-  const rightLeg = new THREE.Mesh(legGeo, legMat);
-  rightLeg.position.y = -0.25;
-  rightLeg.castShadow = true;
-  rightLegPivot.add(rightLeg);
-  playerGroup.add(rightLegPivot);
-  
-  // Shoes
-  const shoeGeo = new THREE.BoxGeometry(0.22, 0.12, 0.35);
-  const shoeMat = new THREE.MeshToonMaterial({ color: 0xff0000 });
-  const leftShoe = new THREE.Mesh(shoeGeo, shoeMat);
-  leftShoe.position.set(0, -0.45, 0.05);
-  leftShoe.castShadow = true;
-  leftLegPivot.add(leftShoe);
-  const rightShoe = new THREE.Mesh(shoeGeo, shoeMat);
-  rightShoe.position.set(0, -0.45, 0.05);
-  rightShoe.castShadow = true;
-  rightLegPivot.add(rightShoe);
-  
-  // Hat
-  if (currentHat.value === 'cap') {
-    const capGeo = new THREE.CylinderGeometry(0.33, 0.33, 0.1, 16);
-    const capMat = new THREE.MeshToonMaterial({ color: 0xff0000 });
-    const cap = new THREE.Mesh(capGeo, capMat);
-    cap.position.y = 0.3;
-    cap.castShadow = true;
-    headGroup.add(cap);
-    const brimGeo = new THREE.CylinderGeometry(0.45, 0.45, 0.05, 16);
-    const brim = new THREE.Mesh(brimGeo, capMat);
-    brim.position.set(0, 0.25, 0.22);
-    brim.rotation.x = 0.2;
-    brim.castShadow = true;
-    headGroup.add(brim);
-  } else if (currentHat.value === 'crown') {
-    const crownGeo = new THREE.CylinderGeometry(0.18, 0.3, 0.3, 6);
-    const crownMat = new THREE.MeshToonMaterial({ color: 0xffd700, emissive: 0xffd700, emissiveIntensity: 0.3 });
-    const crown = new THREE.Mesh(crownGeo, crownMat);
-    crown.position.y = 0.35;
-    crown.castShadow = true;
-    headGroup.add(crown);
-  } else if (currentHat.value === 'helmet') {
-    const helmetGeo = new THREE.SphereGeometry(0.35, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
-    const helmetMat = new THREE.MeshToonMaterial({ color: 0x444444, metalness: 0.8, roughness: 0.2 });
-    const helmet = new THREE.Mesh(helmetGeo, helmetMat);
-    helmet.position.y = 0.3;
-    helmet.castShadow = true;
-    headGroup.add(helmet);
-  }
-  
-  player = playerGroup;
-  player.position.set(0, 0.5, 0);
-  player.rotation.y = Math.PI;
-  scene.add(player);
-  
-  // Update torso texture when loaded async
   clock = new THREE.Clock();
   animate();
 };
@@ -910,7 +659,7 @@ const createGround = () => {
   
   // Add colorful grass borders with AI texture
   // Priority load: grass (large surface area)
-  grassTileTex = textureLoader.load('assets/grass_tile.webp');
+  const grassTileTex = textureLoader.load('assets/grass_tile.webp');
   grassTileTex.wrapS = THREE.RepeatWrapping;
   grassTileTex.wrapT = THREE.RepeatWrapping;
   grassTileTex.repeat.set(10, 25);
@@ -1306,6 +1055,17 @@ const createBackgroundElements = () => {
     textureLoader.load('assets/building_blue.webp'),
     textureLoader.load('assets/building_green.webp'),
   ];
+  // Medieval fachwerkhaus texture
+  let fachwerkTexture = null;
+  const loadFachwerk = () => {
+    if (!fachwerkTexture) {
+      fachwerkTexture = textureLoader.load('assets/building_fachwerk.webp');
+      fachwerkTexture.wrapS = THREE.RepeatWrapping;
+      fachwerkTexture.wrapT = THREE.RepeatWrapping;
+      fachwerkTexture.colorSpace = THREE.SRGBColorSpace;
+    }
+    return fachwerkTexture;
+  };
   // Set dominant colors as fallback so buildings don't appear dark before texture loads
   const buildingDominantColors = [0xffb6c1, 0x87ceeb, 0x98fb98]; // pink, blue, green
   buildingTextures.forEach((tex, idx) => {
@@ -1421,34 +1181,20 @@ const spawnObstacle = () => {
   // Pick obstacle type based on difficulty
   const difficultyMultiplier = Math.min(1 + (gameDuration / 30), 3.5);
   const stage = STAGES[currentStage.value]
-  const isMedieval = stage.id === 2 // medieval stage
-  const isStage3 = stage.id === 3 // IKEA stage
-  
+  const isMedieval = stage.id === 'medieval'
   // Base obstacle types — filter for stage theme
-  let types = [];
-  
-  if (isStage3) {
-    // Stage 3: IKEA-pocalypse obstacles
-    types = ['meatball', 'meatball', 'allenKey', 'shoppingCart'];
-    if (difficultyMultiplier > 1.3) types.push('bookshelfTower', 'flatpackStack');
-    if (difficultyMultiplier > 1.8) types.push('priceTagBanner', 'wardrobePortal');
-    if (difficultyMultiplier > 2.2) types.push('slippery');
-    if (difficultyMultiplier > 2.8) types.push('bookshelfTower', 'flatpackStack');
-  } else if (isMedieval) {
-    types = ['fruit', 'fruit', 'barrel', 'stone']; // medieval: no cars/buses
-    if (difficultyMultiplier > 1.3) types.push('stone', 'barrier');
-    if (difficultyMultiplier > 1.8) types.push('wall', 'barrel');
-    if (difficultyMultiplier > 2.2) types.push('barrier', 'stone');
-    if (difficultyMultiplier > 2.8) types.push('wall', 'barrel');
-  } else {
-    // Modern highway
-    types = ['fruit', 'fruit', 'car'];
-    if (difficultyMultiplier > 1.3) types.push('stone', 'barrier');
+  const types = isMedieval
+    ? ['fruit', 'fruit', 'barrel', 'stone'] // medieval: no cars/buses
+    : ['fruit', 'fruit', 'car']; // modern: cars allowed
+  if (difficultyMultiplier > 1.3) types.push('stone', 'barrier');
+  if (!isMedieval) {
     if (difficultyMultiplier > 1.8) types.push('police', 'bus');
     if (difficultyMultiplier > 2.2) types.push('fireengine', 'wall');
-    if (difficultyMultiplier > 2.8) types.push('wall', 'barrel');
+  } else {
+    if (difficultyMultiplier > 1.8) types.push('wall', 'barrel');
+    if (difficultyMultiplier > 2.2) types.push('barrier', 'stone');
   }
-  
+  if (difficultyMultiplier > 2.8) types.push('wall', 'barrel');
   const obsType = types[Math.floor(Math.random() * types.length)];
   
   let group, obsLane = lane, hitWidth = 1.5;
@@ -1784,178 +1530,6 @@ const spawnObstacle = () => {
       group.userData = { driftDir: Math.random() > 0.5 ? 1 : -1, driftSpeed: 0.015 + Math.random() * 0.02, barrelGroup };
       break;
     }
-    
-    case 'slippery': {
-      // Slippery floor - wet floor sign sprite
-      group = new THREE.Group();
-      // Wet floor sign (yellow triangle on pole)
-      const signGeo = new THREE.BoxGeometry(0.8, 0.6, 0.05);
-      const signMat = new THREE.MeshBasicMaterial({ color: 0xffff00 });
-      const sign = new THREE.Mesh(signGeo, signMat);
-      sign.position.y = 0.8;
-      group.add(sign);
-      // Warning symbol (black exclamation)
-      const symbolGeo = new THREE.BoxGeometry(0.1, 0.3, 0.06);
-      const symbolMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
-      const symbol = new THREE.Mesh(symbolGeo, symbolMat);
-      symbol.position.set(0, 0.8, 0.03);
-      group.add(symbol);
-      // Pole
-      const poleGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.8, 8);
-      const poleMat = new THREE.MeshBasicMaterial({ color: 0x888888 });
-      const pole = new THREE.Mesh(poleGeo, poleMat);
-      pole.position.y = 0.4;
-      group.add(pole);
-      // Base
-      const baseGeo = new THREE.BoxGeometry(0.4, 0.1, 0.4);
-      const baseMat = new THREE.MeshBasicMaterial({ color: 0x444444 });
-      const base = new THREE.Mesh(baseGeo, baseMat);
-      base.position.y = 0.05;
-      group.add(base);
-      // Slippery floor patch (visual collision zone)
-      const floorGeo = new THREE.PlaneGeometry(2.5, 4);
-      const floorMat = new THREE.MeshBasicMaterial({ color: 0x0066ff, transparent: true, opacity: 0.3, side: THREE.DoubleSide });
-      const floor = new THREE.Mesh(floorGeo, floorMat);
-      floor.rotation.x = -Math.PI / 2;
-      floor.position.y = 0.01;
-      floor.name = 'slippery-zone';
-      group.add(floor);
-      group.position.set(laneX, 0, -50);
-      break;
-    }
-    
-    // Stage 3 (IKEA) obstacles
-    case 'meatball': {
-      // T3-03: Swedish meatball - uses sprite texture
-      group = new THREE.Group();
-      const meatballGeo = new THREE.SphereGeometry(0.7, 24, 24);
-      const meatballMat = new THREE.MeshBasicMaterial({ 
-        map: stage3Textures.meatball,
-        transparent: true
-      });
-      const meatball = new THREE.Mesh(meatballGeo, meatballMat);
-      meatball.castShadow = false;
-      meatball.position.y = 0.7;
-      group.add(meatball);
-      group.position.set(laneX, 0, -50);
-      hitWidth = 1.2;
-      break;
-    }
-    
-    case 'allenKey': {
-      // T3-04: Allen key - 5-frame spritesheet (simple load, animation later)
-      group = new THREE.Group();
-      const allenKeyGeo = new THREE.BoxGeometry(0.3, 1.2, 0.3);
-      const allenKeyMat = new THREE.MeshBasicMaterial({ 
-        map: stage3Textures.allenKey,
-        transparent: true
-      });
-      const allenKey = new THREE.Mesh(allenKeyGeo, allenKeyMat);
-      allenKey.castShadow = false;
-      allenKey.position.y = 0.6;
-      allenKey.name = 'allenKeySprite';
-      group.add(allenKey);
-      group.position.set(laneX, 0, -50);
-      hitWidth = 0.8;
-      break;
-    }
-    
-    case 'shoppingCart': {
-      // T3-05: Shopping cart - 3-frame spritesheet (simple load, animation later)
-      group = new THREE.Group();
-      const cartGeo = new THREE.BoxGeometry(0.8, 0.9, 1.2);
-      const cartMat = new THREE.MeshBasicMaterial({ 
-        map: stage3Textures.shoppingCart,
-        transparent: true
-      });
-      const cart = new THREE.Mesh(cartGeo, cartMat);
-      cart.castShadow = false;
-      cart.position.y = 0.5;
-      cart.name = 'shoppingCartSprite';
-      group.add(cart);
-      group.position.set(laneX, 0, -50);
-      hitWidth = 1.3;
-      break;
-    }
-    
-    case 'bookshelfTower': {
-      // T3-06: Bookshelf tower - 4-frame spritesheet (simple load, animation later)
-      group = new THREE.Group();
-      const shelfGeo = new THREE.BoxGeometry(1.0, 1.8, 0.6);
-      const shelfMat = new THREE.MeshBasicMaterial({ 
-        map: stage3Textures.bookshelfTower,
-        transparent: true
-      });
-      const shelf = new THREE.Mesh(shelfGeo, shelfMat);
-      shelf.castShadow = false;
-      shelf.position.y = 0.9;
-      shelf.name = 'bookshelfSprite';
-      group.add(shelf);
-      group.position.set(laneX, 0, -50);
-      hitWidth = 1.4;
-      break;
-    }
-    
-    case 'flatpackStack': {
-      // T3-08: Flatpack box stack - static sprite
-      group = new THREE.Group();
-      const flatpackGeo = new THREE.BoxGeometry(1.0, 1.2, 1.0);
-      const flatpackMat = new THREE.MeshBasicMaterial({ 
-        map: stage3Textures.flatpackStack,
-        transparent: true
-      });
-      const flatpack = new THREE.Mesh(flatpackGeo, flatpackMat);
-      flatpack.castShadow = false;
-      flatpack.position.y = 0.6;
-      group.add(flatpack);
-      group.position.set(laneX, 0, -50);
-      hitWidth = 1.3;
-      break;
-    }
-    
-    case 'priceTagBanner': {
-      // T3-10: Price tag banner - hanging obstacle
-      group = new THREE.Group();
-      // Banner pole
-      const poleGeo = new THREE.CylinderGeometry(0.05, 0.05, 3.0, 8);
-      const poleMat = new THREE.MeshBasicMaterial({ color: 0x666666 });
-      const pole = new THREE.Mesh(poleGeo, poleMat);
-      pole.position.y = 1.5;
-      group.add(pole);
-      // Price tag banner (sprite)
-      const bannerGeo = new THREE.PlaneGeometry(1.5, 2.0);
-      const bannerMat = new THREE.MeshBasicMaterial({ 
-        map: stage3Textures.priceTagBanner,
-        transparent: true,
-        side: THREE.DoubleSide
-      });
-      const banner = new THREE.Mesh(bannerGeo, bannerMat);
-      banner.position.set(0, 2.2, 0.1);
-      banner.name = 'priceTagBanner';
-      group.add(banner);
-      group.position.set(laneX, 0, -50);
-      hitWidth = 1.0;
-      break;
-    }
-    
-    case 'wardrobePortal': {
-      // T3-07: Wardrobe portal - 2-frame spritesheet (simple load, animation later)
-      group = new THREE.Group();
-      const portalGeo = new THREE.PlaneGeometry(1.8, 2.5);
-      const portalMat = new THREE.MeshBasicMaterial({ 
-        map: stage3Textures.wardrobePortal,
-        transparent: true,
-        side: THREE.DoubleSide
-      });
-      const portal = new THREE.Mesh(portalGeo, portalMat);
-      portal.castShadow = false;
-      portal.position.y = 1.25;
-      portal.name = 'wardrobePortalSprite';
-      group.add(portal);
-      group.position.set(laneX, 0, -50);
-      hitWidth = 1.5;
-      break;
-    }
   }
   
   scene.add(group);
@@ -2157,61 +1731,6 @@ let bossCharging = false
 let bossChargeTimer = 0
 let bossChargeTarget = 0
 
-// Boss AI state machine - T3-30
-let bossState = 'idle' // 'idle' | 'charging' | 'vulnerable'
-let bossStateTimer = 0
-let bossVulnerableOrbs = []
-
-// Boss tuning constants - T3-55
-const BOSS_BASE_HEALTH = 100
-const BOSS_ORB_DAMAGE = 10
-const BOSS_MIN_ORBS = 4
-const BOSS_MAX_ORBS = 7
-const BOSS_CHARGE_SPEED_MULTIPLIER = 1.5
-const BOSS_VULNERABLE_DURATION = 3.5
-const BOSS_IDLE_DURATION = 2.5
-
-// Stage countdown helper function - starts 3-2-1-GO sequence then resumes game
-const startStageCountdown = () => {
-  countdownLocked = true
-  countdownActive.value = true
-  let count = 3
-  countdownText.value = count.toString()
-  const stageTick = () => {
-    count--
-    if (count > 0) {
-      countdownText.value = count.toString()
-      setTimeout(stageTick, 1000)
-    } else if (count === 0) {
-      countdownText.value = 'GO!'
-      playSound('start')
-      // 2-second invincibility after stage starts
-      isInvincible = true
-      gameStartTime = Date.now()
-      setTimeout(() => {
-        countdownActive.value = false
-        countdownLocked = false
-        stageTransitioning.value = false // unlock game loop
-        gameDuration = 1.5
-        lastSpawnTime = clock.getElapsedTime() - spawnInterval
-        bossWarning.value = false // defensive: ensure cleared
-        const graceGeo = new THREE.SphereGeometry(1.2, 16, 16)
-        const graceMat = new THREE.MeshToonMaterial({ color: 0x44ff44, transparent: true, opacity: 0.3, side: THREE.DoubleSide })
-        const graceMesh = new THREE.Mesh(graceGeo, graceMat)
-        graceMesh.name = 'shield-aura'
-        player.add(graceMesh)
-        invincibilityTimeout = setTimeout(() => {
-          isInvincible = false
-          invincibilityTimeout = null
-          const shield = player.getObjectByName('shield-aura')
-          if (shield) player.remove(shield)
-        }, 2000)
-      }, 500)
-    }
-  }
-  setTimeout(stageTick, 1000)
-}
-
 // Pending timeouts that must be cancelled on restart
 let bossDefeatTimeout1 = null
 let invincibilityTimeout = null
@@ -2227,8 +1746,6 @@ const triggerGameOver = (shakeIntensity = 0.5) => {
   // Clean up bonus zone
   if (bonusPortal) { scene.remove(bonusPortal.mesh); bonusPortal = null; }
   inBonusZone = false; inBonusZoneRef.value = false; bonusTimer = 0; bonusTimerRef.value = 0;
-  inShowroom = false; inShowroomRef.value = false; showroomTimer = 0; showroomTimerRef.value = 0;
-  isShowroomPortal = false; bonusPortalType = 'bonus';
   bonusNoSpawn = false;
   bonusCoins.forEach(bc => scene.remove(bc.mesh));
   bonusCoins = [];
@@ -2256,27 +1773,22 @@ const triggerGameOver = (shakeIntensity = 0.5) => {
   trees.forEach(t => { t.visible = true; });
   // Immediately remove all game objects from scene so they can't interfere on restart
   obstacles.forEach(obs => { obs.mesh.traverse(c => { if (c.geometry && c.geometry !== sharedCoinGeo) c.geometry.dispose(); }); scene.remove(obs.mesh); });
-  obstacles.length = 0;
+  obstacles = [];
   coins.forEach(coin => scene.remove(coin.mesh));
-  coins.length = 0;
+  coins = [];
   powerups.forEach(pw => scene.remove(pw.mesh));
-  powerups.length = 0;
+  powerups = [];
   bossProjectiles.forEach(fb => scene.remove(fb));
-  bossProjectiles.length = 0;
-  // Clear vulnerable orbs
-  bossVulnerableOrbs.forEach(orb => scene.remove(orb.mesh));
-  bossVulnerableOrbs.length = 0;
+  bossProjectiles = [];
   particles.forEach(p => scene.remove(p));
-  particles.length = 0;
+  particles = [];
   floatingTexts.forEach(t => scene.remove(t));
-  floatingTexts.length = 0;
+  floatingTexts = [];
   if (boss) { scene.remove(boss); boss = null; }
   // Cancel any pending boss/stage timeouts
   if (bossDefeatTimeout1) { clearTimeout(bossDefeatTimeout1); bossDefeatTimeout1 = null; }
   bossDefeated.value = false;
   bossCharging = false;
-  bossState = 'idle';
-  bossStateTimer = 0;
 
   // Save score + stats
   saveHighScore();
@@ -2313,9 +1825,6 @@ function spawnBoss(bossType) {
   bossNextAttack = 2 + Math.random() * 2
   bossCharging = false
   bossChargeTimer = 0
-  bossState = 'idle'
-  bossStateTimer = 0
-  bossVulnerableOrbs = []
   
   const group = new THREE.Group()
   group.name = 'boss'
@@ -2353,31 +1862,11 @@ function spawnBoss(bossType) {
       w.position.set(x, 0.4, z)
       group.add(w)
     }
-  } else if (bossType === 'giantMeatball') {
-    // Giant meatball boss — large sphere with meatball texture
-    const meatballGeo = new THREE.SphereGeometry(2.5, 16, 16)
-    const meatballMat = new THREE.MeshPhongMaterial({ 
-      map: stage3Textures.meatball,
-      color: 0xffffff
-    })
-    const meatball = new THREE.Mesh(meatballGeo, meatballMat)
-    meatball.position.y = 2.5
-    group.add(meatball)
   } else {
     // Dragon boss — detailed polygon dragon
-    // Stage 2 (index 1) = red fire dragon, other stages = purple
-    const isStage2Dragon = (currentStage.value === 1)
-    const dragonColor = isStage2Dragon ? 0xff3300 : 0x9933ff
-    const dragonEmissive = isStage2Dragon ? 0xaa2200 : 0x4400aa
-    const dragonColorDark = isStage2Dragon ? 0xaa2200 : 0x6622aa
-    const dragonEmissiveDark = isStage2Dragon ? 0x661100 : 0x330066
-    const dragonColorBelly = isStage2Dragon ? 0xff6644 : 0xcc88ff
-    const dragonEmissiveBelly = isStage2Dragon ? 0xcc4400 : 0x8844cc
-    const dragonWingColor = isStage2Dragon ? 0xcc4400 : 0x7722cc
-    
-    const dMat = new THREE.MeshPhongMaterial({ color: dragonColor, emissive: dragonEmissive, emissiveIntensity: 0.25 })
-    const dMatDark = new THREE.MeshPhongMaterial({ color: dragonColorDark, emissive: dragonEmissiveDark, emissiveIntensity: 0.2 })
-    const dMatBelly = new THREE.MeshPhongMaterial({ color: dragonColorBelly, emissive: dragonEmissiveBelly, emissiveIntensity: 0.15 })
+    const dMat = new THREE.MeshPhongMaterial({ color: 0x9933ff, emissive: 0x4400aa, emissiveIntensity: 0.25 })
+    const dMatDark = new THREE.MeshPhongMaterial({ color: 0x6622aa, emissive: 0x330066, emissiveIntensity: 0.2 })
+    const dMatBelly = new THREE.MeshPhongMaterial({ color: 0xcc88ff, emissive: 0x8844cc, emissiveIntensity: 0.15 })
     // Body — elongated ellipsoid
     const bodyGeo = new THREE.SphereGeometry(1, 8, 6)
     bodyGeo.scale(1.2, 0.8, 2.0)
@@ -2422,7 +1911,7 @@ function spawnBoss(bossType) {
     rh.rotation.z = -0.4
     group.add(rh)
     // Wings — large bat-like (3 segments each)
-    const wingMat = new THREE.MeshPhongMaterial({ color: dragonWingColor, side: THREE.DoubleSide, transparent: true, opacity: 0.85 })
+    const wingMat = new THREE.MeshPhongMaterial({ color: 0x7722cc, side: THREE.DoubleSide, transparent: true, opacity: 0.85 })
     // Left wing — 3 triangular flaps
     for (let s = 0; s < 3; s++) {
       const wGeo = new THREE.BufferGeometry()
@@ -2549,12 +2038,6 @@ const animate = () => {
   const delta = realDelta;
   const time = clock.getElapsedTime();
   
-  const stage = STAGES[currentStage.value];
-  const isStage3 = stage.id === 3;
-  
-  // Update intercom randomizer for Stage 3
-  updateIntercom(delta, isStage3);
-  
   if (!gameOver.value && !stageTransitioning.value && !countdownLocked) gameDuration += delta;
   dayCycleTime = (dayCycleTime + delta) % DAY_DURATION;
   
@@ -2602,6 +2085,7 @@ const animate = () => {
   }
 
   // === BOSS WARNING + SPAWN TRIGGER ===
+  const stage = STAGES[currentStage.value]
   const bossSpawnTime = stage.stageDuration
   
   // Warning 5s before boss
@@ -2614,9 +2098,7 @@ const animate = () => {
   if (stageTime.value >= bossSpawnTime && !bossActive.value && !bossDefeated.value && !stageTransitioning.value) {
     bossWarning.value = false
     bossActive.value = true
-    // Difficulty scaling: boss health increases with game duration
-    const difficultyMultiplier = 1 + (gameDuration / 60) // +100% health per 60 seconds
-    bossHealth.value = Math.min(250, Math.floor(BOSS_BASE_HEALTH * difficultyMultiplier))
+    bossHealth.value = 100
     createFloatingText(`\u26A0\uFE0F ${stage.bossType === 'truck' ? 'ROAD RAGE TRUCK' : 'SKY TERROR DRAGON'} \u26A0\uFE0F`, player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#ff4444')
     playSFX(stage.bossType === 'truck' ? 'truck_honk' : 'dragon_cry', 0.6)
     spawnBoss(stage.bossType)
@@ -2657,195 +2139,149 @@ const animate = () => {
       createFloatingText(`STAGE ${nextStage + 1}: ${STAGES[nextStage].name}`, player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#ffffff')
       stageTransitioning.value = true // keep paused during countdown
       // 3-2-1-GO countdown then resume
-      startStageCountdown()
+      countdownLocked = true
+      countdownActive.value = true
+      let count = 3
+      countdownText.value = count.toString()
+      const stageTick = () => {
+        count--
+        if (count > 0) {
+          countdownText.value = count.toString()
+          setTimeout(stageTick, 1000)
+        } else if (count === 0) {
+          countdownText.value = 'GO!'
+          playSound('start')
+          setTimeout(() => {
+            countdownActive.value = false
+            countdownLocked = false
+            stageTransitioning.value = false // unlock game loop
+            bossWarning.value = false // defensive: ensure cleared
+            console.log('[STAGE-RESUME] countdown done, stage:', currentStage.value, 'gameDuration:', gameDuration, 'lastSpawnTime:', lastSpawnTime, 'time:', clock.getElapsedTime(), 'spawnInterval:', spawnInterval, 'bossActive:', bossActive.value, 'stageTransitioning:', stageTransitioning.value, 'countdownLocked:', countdownLocked, 'bonusNoSpawn:', bonusNoSpawn, 'gameOver:', gameOver.value);
+            // 2-second invincibility after stage starts
+            isInvincible = true
+            gameStartTime = Date.now()
+            gameDuration = 1.5 // skip spawn grace (countdown already provided delay)
+            lastSpawnTime = clock.getElapsedTime() - spawnInterval // trigger spawn immediately
+            const graceGeo = new THREE.SphereGeometry(1.2, 16, 16)
+            const graceMat = new THREE.MeshToonMaterial({ color: 0x44ff44, transparent: true, opacity: 0.3, side: THREE.DoubleSide })
+            const graceMesh = new THREE.Mesh(graceGeo, graceMat)
+            graceMesh.name = 'shield-aura'
+            player.add(graceMesh)
+            invincibilityTimeout = setTimeout(() => {
+              isInvincible = false
+              invincibilityTimeout = null
+              const shield = player.getObjectByName('shield-aura')
+              if (shield) player.remove(shield)
+            }, 2000)
+          }, 500)
+        }
+      }
+      setTimeout(stageTick, 1000)
+      bossDefeatTimeout1 = null
     }
   }
 
-  // === BOSS ANIMATION + ATTACK AI (T3-30 state machine) ===
+  // === BOSS ANIMATION + ATTACK AI ===
   if (boss && bossActive.value && !bossDefeated.value) {
     const bossType = STAGES[currentStage.value].bossType
-    bossStateTimer += realDelta
     
-    // State machine: IDLE -> CHARGING -> VULNERABLE -> IDLE
-    if (bossState === 'idle') {
-      // IDLE: hover/sway, then CHARGE
-      // Stage 2 dragon: stay idle, only projectile attacks
-      if (bossType === 'dragon') {
-        // Dragon never charges - stays in idle, fires fireballs via attack timer
-      } else if (bossStateTimer >= BOSS_IDLE_DURATION) {
-        bossState = 'charging'
-        bossStateTimer = 0
-        bossCharging = true
-        bossChargeTimer = 0
-        playSFX(bossType === 'truck' ? 'truck_rev' : 'dragon_cry', 0.4)
-        if (boss) {
-          boss.userData = boss.userData || {}
-          boss.userData.chargeTargetX = player.position.x
-          boss.userData.chargeStartX = boss.position.x
-          boss.userData.chargeStartZ = boss.position.z
-          boss.userData.chargeMissTriggered = false
-        }
-      } else {
-        // Idle hover animation
-        const sway = Math.sin(Date.now() * 0.001) * 3
-        boss.position.z = -54 + sway
-        if (bossType === 'truck') {
-          const swivelX = Math.sin(Date.now() * 0.003) * 1.5
-          boss.position.x = swivelX + getCurveX(boss.position.z)
-          boss.position.y = getSurfaceY(boss.position.z)
-          boss.rotation.y = 0
-        } else {
-          boss.position.x = getCurveX(boss.position.z)
-          boss.position.y = 5 + Math.sin(Date.now() * 0.002) * 1.5 + getSurfaceY(boss.position.z)
-          boss.rotation.y = 0
-          boss.children.forEach(child => {
-            if (child.position.x < -1) {
-              child.rotation.z = 0.3 + Math.sin(Date.now() * 0.005) * 0.3
-            } else if (child.position.x > 1) {
-              child.rotation.z = -0.3 - Math.sin(Date.now() * 0.005) * 0.3
-            }
-          })
-          const tailSway = Math.sin(Date.now() * 0.003) * 0.3
-          boss.children.forEach(child => {
-            if (child.position.z < -1 && child.geometry?.type === 'SphereGeometry') {
-              child.position.x = tailSway * (-child.position.z / 4)
-            }
-          })
-        }
-      }
-    } else if (bossState === 'charging') {
-      // Stage 2 dragon safety: dragon never charges
-      if (bossType === 'dragon') { bossState = 'idle'; bossStateTimer = 0; return; }
-      // CHARGE: move toward player Z, dodgeable
+    if (bossCharging) {
+      // Truck charge — straight line from start position to target lane at z=0
       bossChargeTimer += realDelta
-      // Difficulty scaling: faster charges at higher difficulty
-      const difficultyMultiplier = 1 + (gameDuration / 60)
-      const chargeSpeed = gameSpeed * BOSS_CHARGE_SPEED_MULTIPLIER * difficultyMultiplier
+      const chargeSpeed = gameSpeed * 1.2
       boss.position.z += chargeSpeed
+      // Linear interpolation: X moves proportionally to Z progress
       const startZ = boss.userData.chargeStartZ || -54
       const startXX = boss.userData.chargeStartX || boss.position.x
       const targetX = boss.userData.chargeTargetX
-      const totalDist = Math.abs(0 - startZ)
+      const totalDist = Math.abs(0 - startZ) // distance from start Z to player Z (0)
       const traveled = Math.abs(boss.position.z - startZ)
       const progress = Math.min(traveled / totalDist, 1)
       boss.position.x = startXX + (targetX - startXX) * progress
+      // Clamp X to road width
       boss.position.x = Math.max(-laneWidth * 1.5, Math.min(laneWidth * 1.5, boss.position.x))
       if (bossType === 'truck') boss.position.y = getSurfaceY(boss.position.z)
       
-      // Charge ends - transition to VULNERABLE
-      if (boss.position.z > 5 || bossChargeTimer > 1.5 || bossStateTimer >= 1.5) {
-        bossState = 'vulnerable'
-        bossStateTimer = 0
+      // Charge past player then retreat
+      if (boss.position.z > 5 || bossChargeTimer > 4) {
         bossCharging = false
-        boss.userData.retreatPhase = false
-        // Spawn collectible orbs near boss
-        bossVulnerableOrbs = []
-        // Difficulty scaling: more orbs at higher difficulty
-        const difficultyMultiplier = 1 + (gameDuration / 60)
-        const orbCount = Math.min(BOSS_MAX_ORBS, BOSS_MIN_ORBS + Math.floor(Math.random() * 3 * difficultyMultiplier))
-        for (let i = 0; i < orbCount; i++) {
-          const orbGeo = new THREE.SphereGeometry(0.4, 12, 12)
-          const orbMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, emissive: 0x00aaaa, emissiveIntensity: 0.5 })
-          const orb = new THREE.Mesh(orbGeo, orbMat)
-          const angle = (i / orbCount) * Math.PI * 2
-          orb.position.set(
-            boss.position.x + Math.cos(angle) * 3,
-            boss.position.y + 1 + Math.random() * 2,
-            boss.position.z + Math.sin(angle) * 3
-          )
-          scene.add(orb)
-          bossVulnerableOrbs.push({ mesh: orb, collected: false })
-        }
-        createFloatingText('VULNERABLE!', boss.position.clone().add(new THREE.Vector3(0, 3, 0)), '#00ffff')
+        boss.userData = boss.userData || {}
+        boss.userData.retreatPhase = true
+        boss.userData.retreatTimer = 0
+        boss.userData.retreatStartX = boss.position.x
+        boss.userData.retreatStartZ = boss.position.z
+        boss.userData.chargeMissTriggered = false
       }
-    } else if (bossState === 'vulnerable') {
-      // Stage 2 dragon safety: dragon never enters vulnerable state
-      if (bossType === 'dragon') { bossState = 'idle'; bossStateTimer = 0; return; }
-      // VULNERABLE: time to collect orbs
-      if (bossStateTimer >= BOSS_VULNERABLE_DURATION) {
-        bossState = 'idle'
-        bossStateTimer = 0
-        boss.position.z = -54
-        // Remove uncollected orbs
-        bossVulnerableOrbs.forEach(orb => scene.remove(orb.mesh))
-        bossVulnerableOrbs = []
-        createFloatingText('ARMORED!', boss.position.clone().add(new THREE.Vector3(0, 3, 0)), '#ff4444')
+    } else if (boss.userData?.retreatPhase) {
+      // Retreat back to start position (no collision during retreat)
+      boss.userData.retreatTimer += realDelta
+      const retreatDuration = bossType === 'truck' ? 2.5 : 4.0
+      const t = Math.min(boss.userData.retreatTimer / retreatDuration, 1)
+      // Ease-out retreat
+      const easeT = 1 - Math.pow(1 - t, 3)
+      const startZ = boss.userData.retreatStartZ || 5
+      const startX = boss.userData.retreatStartX || boss.position.x
+      boss.position.z = startZ + (-54 - startZ) * easeT
+      if (bossType === 'truck') {
+        // Truck: go straight back to center, don't track player
+        boss.position.x = startX + (getCurveX(-54) - startX) * easeT
+        boss.position.y = getSurfaceY(boss.position.z)
       } else {
-        // Hover in place during vulnerable
-        const sway = Math.sin(Date.now() * 0.002) * 2
-        boss.position.z = -54 + sway
-        if (bossType === 'truck') {
-          boss.position.x = getCurveX(boss.position.z)
-          boss.position.y = getSurfaceY(boss.position.z)
-        } else {
-          boss.position.x = getCurveX(boss.position.z)
-          boss.position.y = 5 + sway + getSurfaceY(boss.position.z)
-        }
+        // Dragon: drift toward road curve center
+        const targetX = getCurveX(boss.position.z)
+        boss.position.x += (targetX - boss.position.x) * 0.1
       }
-      // Animate and check collection of vulnerable orbs
-      for (let i = bossVulnerableOrbs.length - 1; i >= 0; i--) {
-        const orbData = bossVulnerableOrbs[i]
-        orbData.mesh.rotation.y += 0.05
-        orbData.mesh.position.y += Math.sin(Date.now() * 0.005 + i) * 0.02
-        // Check collection
-        if (!orbData.collected && !gameOver.value && !countdownLocked) {
-          const dist = player.position.distanceTo(orbData.mesh.position)
-          if (dist < 1.5) {
-            orbData.collected = true
-            bossHealth.value -= 10
-            createFloatingText('-10', orbData.mesh.position.clone(), '#00ff00')
-            playSFX('coin_collect', 0.5)
-            scene.remove(orbData.mesh)
-            bossVulnerableOrbs.splice(i, 1)
-            // Check if boss defeated
-            if (bossHealth.value <= 0) {
-              bossDefeated.value = true
-              bossActive.value = false
-              bossWarning.value = false
-              bossHealth.value = 0
-              createFloatingText('✨ STAGE CLEAR! ✨', player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#44ff44')
-              playSFX('stage_clear')
-              stageTransitioning.value = true
-              if (boss) {
-                createParticleEffect(boss.position, 0x9933ff, 50)
-                scene.remove(boss)
-                boss = null
-              }
-              bossVulnerableOrbs.forEach(o => scene.remove(o.mesh))
-              bossVulnerableOrbs = []
-              bossDefeatTimeout1 = setTimeout(() => {
-                stageTransitioning.value = false
-                currentStage.value = (currentStage.value + 1) % STAGES.length
-                stageTime.value = 0
-                roadCurve.value = 0
-                roadCurveTarget.value = 0
-                stageTime.value = 0
-                createFloatingText('STAGE ' + (currentStage.value + 1), player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#4ecdc4')
-                // Start Stage 3 audio (IKEA BGM + conveyor ambient)
-                if (currentStage.value === 2) {
-                  startStage3Audio()
-                }
-                startStageCountdown()
-                bossDefeatTimeout1 = null
-              }, 1000)
-            }
+      if (t >= 1) {
+        boss.userData.retreatPhase = false
+        boss.position.z = -54
+      }
+    } else {
+      // Idle: hover/sway
+      const sway = Math.sin(Date.now() * 0.001) * 3
+      boss.position.z = -54 + sway
+      if (bossType === 'truck') {
+        // Truck: swivel left-right, tracking player lane
+        const swivelX = Math.sin(Date.now() * 0.003) * 1.5
+        boss.position.x = swivelX + getCurveX(boss.position.z)
+        boss.position.y = getSurfaceY(boss.position.z)
+        boss.rotation.y = 0
+      } else {
+        boss.position.x = getCurveX(boss.position.z)
+        boss.position.y = 5 + Math.sin(Date.now() * 0.002) * 1.5 + getSurfaceY(boss.position.z)
+        boss.rotation.y = 0 // face player, no spinning
+        // Animate dragon parts
+        boss.children.forEach(child => {
+          // Wing flap (left + right wings)
+          if (child.position.x < -1) { // left wing segments
+            child.rotation.z = 0.3 + Math.sin(Date.now() * 0.005) * 0.3
+          } else if (child.position.x > 1) { // right wing segments
+            child.rotation.z = -0.3 - Math.sin(Date.now() * 0.005) * 0.3
           }
-        }
-        // Remove if too far from player
-        if (orbData.mesh.position.z > 10) {
-          scene.remove(orbData.mesh)
-          bossVulnerableOrbs.splice(i, 1)
+        })
+        // Tail sway
+        const tailSway = Math.sin(Date.now() * 0.003) * 0.3
+        boss.children.forEach(child => {
+          if (child.position.z < -1 && child.geometry?.type === 'SphereGeometry') {
+            child.position.x = tailSway * (-child.position.z / 4)
+          }
+        })
+        // Mouth open when about to attack
+        if (bossAttackTimer > bossNextAttack * 0.7) {
+          const snout = boss.children.find(c => c.geometry?.type === 'ConeGeometry' && c.position.z > 2)
+          if (snout) snout.rotation.x = -Math.PI / 2 + Math.sin(Date.now() * 0.01) * 0.15
         }
       }
     }
     
-    // Attack timer — only attack during IDLE state
-    if (bossState === 'idle') {
+    // Attack timer — skip during truck charge AND retreat (truck uses charge cycles, not projectile spam)
+    const truckBusy = bossType === 'truck' && (bossCharging || boss.userData?.retreatPhase)
+    if (!truckBusy) {
       bossAttackTimer += realDelta
       if (bossAttackTimer >= bossNextAttack) {
         bossAttackTimer = 0
-        bossNextAttack = 0.8 + Math.random() * 0.6
+        bossNextAttack = 0.8 + Math.random() * 0.6 // rapid burst interval
         spawnBossProjectile(bossType)
+        // Screen shake on attack
         cameraShakeTimer = 0.3; cameraShakeIntensity = 0.15
       }
     }
@@ -2896,8 +2332,8 @@ const animate = () => {
     }
   }
   
-  // Boss collision: only during CHARGING state
-  if (bossState === 'charging' && boss && !gameOver.value && !countdownLocked && Date.now() - gameStartTime >= 2000) {
+  // Boss collision: any touch = game over for both truck and dragon
+  if (bossCharging && boss && !gameOver.value && !countdownLocked && Date.now() - gameStartTime >= 2000) {
     const dx = player.position.x - boss.position.x
     const dz = player.position.z - boss.position.z
     const inZRange = Math.abs(dz) < 3
@@ -2932,9 +2368,6 @@ const animate = () => {
 
   // === BONUS PORTAL SPAWN (not during boss) ===
   if (!bonusPortal && !inBonusZone && !bossActive.value && Math.random() < 0.001) {
-    // 20% chance to spawn showroom portal (1 per ~45 seconds at 0.001 spawn rate)
-    isShowroomPortal = Math.random() < 0.2;
-    bonusPortalType = isShowroomPortal ? 'showroom' : 'bonus';
     spawnBonusPortal();
   }
   
@@ -2970,15 +2403,6 @@ const animate = () => {
         bonusTimer = 5;
         inBonusZoneRef.value = true;
         bonusTimerRef.value = 5;
-        // Check if this is a showroom portal (20% chance)
-        if (bonusPortalType === 'showroom') {
-          inShowroom = true;
-          inShowroomRef.value = true;
-          showroomTimer = 6;
-          showroomTimerRef.value = 6;
-          scoreMultiplier = 2.0;
-          createFloatingText('SHOWROOM!', player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#ff69b4');
-        }
         scene.remove(bonusPortal.mesh);
         bonusPortal = null;
         playSound('powerup');
@@ -3105,16 +2529,6 @@ const animate = () => {
     }
     bonusTimer -= delta;
     bonusTimerRef.value = Math.ceil(bonusTimer);
-    // Showroom timer and score multiplier
-    if (inShowroom) {
-      showroomTimer -= delta;
-      showroomTimerRef.value = Math.ceil(showroomTimer);
-      if (showroomTimer <= 0) {
-        inShowroom = false;
-        inShowroomRef.value = false;
-        scoreMultiplier = 1.0;
-      }
-    }
     if (bonusTimer <= 0) {
       inBonusZone = false;
       inBonusZoneRef.value = false;
@@ -3183,51 +2597,17 @@ const animate = () => {
 
   // Grace period: don't spawn obstacles for the first 1.5 seconds (but still move existing ones)
   const spawnGraceActive = gameDuration < 1.5;
-  
-  const willSpawn = !spawnGraceActive && (time - lastSpawnTime) > spawnInterval && !bonusNoSpawn && !bossActive.value && !stageTransitioning.value;
-  if (!willSpawn && !countdownLocked) {
-    if (!window._spawnLogTimer || Date.now() - window._spawnLogTimer > 1000) {
-      console.log('[SPAWN-DEBUG]', {
-        spawnGraceActive,
-        timeSinceLastSpawn: time - lastSpawnTime,
-        spawnInterval,
-        bonusNoSpawn,
-        bossActive: bossActive.value,
-        stageTransitioning: stageTransitioning.value,
-        gameDuration,
-        lastSpawnTime,
-        time,
-        obstaclesLen: obstacles.length
-      });
-      window._spawnLogTimer = Date.now();
+  if (!stageTransitioning.value && !countdownLocked) {
+    const willSpawn = !spawnGraceActive && (time - lastSpawnTime) > spawnInterval && !bonusNoSpawn && !bossActive.value;
+    if (!willSpawn) {
+      // Log why we CAN'T spawn (throttled to ~2/sec)
+      if (!window._lastSpawnLog || Date.now() - window._lastSpawnLog > 500) {
+        console.log('[SPAWN-BLOCKED]', { grace: spawnGraceActive, timeDiff: (time-lastSpawnTime).toFixed(2), interval: spawnInterval.toFixed(2), bonusNoSpawn, bossActive: bossActive.value, stage: currentStage.value, gameDuration: gameDuration.toFixed(1) });
+        window._lastSpawnLog = Date.now();
+      }
     }
   }
-  // Expose for debugging
-  window.__spawnDebug = () => ({
-    spawnGraceActive,
-    timeSinceLastSpawn: time - lastSpawnTime,
-    spawnInterval,
-    bonusNoSpawn,
-    bossActive: bossActive.value,
-    stageTransitioning: stageTransitioning.value,
-    gameDuration,
-    lastSpawnTime,
-    time,
-    obstaclesLen: obstacles.length,
-    countdownLocked,
-    gameSpeed,
-  });
-
-  // Add this ONCE, right after __spawnDebug definition
-  if (!window._spawnStateInterval) {
-    window._spawnStateInterval = setInterval(() => {
-      const debug = window.__spawnDebug();
-      const willSpawn = !debug.spawnGraceActive && debug.timeSinceLastSpawn > debug.spawnInterval && !debug.bonusNoSpawn && !debug.bossActive && !debug.stageTransitioning;
-      console.log('[SPAWN-STATE] willSpawn:', willSpawn, debug);
-    }, 1000);
-  }
-
-  if (willSpawn) {
+  if (!spawnGraceActive && time - lastSpawnTime > spawnInterval && !bonusNoSpawn && !bossActive.value && !stageTransitioning.value) {
     if (Math.random() < 0.7) {
       if (Math.random() < 0.3) {
         spawnFloatingObstacle();
@@ -3237,7 +2617,7 @@ const animate = () => {
     }
     if (Math.random() < 0.5 + (gameDuration / 120)) spawnCoin();
     if (Math.random() < 0.05) spawnPowerup();
-    console.log('[SPAWN-TRIGGERED] obstacles:', obstacles.length);
+    console.log('[SPAWNED] obstacles/coins/powerups');
     lastSpawnTime = time;
   }
 
@@ -3334,9 +2714,6 @@ const animate = () => {
         sirenB.material.color.setHex(flash ? 0x000044 : 0x0000ff);
       }
     }
-    
-    // Stage 3 obstacle animations - T3-50: simple texture loading (no animation yet)
-    // Animation logic to be implemented later
 
     // Skip collision if game over, countdown, grace period, or stage transition
     if (gameOver.value || countdownLocked || stageTransitioning.value || Date.now() - gameStartTime < 2000) return;
@@ -3366,20 +2743,6 @@ const animate = () => {
     const hitFloatingObs = isFloating && !isSliding;
     // Flying characters still avoid ground obstacles
     if (horizDist < collisionDist && (hitGroundObs || hitFloatingObs)) {
-      // Slippery floor - apply effect instead of game over
-      if (obs.obstacleType === 'slippery' && !isSlippery) {
-        isSlippery = true;
-        slipperyTimer = 1.5; // 1.5 seconds of slippery effect
-        slideVelocity = gameSpeed * 1.3; // slide faster than normal
-        createFloatingText('SLIPPERY!', player.position.clone().add(new THREE.Vector3(0, 2, 0)), '#ffff00');
-        playSound('slip');
-        // Remove the slippery obstacle after hit
-        obs.mesh.traverse(c => { if (c.geometry && c.geometry !== sharedCoinGeo) c.geometry.dispose(); });
-        scene.remove(obs.mesh);
-        obstacles.splice(index, 1);
-        return; // skip game over (inside forEach, use return instead of continue)
-      }
-      
       if (isInvincible) {
         // Shield blocks the hit
         playSound('shield_hit');
@@ -3389,20 +2752,6 @@ const animate = () => {
         scene.remove(obs.mesh);
         obstacles.splice(index, 1);
       } else {
-        // Stage 3 obstacles: play specific crash sound based on obstacle type
-        if (currentStage.value === 2) {
-          const crashSounds = {
-            'meatball': 'crash_wood',
-            'allenKey': 'crash_metal',
-            'shoppingCart': 'crash_metal',
-            'bookshelfTower': 'crash_wood',
-            'flatpackStack': 'crash_wood',
-            'priceTagBanner': 'crash_glass',
-            'wardrobePortal': 'portal_whoosh'
-          };
-          const crashSound = crashSounds[obs.obstacleType] || 'crash_wood';
-          playSound(crashSound);
-        }
         triggerGameOver(0.5)
       }
     }
@@ -3474,12 +2823,7 @@ const animate = () => {
       
       createParticleEffect(coin.mesh.position, 0xffd700, 15);
       createFloatingText('+' + Math.floor((100 + comboBonus) * scoreMultiplier), coin.mesh.position.clone().add(new THREE.Vector3(0, 1, 0)));
-      // Stage 3: IKEA coins sound like cash register
-      if (currentStage.value === 2) {
-        playSound('cash_register');
-      } else {
-        playSound('coin', 0.9 + Math.random() * 0.2);
-      }
+      playSound('coin', 0.9 + Math.random() * 0.2);
       
       scene.remove(coin.mesh);
       coins.splice(index, 1);
@@ -3509,12 +2853,7 @@ const animate = () => {
       gameStats.totalCoins++;
       createParticleEffect(bc.mesh.position, 0xffd700, 15);
       createFloatingText('+' + Math.floor((100 + comboBonus) * scoreMultiplier), bc.mesh.position.clone().add(new THREE.Vector3(0, 1, 0)));
-      // Stage 3: IKEA coins sound like cash register
-      if (currentStage.value === 2) {
-        playSound('cash_register');
-      } else {
-        playSound('coin', 0.9 + Math.random() * 0.2);
-      }
+      playSound('coin', 0.9 + Math.random() * 0.2);
       scene.remove(bc.mesh);
       bonusCoins.splice(index, 1);
     } else if (bc.mesh.position.z > 15) {
@@ -3547,12 +2886,7 @@ const animate = () => {
       pw.collected = true;
       gameStats.powerupsCollected++;
       activatePowerup(pw.type);
-      // Stage 3: IKEA powerups sound like assembly
-      if (currentStage.value === 2) {
-        playSound('assembly');
-      } else {
-        playSound('powerup', 0.9 + Math.random() * 0.2);
-      }
+      playSound('powerup', 0.9 + Math.random() * 0.2);
       createParticleEffect(pw.mesh.position, pw.type === 'shield' ? 0x00bfff : (pw.type === 'speed' ? 0xffd700 : 0x9932cc), 20);
       createFloatingText(pw.type === 'shield' ? '🛡️ SHIELD' : (pw.type === 'speed' ? '⚡ SPEED' : '🧲 MAGNET'), pw.mesh.position.clone().add(new THREE.Vector3(0, 1, 0)));
       
@@ -3640,10 +2974,10 @@ const animate = () => {
     if (tree.position.z > 10) {
       // Determine side from baseX (not position.x which has curve offset)
       const side = (tree.baseX || 0) > 0 ? 1 : -1;
-    tree.position.z = -Math.random() * 80;
-    tree.baseX = side * (8 + Math.random() * 10);
-    tree.position.x = tree.baseX + getCurveX(tree.position.z);
-    tree.position.y = (tree.baseY || 0) + getSurfaceY(tree.position.z);
+      tree.position.z = -Math.random() * 80;
+      tree.baseX = side * (8 + Math.random() * 10);
+      tree.position.x = tree.baseX + getCurveX(tree.position.z);
+      tree.position.y = (tree.baseY || 0) + getSurfaceY(tree.position.z);
     }
   });
   
@@ -3748,90 +3082,35 @@ const animate = () => {
     if (slideTimer <= 0) {
       isSliding = false;
       slideTimer = 0;
+      playerState.isSliding.value = false;
+      playerState.slideTimer.value = 0;
     }
   }
+  
+  // Sync composable state from local vars (for animations)
+  playerState.currentLane.value = currentLane;
+  playerState.isJumping.value = isJumping;
+  playerState.jumpVelocity.value = jumpVelocity;
+  playerState.isSliding.value = isSliding;
+  playerState.isFlying.value = isFlying;
+  playerState.flyVelocity.value = flyVelocity;
   
   // === SCROLL ROAD TEXTURE ===
   if (groundTexture) {
     groundTexture.offset.y -= gameSpeed * 0.15;
-    if (grassTileTex) grassTileTex.offset.y += gameSpeed * 0.15;
   }
   
   // === CHARACTER ANIMATION ===
-  const leftArm = player.getObjectByName('left-arm');
-  const rightArm = player.getObjectByName('right-arm');
-  const leftLeg = player.getObjectByName('left-leg');
-  const rightLeg = player.getObjectByName('right-leg');
-  const headGroup = player.getObjectByName('head-group');
-  const leftPupil = player.getObjectByName('left-pupil');
-  const rightPupil = player.getObjectByName('right-pupil');
-  
-  const playerLaneOffset = getCurveX(player.position.z) // follow road curve at player Z
-  const targetX = (currentLane - 1) * laneWidth + playerLaneOffset;
-  const moveDir = targetX - player.position.x;
-  
-  // Running animation - arms and legs swing
-  if (isSliding) {
-    // Slide pose - character ducks low
-    if (leftArm) leftArm.rotation.x = 0.8;
-    if (rightArm) rightArm.rotation.x = 0.8;
-    if (leftLeg) leftLeg.rotation.x = -1.0;
-    if (rightLeg) rightLeg.rotation.x = -1.0;
-    player.position.y = 0.3;
-    player.scale.y = 0.5;
-  } else if (isFlying) {
-    // Fly pose - arms spread out like wings
-    if (leftArm) leftArm.rotation.z = -1.5;
-    if (rightArm) rightArm.rotation.z = 1.5;
-    if (leftLeg) leftLeg.rotation.x = 0.3;
-    if (rightLeg) rightLeg.rotation.x = 0.3;
-    player.scale.y = 1.0;
-  } else if (!isJumping) {
-    const runSpeed = 8 + gameSpeed * 10;
-    const swing = Math.sin(time * runSpeed) * 0.6;
-    
-    if (leftArm) leftArm.rotation.x = swing;
-    if (rightArm) rightArm.rotation.x = -swing;
-    if (leftLeg) leftLeg.rotation.x = -swing * 0.8;
-    if (rightLeg) rightLeg.rotation.x = swing * 0.8;
-    
-    player.position.y = 0.5 + Math.abs(Math.sin(time * runSpeed)) * 0.05;
-    player.scale.y = 1.0;
-  } else {
-    if (leftArm) leftArm.rotation.x = -1.2;
-    if (rightArm) rightArm.rotation.x = -1.2;
-    if (leftLeg) leftLeg.rotation.x = 0.5;
-    if (rightLeg) rightLeg.rotation.x = 0.5;
-    player.scale.y = 1.0;
-  }
-  
-  // Head faces movement direction
-  if (headGroup) {
-    const targetHeadRotY = THREE.MathUtils.clamp(moveDir * -0.5, -0.6, 0.6);
-    headGroup.rotation.y = THREE.MathUtils.lerp(headGroup.rotation.y, targetHeadRotY, 0.1);
-  }
-  
-  // Slippery floor effect
-  if (isSlippery) {
-    slipperyTimer -= delta;
-    // Slide forward uncontrollably (faster than normal game speed)
-    player.position.z += slideVelocity;
-    if (slipperyTimer <= 0) {
-      isSlippery = false;
-      slideVelocity = 0;
-    }
-  }
-  
-  // Smooth lane movement
-  player.position.x = THREE.MathUtils.lerp(player.position.x, targetX, 0.15);
-  
-  // Body lean on turn
-  player.rotation.z = THREE.MathUtils.lerp(player.rotation.z, moveDir * -0.08, 0.1);
-  player.rotation.x = 0;
-  
-  // Body faces forward (base rotation = PI) with slight turn into movement
-  const bodyTurn = THREE.MathUtils.clamp(moveDir * 0.15, -0.3, 0.3);
-  player.rotation.y = THREE.MathUtils.lerp(player.rotation.y, Math.PI + bodyTurn, 0.08);
+  // Use composable for player animation
+  const playerAnimationState = {
+    currentLane: currentLane,
+    isJumping: isJumping,
+    jumpVelocity: jumpVelocity,
+    isSliding: isSliding,
+    isFlying: isFlying,
+    flyVelocity: flyVelocity
+  };
+  updatePlayerAnimation(delta, time, player, playerAnimationState, gameSpeed);
 
   // Power-up timer
   if (activePowerup) {
@@ -4025,15 +3304,15 @@ const deactivatePowerup = () => {
 
 const handleJump = () => {
   if (isJumping || isSliding || isFlying) return;
-  isJumping = true;
-  jumpVelocity = jumpStrength;
+  playerState.isJumping.value = true;
+  playerState.jumpVelocity.value = jumpStrength;
   playSound('jump');
 };
 
 const handleSlide = () => {
   if (isJumping || isSliding || isFlying) return;
-  isSliding = true;
-  slideTimer = slideDuration;
+  playerState.isSliding.value = true;
+  playerState.slideTimer.value = slideDuration;
   playSound('jump');
 };
 
@@ -4146,7 +3425,6 @@ const resetStage = (preserveScore = false, targetStage = -1) => {
   gameSpeed = 0.25;
   spawnInterval = 1.2;
   gameDuration = 0;
-  console.log('[RESET-STAGE] gameDuration reset to 0, lastSpawnTime:', lastSpawnTime);
   lastSpawnTime = -2; // grace period: first obstacle 2s after start
 
   // Stage
@@ -4165,15 +3443,12 @@ const resetStage = (preserveScore = false, targetStage = -1) => {
   bossWarning.value = false;
   bossActive.value = false;
   bossDefeated.value = false;
-  bossHealth.value = BOSS_BASE_HEALTH;
+  bossHealth.value = 100;
   bossCharging = false;
   bossChargeTimer = 0;
   bossChargeTarget = 0;
   bossAttackTimer = 0;
   bossNextAttack = 3;
-  bossState = 'idle';
-  bossStateTimer = 0;
-  bossVulnerableOrbs = [];
   stageTransitioning.value = false;
   if (boss) { scene.remove(boss); boss = null; }
 
@@ -4190,6 +3465,22 @@ const resetStage = (preserveScore = false, targetStage = -1) => {
   powerupTimeLeft.value = 0;
   const shieldAura = player.getObjectByName('shield-aura');
   if (shieldAura) player.remove(shieldAura);
+  
+  // Reset composable player state
+  playerState.currentLane.value = 1;
+  playerState.isJumping.value = false;
+  playerState.jumpVelocity.value = 0;
+  playerState.isSliding.value = false;
+  playerState.slideTimer.value = 0;
+  playerState.isFlying.value = false;
+  playerState.flyVelocity.value = 0;
+  currentLane = 1;
+  isJumping = false;
+  jumpVelocity = 0;
+  isSliding = false;
+  slideTimer = 0;
+  isFlying = false;
+  flyVelocity = 0;
 
   // Camera
   cameraShakeTimer = 0;
@@ -4247,15 +3538,15 @@ const resetStage = (preserveScore = false, targetStage = -1) => {
 
   // Clear all game objects
   obstacles.forEach(obs => { obs.mesh.traverse(c => { if (c.geometry && c.geometry !== sharedCoinGeo) c.geometry.dispose(); }); scene.remove(obs.mesh); });
-  obstacles.length = 0;
+  obstacles = [];
   coins.forEach(coin => scene.remove(coin.mesh));
-  coins.length = 0;
+  coins = [];
   powerups.forEach(pw => scene.remove(pw.mesh));
-  powerups.length = 0;
+  powerups = [];
   bossProjectiles.forEach(fb => scene.remove(fb));
-  bossProjectiles.length = 0;
+  bossProjectiles = [];
   particles.forEach(p => scene.remove(p));
-  particles.length = 0;
+  particles = [];
   floatingTexts.forEach(t => scene.remove(t));
   floatingTexts = [];
   achievements.value = [];
@@ -4347,7 +3638,6 @@ const restartGame = () => {
   tiltCalibrationSamples = [];
   isCalibrating = false;
   resetStage(false); // full reset, score = 0
-  applyStageVisuals(0);
   clock.start();
   playSound('start');
 };
