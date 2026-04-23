@@ -2,8 +2,8 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -32,24 +32,13 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Pre-deploy checks
-        run: node scripts/pre-deploy-check.cjs
-
       - name: Build
         run: npm run build
-
-      - name: Prepare deployment structure
-        run: |
-          mkdir -p deploy-staging
-          echo "📦 Tag deployment: ${{ github.ref_name }} → ROOT"
-          cp -r dist/* deploy-staging/
-          echo "✅ Root deployment prepared"
-          ls -la deploy-staging/
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./deploy-staging
+          path: ./dist
 
   deploy:
     needs: build-and-deploy
