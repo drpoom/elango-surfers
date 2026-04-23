@@ -481,6 +481,136 @@ onMounted(() => {
   loadProgress();
   loadLeaderboard(); // async — loads global + local, non-blocking
   checkAchievements();
+  initGame();
+  // Start with countdown on initial load
+  countdownLocked = true;
+  countdownActive.value = true;
+  let initCount = 3;
+  countdownText.value = initCount.toString();
+  const initTick = () => {
+    initCount--;
+    if (initCount > 0) {
+      countdownText.value = initCount.toString();
+      setTimeout(initTick, 1000);
+    } else if (initCount === 0) {
+      countdownText.value = 'GO!';
+      startBGM(); // Start music on initial GO!
+      setTimeout(() => {
+        countdownActive.value = false;
+        countdownLocked = false;
+        // 2-second invincibility after game starts (green shield)
+        isInvincible = true;
+        gameStartTime = Date.now();
+        const oldGrace = player.getObjectByName('shield-aura');
+        if (!oldGrace) {
+          const graceGeo = new THREE.SphereGeometry(1.2, 16, 16);
+          const graceMat = new THREE.MeshToonMaterial({ color: 0x44ff44, transparent: true, opacity: 0.3, side: THREE.DoubleSide });
+          const graceMesh = new THREE.Mesh(graceGeo, graceMat);
+          graceMesh.name = 'shield-aura';
+          player.add(graceMesh);
+        }
+        invincibilityTimeout = setTimeout(() => {
+          isInvincible = false;
+          invincibilityTimeout = null;
+          const shield = player.getObjectByName('shield-aura');
+          if (shield) player.remove(shield);
+        }, 2000);
+      }, 500);
+    }
+  };
+  setTimeout(initTick, 1000);
+  window.addEventListener('keydown', handleKeyDown);
+  window.addEventListener('touchstart', handleTouchStart, { passive: false });
+  window.addEventListener('touchend', handleTouchEnd, { passive: false });
+  window.addEventListener('touchmove', (e) => {
+    if (e.target.closest('#mute-btn, #tilt-btn, #mic-btn, #settings-btn, #settings-panel')) return;
+    e.preventDefault();
+  }, { passive: false, capture: true });
+  window.addEventListener('click', (e) => {
+    // Check if click is on settings panel, buttons, or name entry
+    if (e.target.closest('#settings-panel') || e.target.closest('#settings-btn') || e.target.closest('#mute-btn') || e.target.closest('#tilt-btn') || e.target.closest('#mic-btn') || e.target.closest('#name-entry')) {
+      return;
+    }
+    if (gameOver.value && !showNameEntry.value && Date.now() - gameOverTime >= 1000) startCountdown();
+    initAudio();
+    tryStartBGMFromGesture();
+  });
+  
+  // Also initialize audio on any keypress
+  window.addEventListener('keydown', () => {
+    initAudio();
+    tryStartBGMFromGesture();
+  }, { once: true });
+  
+  // Initialize audio on touch
+  window.addEventListener('touchstart', () => {
+    initAudio();
+    tryStartBGMFromGesture();
+  }, { once: true, passive: true });
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+  
+  // Pause on P key
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'p' || e.key === 'P') {
+      toggleSettings();
+    }
+  });
+  
+  // Tilt/gyro controls (mobile)
+  if (window.DeviceOrientationEvent) {
+    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+      // iOS 13+ — request permission on first touch (retry-capable, not once:true)
+      let iosTiltPermissionRequested = false;
+      const requestTiltPermission = async () => {
+        if (iosTiltPermissionRequested) return; // already asked this session
+        iosTiltPermissionRequested = true;
+        try {
+          const state = await DeviceOrientationEvent.requestPermission();
+          if (state === 'granted') {
+            window.addEventListener('deviceorientation', handleDeviceOrientation);
+            tiltEnabled = true;
+            tiltEnabledRef.value = true;
+          } else {
+            // User denied — disable tilt and show hint
+            tiltEnabled = false;
+            tiltEnabledRef.value = false;
+          }
+        } catch (err) {
+          console.log('iOS tilt permission error:', err);
+          tiltEnabled = false;
+          tiltEnabledRef.value = false;
+        }
+      };
+      // Attach to tilt button click (user gesture required for iOS permission)
+      window.addEventListener('touchstart', () => {
+        requestTiltPermission();
+      }, { once: true });
+      // Also attach to tilt toggle button so user can retry
+      const origToggleTilt = toggleTilt;
+      toggleTilt = async () => {
+        if (!tiltEnabled) {
+          // Re-request permission on iOS when re-enabling
+          iosTiltPermissionRequested = false;
+          await requestTiltPermission();
+        } else {
+          tiltEnabled = false;
+          tiltEnabledRef.value = false;
+          tiltInitialBeta = null;
+        }
+      };
+    } else {
+      // Android / older iOS — auto-granted
+      window.addEventListener('deviceorientation', handleDeviceOrientation);
+    }
+  } else {
+    // No DeviceOrientation API available — disable tilt
+    tiltEnabled = false;
+    tiltEnabledRef.value = false;
+  }
 });
 
 const saveHighScore = () => {
@@ -3112,142 +3242,6 @@ const restartGame = () => {
   clock.start();
   playSound('start');
 };
-
-window.addEventListener('error', (e) => { console.log('GLOBAL ERROR:', e.message, 'at', e.filename + ':' + e.lineno + ':' + e.colno); });
-onMounted(() => {
-  const saved = localStorage.getItem('elangoSurfersHighScore');
-  if (saved) highScore.value = parseInt(saved, 10);
-  initGame();
-  // Start with countdown on initial load
-  countdownLocked = true;
-  countdownActive.value = true;
-  let initCount = 3;
-  countdownText.value = initCount.toString();
-  const initTick = () => {
-    initCount--;
-    if (initCount > 0) {
-      countdownText.value = initCount.toString();
-      setTimeout(initTick, 1000);
-    } else if (initCount === 0) {
-      countdownText.value = 'GO!';
-      startBGM(); // Start music on initial GO!
-      setTimeout(() => {
-        countdownActive.value = false;
-        countdownLocked = false;
-        // 2-second invincibility after game starts (green shield)
-        isInvincible = true;
-        gameStartTime = Date.now();
-        const oldGrace = player.getObjectByName('shield-aura');
-        if (!oldGrace) {
-          const graceGeo = new THREE.SphereGeometry(1.2, 16, 16);
-          const graceMat = new THREE.MeshToonMaterial({ color: 0x44ff44, transparent: true, opacity: 0.3, side: THREE.DoubleSide });
-          const graceMesh = new THREE.Mesh(graceGeo, graceMat);
-          graceMesh.name = 'shield-aura';
-          player.add(graceMesh);
-        }
-        invincibilityTimeout = setTimeout(() => {
-          isInvincible = false;
-          invincibilityTimeout = null;
-          const shield = player.getObjectByName('shield-aura');
-          if (shield) player.remove(shield);
-        }, 2000);
-      }, 500);
-    }
-  };
-  setTimeout(initTick, 1000);
-  window.addEventListener('keydown', handleKeyDown);
-  window.addEventListener('touchstart', handleTouchStart, { passive: false });
-  window.addEventListener('touchend', handleTouchEnd, { passive: false });
-  window.addEventListener('touchmove', (e) => {
-    if (e.target.closest('#mute-btn, #tilt-btn, #mic-btn, #settings-btn, #settings-panel')) return;
-    e.preventDefault();
-  }, { passive: false, capture: true });
-  window.addEventListener('click', (e) => {
-    // Check if click is on settings panel, buttons, or name entry
-    if (e.target.closest('#settings-panel') || e.target.closest('#settings-btn') || e.target.closest('#mute-btn') || e.target.closest('#tilt-btn') || e.target.closest('#mic-btn') || e.target.closest('#name-entry')) {
-      return;
-    }
-    if (gameOver.value && !showNameEntry.value && Date.now() - gameOverTime >= 1000) startCountdown();
-    initAudio();
-    tryStartBGMFromGesture();
-  });
-  
-  // Also initialize audio on any keypress
-  window.addEventListener('keydown', () => {
-    initAudio();
-    tryStartBGMFromGesture();
-  }, { once: true });
-  
-  // Initialize audio on touch
-  window.addEventListener('touchstart', () => {
-    initAudio();
-    tryStartBGMFromGesture();
-  }, { once: true, passive: true });
-  window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-  });
-  
-  // Pause on P key
-  window.addEventListener('keydown', (e) => {
-    if (e.key === 'p' || e.key === 'P') {
-      toggleSettings();
-    }
-  });
-  
-  // Tilt/gyro controls (mobile)
-  if (window.DeviceOrientationEvent) {
-    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-      // iOS 13+ — request permission on first touch (retry-capable, not once:true)
-      let iosTiltPermissionRequested = false;
-      const requestTiltPermission = async () => {
-        if (iosTiltPermissionRequested) return; // already asked this session
-        iosTiltPermissionRequested = true;
-        try {
-          const state = await DeviceOrientationEvent.requestPermission();
-          if (state === 'granted') {
-            window.addEventListener('deviceorientation', handleDeviceOrientation);
-            tiltEnabled = true;
-            tiltEnabledRef.value = true;
-          } else {
-            // User denied — disable tilt and show hint
-            tiltEnabled = false;
-            tiltEnabledRef.value = false;
-          }
-        } catch (err) {
-          console.log('iOS tilt permission error:', err);
-          tiltEnabled = false;
-          tiltEnabledRef.value = false;
-        }
-      };
-      // Attach to tilt button click (user gesture required for iOS permission)
-      window.addEventListener('touchstart', () => {
-        requestTiltPermission();
-      }, { once: true });
-      // Also attach to tilt toggle button so user can retry
-      const origToggleTilt = toggleTilt;
-      toggleTilt = async () => {
-        if (!tiltEnabled) {
-          // Re-request permission on iOS when re-enabling
-          iosTiltPermissionRequested = false;
-          await requestTiltPermission();
-        } else {
-          tiltEnabled = false;
-          tiltEnabledRef.value = false;
-          tiltInitialBeta = null;
-        }
-      };
-    } else {
-      // Android / older iOS — auto-granted
-      window.addEventListener('deviceorientation', handleDeviceOrientation);
-    }
-  } else {
-    // No DeviceOrientation API available — disable tilt
-    tiltEnabled = false;
-    tiltEnabledRef.value = false;
-  }
-});
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyDown);
