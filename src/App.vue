@@ -151,7 +151,7 @@ import { updateObstacles } from './composables/useObstacles.js'
 import { updatePowerups } from './composables/usePowerups.js'
 
 // Version - Update this for each release
-const VERSION = 'v5.1.0';
+const VERSION = 'v5.1.1';
 
 // Score & High Score refs
 const score = ref(0);
