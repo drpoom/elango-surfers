@@ -136,13 +136,22 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { useAudio } from './composables/useAudio.js'
 import { useLeaderboard } from './composables/useLeaderboard.js'
 import { useAchievements } from './composables/useAchievements.js'
+import { useScoring } from './composables/useScoring.js'
 import { usePlayer, createPlayer as createPlayerModel, updatePlayerAnimation, updatePlayerHat, updatePlayerSkin } from './composables/usePlayer.js'
 import { EARTH_R, STAGES, DAY_DURATION, jumpStrength, slideDuration, laneWidth, FLY_LIFT, FLY_GRAVITY, FLY_MAX_HEIGHT, MIC_THRESHOLD, MIC_PEAK_THRESHOLD, minSwipeDistance, TILT_THRESHOLD, TILT_LR_THRESHOLD, TILT_LANE_COOLDOWN, CALIBRATION_MAX_SAMPLES } from './gameConstants.js'
 import { useCurve } from './composables/useCurve.js'
 import { useMic } from './composables/useMic.js'
+import { updateDayNightCycle, updateRoadCurveOscillation } from './composables/useScene.js'
+import { checkCollisions } from './composables/useCollisions.js'
+import { checkBossSpawn, updateBossAI, updateBossProjectiles } from './composables/useBossAI.js'
+import { useSpawning } from './composables/useSpawning.js'
+import { useStageManager } from './composables/useStageManager.js'
+import { useCoins } from './composables/useCoins.js'
+import { updateObstacles } from './composables/useObstacles.js'
+import { updatePowerups } from './composables/usePowerups.js'
 
 // Version - Update this for each release
-const VERSION = 'v4.5.2';
+const VERSION = 'v5.1.0';
 
 // Score & High Score refs
 const score = ref(0);
@@ -309,6 +318,8 @@ const {
   createFloatingText: (...args) => createFloatingText(...args),
   getPlayer: () => player
 })
+// Initialize scoring composable
+const { updateScore, calculateCoinScore, resetCombo } = useScoring()
 // Initialize player composable
 const {
   playerState,
@@ -317,6 +328,16 @@ const {
   moveLeft,
   moveRight
 } = usePlayer()
+// Initialize coins composable
+const comboCountRef = ref(0);
+const lastCoinTimeRef = ref(0);
+const { coins: coinManager, spawnCoin: spawnCoinFromManager, updateCoins, updateBonusCoins, cleanupCoins } = useCoins({
+  scene: null, // will be set after scene init
+  laneWidth,
+  getSurfaceY: () => 0, // will be updated after curve init
+  getCurveX: () => 0,
+  getSurfaceTilt: () => 0
+});
 
 // Local state (synced with composable for game logic)
 let currentLane = playerState.currentLane.value;
@@ -566,7 +587,7 @@ const initGame = () => {
   scene.add(hemiLight);
 
   // Create textured ground with cartoon style
-  createGround();
+  createGround({ scene, textureLoader, getSurfaceY });
   
   // Add lane markers
   createLaneMarkers();
@@ -587,133 +608,7 @@ const initGame = () => {
   animate();
 };
 
-const createGround = () => {
-  // Create detailed cartoon road texture with lane markings
-  const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 1024;
-  const ctx = canvas.getContext('2d');
-  
-  // Base asphalt color
-  ctx.fillStyle = '#3a3a3a';
-  ctx.fillRect(0, 0, 512, 1024);
-  
-  // Add noise/texture
-  for (let i = 0; i < 1000; i++) {
-    ctx.fillStyle = `rgba(255,255,255,${Math.random() * 0.08})`;
-    ctx.fillRect(Math.random() * 512, Math.random() * 1024, 2, 2);
-  }
-  
-  // Dashed center line
-  ctx.strokeStyle = '#ffdd00';
-  ctx.lineWidth = 6;
-  ctx.setLineDash([40, 30]);
-  ctx.beginPath();
-  ctx.moveTo(256, 0);
-  ctx.lineTo(256, 1024);
-  ctx.stroke();
-  
-  // Side lines (solid white)
-  ctx.setLineDash([]);
-  ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = 4;
-  ctx.beginPath();
-  ctx.moveTo(85, 0);
-  ctx.lineTo(85, 1024);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(427, 0);
-  ctx.lineTo(427, 1024);
-  ctx.stroke();
-  
-  groundTexture = new THREE.CanvasTexture(canvas);
-  groundTexture.wrapS = THREE.RepeatWrapping;
-  groundTexture.wrapT = THREE.RepeatWrapping;
-  groundTexture.repeat.set(1, 10);
-  
-  const groundGeo = new THREE.PlaneGeometry(15, 200, 1, 60); // 60 segments for smooth curve
-  // Bend the road to follow the earth curve
-  const gPos = groundGeo.attributes.position;
-  for (let i = 0; i < gPos.count; i++) {
-    const py = gPos.getY(i); // in plane local space, Y is the long axis
-    const worldZ = -py - 50; // center at z=-50, so py=0 → z=-50, py=100 → z=-150
-    const yOffset = getSurfaceY(worldZ);
-    gPos.setZ(i, gPos.getZ(i) + yOffset); // Z in plane = Y in world after rotation
-  }
-  gPos.needsUpdate = true;
-  groundGeo.computeVertexNormals();
-  const groundMat = new THREE.MeshToonMaterial({ 
-    map: groundTexture,
-    color: 0x555555
-  });
-  const ground = new THREE.Mesh(groundGeo, groundMat);
-  ground.rotation.x = -Math.PI / 2; // flat road - curve is via object positions
-  ground.position.set(0, 0, -50);
-  ground.receiveShadow = false;
-  ground.name = 'road';
-  scene.add(ground);
-  roadMesh = ground;
-  // Save original vertex positions for curve animation
-  roadOrigPositions = new Float32Array(gPos.array.length);
-  roadOrigPositions.set(gPos.array);
-  
-  // Add colorful grass borders with AI texture
-  // Priority load: grass (large surface area)
-  const grassTileTex = textureLoader.load('assets/grass_tile.webp');
-  grassTileTex.wrapS = THREE.RepeatWrapping;
-  grassTileTex.wrapT = THREE.RepeatWrapping;
-  grassTileTex.repeat.set(10, 25);
-  grassTileTex.colorSpace = THREE.SRGBColorSpace;
-  const grassGeo = new THREE.PlaneGeometry(80, 200, 1, 60); // curve match
-  const gPosG = grassGeo.attributes.position;
-  for (let i = 0; i < gPosG.count; i++) {
-    const py = gPosG.getY(i);
-    const worldZ = -py - 50;
-    const yOffset = getSurfaceY(worldZ);
-    gPosG.setZ(i, gPosG.getZ(i) + yOffset);
-  }
-  gPosG.needsUpdate = true;
-  grassGeo.computeVertexNormals();
-  const grassMat = new THREE.MeshToonMaterial({ 
-    map: grassTileTex,
-    color: 0x8bc34a 
-  });
-  const grass = new THREE.Mesh(grassGeo, grassMat);
-  grass.rotation.x = -Math.PI / 2;
-  grass.position.set(0, -0.1, -50); // just below road
-  grass.receiveShadow = false;
-  scene.add(grass);
-  grassMesh = grass;
-  grassOrigPositions = new Float32Array(gPosG.array.length);
-  grassOrigPositions.set(gPosG.array);
-  
-  // Road edge curbs (curved to match earth)
-  const curbGeo = new THREE.BoxGeometry(0.3, 0.15, 200, 1, 1, 60); // 60 segments for curve
-  const curbMat = new THREE.MeshToonMaterial({ color: 0xcccccc });
-  // Curve curb vertices
-  const curbPos = curbGeo.attributes.position;
-  for (let i = 0; i < curbPos.count; i++) {
-    const cz = curbPos.getZ(i);
-    const worldZ = cz - 50; // same offset as road center
-    curbPos.setY(i, curbPos.getY(i) + getSurfaceY(worldZ));
-  }
-  curbPos.needsUpdate = true;
-  curbGeo.computeVertexNormals();
-  const leftCurb = new THREE.Mesh(curbGeo, curbMat);
-  leftCurb.position.set(-7.5, 0.07, -50);
-  leftCurb.receiveShadow = false;
-  scene.add(leftCurb);
-  leftCurbMesh = leftCurb;
-  leftCurbOrigPositions = new Float32Array(curbPos.array.length);
-  leftCurbOrigPositions.set(curbPos.array);
-  const rightCurb = new THREE.Mesh(curbGeo.clone(), curbMat.clone());
-  rightCurb.position.set(7.5, 0.07, -50);
-  rightCurb.receiveShadow = false;
-  scene.add(rightCurb);
-  rightCurbMesh = rightCurb;
-  rightCurbOrigPositions = new Float32Array(curbPos.array.length);
-  rightCurbOrigPositions.set(curbPos.array);
-};
+
 
 const updateRoadCurve = () => {
   // Bend road/grass/curb mesh vertices based on current roadCurve
@@ -764,141 +659,6 @@ const updateRoadCurve = () => {
 const createLaneMarkers = () => {
   // Lane markers are now in the road texture only
   // No extra 3D lane markers needed
-};
-
-const updateDayNightCycle = (delta) => {
-  const cycleProgress = dayCycleTime / DAY_DURATION; // 0 to 1
-  
-  // 4 stages: sunny(0-0.25), sunset(0.25-0.5), night(0.5-0.75), sunrise(0.75-1.0)
-  // Each stage 30s, 5s transition blend between stages
-  const TRANSITION = 5 / DAY_DURATION; // 5s as fraction of cycle
-  
-  // Sky color interpolation with smooth blending
-  let skyColor, fogColor;
-  const dayColor = new THREE.Color(0x87ceeb);
-  const sunsetColor = new THREE.Color(0xff7f50);
-  const nightColor = new THREE.Color(0x0a0a2e);
-  const sunriseColor = new THREE.Color(0xffb6c1);
-  
-  // Helper: get stage colors at progress within stage
-  const getStageBlend = (progress) => {
-    if (progress < 0.25) {
-      // Sunny -> Sunset
-      const t = progress / 0.25;
-      const blendT = Math.min(1, t / (0.25 * TRANSITION * 4));
-      return { skyColor: dayColor.clone().lerp(sunsetColor, t), fogColor: null };
-    } else if (progress < 0.5) {
-      const t = (progress - 0.25) / 0.25;
-      return { skyColor: sunsetColor.clone().lerp(nightColor, t), fogColor: null };
-    } else if (progress < 0.75) {
-      const t = (progress - 0.5) / 0.25;
-      return { skyColor: nightColor.clone().lerp(sunriseColor, t), fogColor: null };
-    } else {
-      const t = (progress - 0.75) / 0.25;
-      return { skyColor: sunriseColor.clone().lerp(dayColor, t), fogColor: null };
-    }
-  };
-  
-  const stageInfo = getStageBlend(cycleProgress);
-  skyColor = stageInfo.skyColor;
-  fogColor = skyColor.clone();
-  
-  scene.background = skyColor;
-  scene.fog.color = fogColor;
-  
-  // Sky texture crossfade using skyBlendFactor
-  // Determine current and next sky textures based on cycle progress
-  let currentSkyStage, nextSkyStage, blendT;
-  const stageKeys = ['sunny', 'sunset', 'night', 'sunset']; // sunrise reuses sunset texture
-  const stageBoundaries = [0, 0.25, 0.5, 0.75];
-  
-  let stageIdx = 0;
-  for (let i = stageBoundaries.length - 1; i >= 0; i--) {
-    if (cycleProgress >= stageBoundaries[i]) {
-      stageIdx = i;
-      break;
-    }
-  }
-  
-  const stageStart = stageBoundaries[stageIdx];
-  const stageEnd = stageIdx < 3 ? stageBoundaries[stageIdx + 1] : 1.0;
-  const stageLen = stageEnd - stageStart;
-  const stageProgress = (cycleProgress - stageStart) / stageLen;
-  
-  // Blend factor: smooth transition in last 5s of each stage
-  const transitionFraction = 5 / 30; // 5s out of 30s stage
-  if (stageProgress > (1 - transitionFraction)) {
-    skyBlendFactor = (stageProgress - (1 - transitionFraction)) / transitionFraction;
-    skyBlendFactor = skyBlendFactor * skyBlendFactor * (3 - 2 * skyBlendFactor); // smoothstep
-  } else {
-    skyBlendFactor = 0;
-  }
-  
-  currentSkyTex = skyTextures[stageKeys[stageIdx]] || null;
-  nextSkyStage = stageKeys[(stageIdx + 1) % 4];
-  // Map sunrise stage (0.75-1.0) back to sunny texture at the end
-  if (stageIdx === 3) nextSkyStage = 'sunny';
-  prevSkyTex = skyTextures[nextSkyStage] || null;
-  
-  // If we have sky textures and blend is active, mix them
-  if (currentSkyTex && prevSkyTex && skyBlendFactor > 0) {
-    // Create a blended background using scene background color mixed with textures
-    // We'll use a fullscreen overlay approach via scene.background
-    // Since Three.js doesn't support texture blending natively in scene.background,
-    // we blend the sky colors (which we already do) and just set the dominant texture
-    const dominantTex = skyBlendFactor > 0.5 ? prevSkyTex : currentSkyTex;
-    scene.background = dominantTex;
-  } else if (currentSkyTex) {
-    scene.background = currentSkyTex;
-  } else {
-    scene.background = skyColor;
-  }
-  
-  scene.fog.color = fogColor;
-  
-  // Track night time for achievements
-  if (cycleProgress > 0.35 && cycleProgress < 0.65) {
-    gameStats.nightTime += delta;
-    checkAchievements();
-  }
-  
-  // Adjust lighting
-  const directionalLight = scene.children.find(c => c.isDirectionalLight);
-  if (directionalLight) {
-    directionalLight.intensity = cycleProgress > 0.25 && cycleProgress < 0.75 ? 0.5 : 1.0;
-  }
-  
-  // Stars at night
-  if (!scene.userData.starsCreated && (cycleProgress > 0.35 || cycleProgress < 0.15)) {
-    createStars();
-    scene.userData.starsCreated = true;
-  } else if (scene.userData.starsCreated && cycleProgress >= 0.15 && cycleProgress <= 0.35) {
-    const stars = scene.getObjectByName('stars');
-    if (stars) {
-      scene.remove(stars);
-      scene.userData.starsCreated = false;
-    }
-  }
-};
-
-const createStars = () => {
-  const starsGroup = new THREE.Group();
-  starsGroup.name = 'stars';
-  
-  const starGeo = new THREE.SphereGeometry(0.1, 4, 4);
-  const starMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-  
-  for (let i = 0; i < 200; i++) {
-    const star = new THREE.Mesh(starGeo, starMat);
-    star.position.set(
-      (Math.random() - 0.5) * 100,
-      20 + Math.random() * 30,
-      (Math.random() - 0.5) * 100 - 30
-    );
-    starsGroup.add(star);
-  }
-  
-  scene.add(starsGroup);
 };
 
 const createClouds = () => {
@@ -971,79 +731,6 @@ const createClouds = () => {
     cloud.castShadow = false;
     scene.add(cloud);
     clouds.push(cloud);
-  }
-};
-
-const spawnBonusPortal = () => {
-  if (bonusPortal || inBonusZone) return;
-  const lane = Math.floor(Math.random() * 3);
-  const laneX = (lane - 1) * laneWidth;
-  
-  const portalGroup = new THREE.Group();
-  
-  // Golden ring
-  const ringGeo = new THREE.TorusGeometry(1.5, 0.15, 16, 32);
-  const ringMat = new THREE.MeshBasicMaterial({ color: 0xffd700 });
-  const ring = new THREE.Mesh(ringGeo, ringMat);
-  ring.name = 'portal-ring';
-  portalGroup.add(ring);
-  
-  // Inner shimmer
-  const innerGeo = new THREE.CircleGeometry(1.4, 32);
-  const innerMat = new THREE.MeshBasicMaterial({ color: 0xff00ff, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
-  const inner = new THREE.Mesh(innerGeo, innerMat);
-  inner.name = 'portal-inner';
-  portalGroup.add(inner);
-  
-  // Rainbow particles around portal
-  for (let i = 0; i < 8; i++) {
-    const sparkGeo = new THREE.SphereGeometry(0.1, 4, 4);
-    const colors = [0xff0000, 0xff8800, 0xffff00, 0x00ff00, 0x0088ff, 0x0000ff, 0x8800ff, 0xff00ff];
-    const sparkMat = new THREE.MeshBasicMaterial({ color: colors[i] });
-    const spark = new THREE.Mesh(sparkGeo, sparkMat);
-    const angle = (i / 8) * Math.PI * 2;
-    spark.position.set(Math.cos(angle) * 1.8, Math.sin(angle) * 1.8, 0);
-    spark.name = 'spark-' + i;
-    portalGroup.add(spark);
-  }
-  
-  portalGroup.position.set(laneX, 1.5, -50);
-  portalGroup.userData = { lane };
-  scene.add(portalGroup);
-  bonusPortal = { mesh: portalGroup, lane };
-};
-
-const triggerRandomEvent = () => {
-  if (activeEvent) return;
-  activeEvent = 'fog';
-  eventDuration = 6;
-  fogDensity = 2; // gentler fog (was 5 — too hard)
-  eventAlertTextRef.value = '\u{1F32B}\u{FE0F} FOG!';
-};
-
-const updateEvent = (delta) => {
-  // Fog decay
-  if (activeEvent === 'fog') {
-    eventDuration -= delta;
-    fogDensity = Math.max(0, fogDensity - delta * 0.3);
-    if (eventDuration <= 0 || fogDensity <= 0) {
-      fogDensity = 0;
-      activeEvent = null;
-      eventAlertTextRef.value = '';
-    }
-  }
-  
-  // Fog effect on scene fog
-  if (scene.fog) {
-    const baseNear = 20;
-    const baseFar = 80;
-    if (fogDensity > 0) {
-      scene.fog.near = THREE.MathUtils.lerp(scene.fog.near, baseNear * 0.5, delta * 2);
-      scene.fog.far = THREE.MathUtils.lerp(scene.fog.far, baseFar * 0.5, delta * 2);
-    } else {
-      scene.fog.near = THREE.MathUtils.lerp(scene.fog.near, baseNear, delta * 2);
-      scene.fog.far = THREE.MathUtils.lerp(scene.fog.far, baseFar, delta * 2);
-    }
   }
 };
 
@@ -2047,34 +1734,21 @@ const animate = () => {
   }
 
   // === CURVE OSCILLATION (not during boss, or disabled) ===
-  // Curve front sweeps from horizon toward player so you can see it approaching
-  if (!bossActive.value && roadCurveEnabled.value) {
-    curveChangeTimer.value += realDelta
-    if (curveChangeTimer.value >= nextCurveChange.value) {
-      if (Math.abs(roadCurveTarget.value) < 0.1) {
-        // Start a new curve — front starts at horizon
-        roadCurveTarget.value = (Math.random() > 0.5 ? 1 : -1) * (1.2 + Math.random() * 0.6)
-        curveFrontZ.value = -80 // front starts at horizon, sweeps toward player
-        nextCurveChange.value = 2.5 + Math.random() * 1.5
-      } else {
-        // Straighten out — when straight, curve doesn't need a front
-        roadCurveTarget.value = 0
-        nextCurveChange.value = 5 + Math.random() * 5
-      }
-      curveChangeTimer.value = 0
-    }
-    // Lerp curve value
-    const lerpSpeed = Math.abs(roadCurveTarget.value) > 0.1 ? Math.min(realDelta * 1.5, 0.1) : Math.min(realDelta * 0.8, 0.05)
-    roadCurve.value += (roadCurveTarget.value - roadCurve.value) * lerpSpeed
-    // Sweep curve front toward player (0 = right at player)
-    // Front moves at road speed so the bend visually approaches
-    if (curveFrontZ.value < 0) {
-      curveFrontZ.value += realDelta * 25 // takes ~3.2 seconds to sweep from -80 to 0
-      if (curveFrontZ.value > 0) curveFrontZ.value = 0
-    }
-  } else {
-    roadCurve.value += (0 - roadCurve.value) * Math.min(realDelta * 1.0, 0.06)
-  }
+  const curveState = updateRoadCurveOscillation({
+    bossActive: bossActive.value,
+    roadCurveEnabled: roadCurveEnabled.value,
+    curveChangeTimer: curveChangeTimer.value,
+    nextCurveChange: nextCurveChange.value,
+    roadCurve: roadCurve.value,
+    roadCurveTarget: roadCurveTarget.value,
+    curveFrontZ: curveFrontZ.value,
+    realDelta
+  })
+  curveChangeTimer.value = curveState.curveChangeTimer
+  nextCurveChange.value = curveState.nextCurveChange
+  roadCurveTarget.value = curveState.roadCurveTarget
+  roadCurve.value = curveState.roadCurve
+  curveFrontZ.value = curveState.curveFrontZ
 
   // === UPDATE ROAD MESH CURVE ===
   updateRoadCurve();
@@ -2085,24 +1759,21 @@ const animate = () => {
   }
 
   // === BOSS WARNING + SPAWN TRIGGER ===
-  const stage = STAGES[currentStage.value]
-  const bossSpawnTime = stage.stageDuration
-  
-  // Warning 5s before boss
-  if (stageTime.value >= bossSpawnTime - 5 && stageTime.value < bossSpawnTime && !bossActive.value && !bossWarning.value && !bossDefeated.value) {
-    bossWarning.value = true
-    createFloatingText('\u26A0\uFE0F BOSS INCOMING! \u26A0\uFE0F', player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#ff4444')
-  }
-  
-  // Spawn boss
-  if (stageTime.value >= bossSpawnTime && !bossActive.value && !bossDefeated.value && !stageTransitioning.value) {
-    bossWarning.value = false
-    bossActive.value = true
-    bossHealth.value = 100
-    createFloatingText(`\u26A0\uFE0F ${stage.bossType === 'truck' ? 'ROAD RAGE TRUCK' : 'SKY TERROR DRAGON'} \u26A0\uFE0F`, player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#ff4444')
-    playSFX(stage.bossType === 'truck' ? 'truck_honk' : 'dragon_cry', 0.6)
-    spawnBoss(stage.bossType)
-  }
+  checkBossSpawn({
+    stageTime,
+    STAGES,
+    currentStage,
+    bossActive,
+    bossWarning,
+    bossDefeated,
+    stageTransitioning,
+    bossHealth,
+    createFloatingText,
+    playSFX,
+    spawnBoss,
+    THREE,
+    player
+  })
 
   // === BOSS TIMER (decrement health over bossDuration seconds) ===
   if (bossActive.value && !bossDefeated.value) {
@@ -2288,71 +1959,44 @@ const animate = () => {
   }
   
   // === BOSS PROJECTILE MOVEMENT + COLLISION ===
-  for (let i = bossProjectiles.length - 1; i >= 0; i--) {
-    const fb = bossProjectiles[i]
-    fb.position.z += fb.userData.speed
-    fb.position.x += (fb.userData.targetX - fb.position.x) * 0.05
-    fb.position.y += (fb.userData.targetY - fb.position.y) * 0.04 // converge to target height
-    fb.rotation.y += 0.1
-    
-    // Skip collision if game over, countdown, grace period, or stage transition
-    if (gameOver.value || countdownLocked || stageTransitioning.value || Date.now() - gameStartTime < 2000) continue;
-    // Collision with player
-    const dist = player.position.distanceTo(fb.position)
-    if (dist < 1.5) {
-      if (!isInvincible) {
-        // Dragon fireball = instant death, truck = damage
-        if (STAGES[currentStage.value].bossType === 'dragon') {
-          createFloatingText('HIT!', player.position.clone().add(new THREE.Vector3(0, 2, 0)), '#ff4444')
-          triggerGameOver(0.4)
-        } else {
-          bossHealth.value = Math.min(100, bossHealth.value + 10)
-          createFloatingText('HIT', player.position.clone().add(new THREE.Vector3(0, 2, 0)), '#ff4444')
-          cameraShakeTimer = 0.5; cameraShakeIntensity = 0.25
-          isInvincible = true
-          invincibilityTimeout = setTimeout(() => { isInvincible = false; invincibilityTimeout = null }, 1500)
-        }
-      }
-      scene.remove(fb)
-      bossProjectiles.splice(i, 1)
-      continue
-    }
-    
-    // Near-miss — player dodges close, damages boss
-    if (!fb.userData.nearMissTriggered && dist < 2.5 && dist >= 1.5) {
-      fb.userData.nearMissTriggered = true
-      bossHealth.value -= 8
-      createFloatingText('⚡', player.position.clone().add(new THREE.Vector3(0, 2, 0)), '#44ff44')
-    }
-    
-    // Remove if past player
-    if (fb.position.z > 10) {
-      scene.remove(fb)
-      bossProjectiles.splice(i, 1)
-    }
-  }
-  
-  // Boss collision: any touch = game over for both truck and dragon
-  if (bossCharging && boss && !gameOver.value && !countdownLocked && Date.now() - gameStartTime >= 2000) {
-    const dx = player.position.x - boss.position.x
-    const dz = player.position.z - boss.position.z
-    const inZRange = Math.abs(dz) < 3
-    if (inZRange && Math.abs(dx) < 2.0 && !isInvincible) {
-      // Boss hit — instant kill
-      createFloatingText('HIT!', player.position.clone().add(new THREE.Vector3(0, 2, 0)), '#ff4444')
-      triggerGameOver(0.5)
-    }
-    // Near-miss dodge: close but escaped
-    if (inZRange && !boss.userData?.chargeMissTriggered && Math.abs(dx) >= 2.0 && Math.abs(dx) < 4.0) {
-      if (!boss.userData) boss.userData = {}
-      boss.userData.chargeMissTriggered = true
-      bossHealth.value -= 12
-      createFloatingText('DODGE!', player.position.clone().add(new THREE.Vector3(0, 2, 0)), '#44ff44')
-    }
-  }
+  updateBossProjectiles({
+    bossProjectiles,
+    boss,
+    bossCharging,
+    bossHealth,
+    player,
+    isInvincible: { value: isInvincible },
+    gameOver,
+    countdownLocked,
+    stageTransitioning,
+    gameStartTime,
+    currentStage,
+    STAGES,
+    createFloatingText,
+    triggerGameOver,
+    playSFX,
+    scene,
+    cameraShakeTimer: { value: cameraShakeTimer },
+    cameraShakeIntensity: { value: cameraShakeIntensity },
+    setTimeoutRef: setTimeout,
+    clearTimeoutRef: clearTimeout,
+    invincibilityTimeout: { value: invincibilityTimeout },
+    THREE
+  });
 
   // Day/night cycle
-  updateDayNightCycle(delta);
+  updateDayNightCycle({ delta, dayCycleTime, DAY_DURATION, scene, skyBlendFactorRef: { value: skyBlendFactor }, currentSkyTexRef: { value: currentSkyTex }, prevSkyTexRef: { value: prevSkyTex }, skyTextures, gameStats, checkAchievements });
+  
+  // Update score using scoring composable
+  score.value = updateScore({
+    delta,
+    gameDuration,
+    score: score.value,
+    isInvincible,
+    gameStats,
+    highScore: highScore.value,
+    VERSION
+  });
   
   // Progressive difficulty scaling
   // Speed increases every 30 seconds, caps at 3.5x base speed
@@ -2363,8 +2007,6 @@ const animate = () => {
   
   // Spawn interval decreases over time (more obstacles)
   spawnInterval = Math.max(0.35, 1.2 - (gameDuration / 80)) / STAGES[currentStage.value].difficultyMultiplier;
-  
-  score.value += Math.floor(delta * 50 * difficultyMultiplier);
 
   // === BONUS PORTAL SPAWN (not during boss) ===
   if (!bonusPortal && !inBonusZone && !bossActive.value && Math.random() < 0.001) {
@@ -2595,126 +2237,40 @@ const animate = () => {
     scene.userData.eventAlertTimer = 0;
   }
 
-  // Grace period: don't spawn obstacles for the first 1.5 seconds (but still move existing ones)
-  const spawnGraceActive = gameDuration < 1.5;
-  if (!stageTransitioning.value && !countdownLocked) {
-    const willSpawn = !spawnGraceActive && (time - lastSpawnTime) > spawnInterval && !bonusNoSpawn && !bossActive.value;
-    if (!willSpawn) {
-      // Log why we CAN'T spawn (throttled to ~2/sec)
-      if (!window._lastSpawnLog || Date.now() - window._lastSpawnLog > 500) {
-        console.log('[SPAWN-BLOCKED]', { grace: spawnGraceActive, timeDiff: (time-lastSpawnTime).toFixed(2), interval: spawnInterval.toFixed(2), bonusNoSpawn, bossActive: bossActive.value, stage: currentStage.value, gameDuration: gameDuration.toFixed(1) });
-        window._lastSpawnLog = Date.now();
-      }
-    }
-  }
-  if (!spawnGraceActive && time - lastSpawnTime > spawnInterval && !bonusNoSpawn && !bossActive.value && !stageTransitioning.value) {
-    if (Math.random() < 0.7) {
-      if (Math.random() < 0.3) {
-        spawnFloatingObstacle();
-      } else {
-        spawnObstacle();
-      }
-    }
-    if (Math.random() < 0.5 + (gameDuration / 120)) spawnCoin();
-    if (Math.random() < 0.05) spawnPowerup();
-    console.log('[SPAWNED] obstacles/coins/powerups');
-    lastSpawnTime = time;
-  }
+  // Handle spawning using extracted composable
+  const { handleSpawning } = useSpawning();
+  const spawnResult = handleSpawning({
+    time,
+    lastSpawnTime,
+    spawnInterval,
+    bossActive: bossActive.value,
+    bonusNoSpawn,
+    stageTransitioning: stageTransitioning.value,
+    gameDuration,
+    spawnObstacle,
+    spawnFloatingObstacle,
+    spawnCoin,
+    spawnPowerup,
+  });
+  lastSpawnTime = spawnResult.newLastSpawnTime;
 
+  // Update obstacle positions and animations
+  updateObstacles({
+    obstacles,
+    gameSpeed,
+    laneWidth,
+    getCurveX,
+    getSurfaceY,
+    getSurfaceTilt,
+    time,
+    delta,
+    difficultyMultiplier,
+    scene,
+    sharedCoinGeo
+  });
+
+  // Obstacle collision detection
   obstacles.forEach((obs, index) => {
-    obs.mesh.position.z += gameSpeed;
-    // Road curvature: shift obstacles laterally based on depth
-    const baseX = obs.mesh.userData.baseX !== undefined ? obs.mesh.userData.baseX : ((obs.lane - 1) * laneWidth)
-    const laneX = baseX + getCurveX(obs.mesh.position.z)
-    // For police/UFO: add accumulated drift offset
-    const driftOffset = obs.mesh.userData.driftX || 0
-    obs.mesh.position.x = laneX + driftOffset
-    obs.mesh.position.y = (obs.mesh.baseY || 0) + getSurfaceY(obs.mesh.position.z);
-    obs.mesh.rotation.x = getSurfaceTilt(obs.mesh.position.z);
-    // Spin UFOs, ground obstacles gentle spin
-    obs.mesh.rotation.y += obs.type === 'floating' ? 0.08 : (obs.obstacleType === 'fruit' ? 0.05 : 0);
-    
-    // UFO: sin wave + lateral sweep across road
-    if (obs.type === 'floating') {
-      obs.mesh.position.y = 2.2 + Math.sin(time * 3 + obs.mesh.position.z * 0.1) * 0.5 + getSurfaceY(obs.mesh.position.z);
-      // Lateral sweep — random fixed distance movement
-      if (!obs.mesh.userData.ufoSwayDir) {
-        obs.mesh.userData.ufoSwayDir = Math.random() > 0.5 ? 1 : -1;
-        obs.mesh.userData.ufoSwaySpeed = 0.04 + Math.random() * 0.02;
-        obs.mesh.userData.ufoSwayDist = 0;
-        obs.mesh.userData.ufoSwayMaxDist = 1.5 + Math.random() * 2;
-        obs.mesh.userData.driftX = 0;
-      }
-      obs.mesh.userData.driftX += obs.mesh.userData.ufoSwayDir * obs.mesh.userData.ufoSwaySpeed;
-      obs.mesh.userData.ufoSwayDist += obs.mesh.userData.ufoSwaySpeed;
-      if (obs.mesh.userData.ufoSwayDist >= obs.mesh.userData.ufoSwayMaxDist) {
-        obs.mesh.userData.ufoSwayDir *= -1;
-        obs.mesh.userData.ufoSwayDist = 0;
-        obs.mesh.userData.ufoSwayMaxDist = 1.5 + Math.random() * 2;
-      }
-      // Keep within road boundaries
-      const maxDriftUFO = laneWidth * 1.5;
-      if (obs.mesh.userData.driftX < -maxDriftUFO) obs.mesh.userData.ufoSwayDir = 1;
-      else if (obs.mesh.userData.driftX > maxDriftUFO) obs.mesh.userData.ufoSwayDir = -1;
-    }
-    
-    // Barrel: roll across street like a log on its side
-    if (obs.obstacleType === 'barrel' && obs.mesh.userData.driftDir) {
-      obs.mesh.userData.driftX = (obs.mesh.userData.driftX || 0) + obs.mesh.userData.driftDir * obs.mesh.userData.driftSpeed;
-      const maxDriftBarrel = laneWidth * 1.2;
-      if (obs.mesh.userData.driftX < -maxDriftBarrel || obs.mesh.userData.driftX > maxDriftBarrel) {
-        obs.mesh.userData.driftDir *= -1;
-      }
-      // Roll the inner barrel group around its local Z axis (perpendicular to barrel length)
-      // This makes the cylinder spin like a rolling log
-      const barrelInner = obs.mesh.userData.barrelGroup || obs.mesh.children[0]
-      if (barrelInner) {
-        barrelInner.rotation.z += obs.mesh.userData.driftDir * obs.mesh.userData.driftSpeed * 8
-      }
-    }
-    // Red car / bus / fireengine: move forward or backward at noticeable speed (slower than player)
-    if (obs.obstacleType === 'car' || obs.obstacleType === 'bus' || obs.obstacleType === 'fireengine') {
-      if (!obs.mesh.userData.lungeTimer) {
-        obs.mesh.userData.lungeTimer = Math.random() * 3;
-        obs.mesh.userData.lungeDir = Math.random() > 0.5 ? 1 : -1;
-        obs.mesh.userData.lungeSpeed = 0.02 + Math.random() * 0.03; // noticeable but slower than player
-      }
-      obs.mesh.userData.lungeTimer -= delta;
-      if (obs.mesh.userData.lungeTimer <= 0) {
-        obs.mesh.userData.lungeDir *= -1;
-        obs.mesh.userData.lungeTimer = 1.5 + Math.random() * 2;
-      }
-      obs.mesh.position.z += obs.mesh.userData.lungeDir * obs.mesh.userData.lungeSpeed;
-    }
-    
-    // Police car: 90° across the road, slides left or right across lanes
-    if (obs.obstacleType === 'police') {
-      if (!obs.mesh.userData.policeDir) {
-        obs.mesh.userData.policeDir = Math.random() > 0.5 ? 1 : -1;
-        obs.mesh.userData.policeSpeed = 0.05 * difficultyMultiplier;
-        obs.mesh.userData.driftX = 0;
-      }
-      obs.mesh.userData.driftX += obs.mesh.userData.policeDir * obs.mesh.userData.policeSpeed * delta * 60;
-      // Bounce between road edges — full road width
-      const maxDrift = laneWidth * 2; // can cross all 3 lanes
-      if (obs.mesh.userData.driftX < -maxDrift) {
-        obs.mesh.userData.policeDir = 1;
-      } else if (obs.mesh.userData.driftX > maxDrift) {
-        obs.mesh.userData.policeDir = -1;
-      }
-    }
-    
-    // Police siren flash
-    if (obs.obstacleType === 'police') {
-      const sirenR = obs.mesh.getObjectByName('siren-red');
-      const sirenB = obs.mesh.getObjectByName('siren-blue');
-      if (sirenR && sirenB) {
-        const flash = Math.sin(time * 15) > 0;
-        sirenR.material.color.setHex(flash ? 0xff0000 : 0x440000);
-        sirenB.material.color.setHex(flash ? 0x000044 : 0x0000ff);
-      }
-    }
-
     // Skip collision if game over, countdown, grace period, or stage transition
     if (gameOver.value || countdownLocked || stageTransitioning.value || Date.now() - gameStartTime < 2000) return;
     // Horizontal + Z distance (ignore Y for collision range check)
@@ -2755,147 +2311,62 @@ const animate = () => {
         triggerGameOver(0.5)
       }
     }
-
-    if (obs.mesh.position.z > 15) {
-      obs.mesh.traverse(c => { if (c.geometry && c.geometry !== sharedCoinGeo) c.geometry.dispose(); });
-      scene.remove(obs.mesh);
-      obstacles.splice(index, 1);
-    }
   });
 
-  coins.forEach((coin, index) => {
-    if (coin.collected) return;
-    
-    const dist = player.position.distanceTo(coin.mesh.position);
-    
-    // Magnet effect - strong pull to player position
-    if (magnetRange > 0 && activePowerup === 'magnet' && dist < magnetRange) {
-      // Check if there's an obstacle blocking the path (obstacle must be between coin and player)
-      const hasObstacle = obstacles.some(obs => {
-        // Obstacle must be roughly in the same lane and between coin and player
-        const inSameLane = Math.abs(obs.mesh.position.x - coin.mesh.position.x) < 2;
-        const betweenCoinAndPlayer = (
-          (obs.mesh.position.z > coin.mesh.position.z && obs.mesh.position.z < player.position.z) ||
-          (obs.mesh.position.z < coin.mesh.position.z && obs.mesh.position.z > player.position.z)
-        );
-        const closeToLine = obs.mesh.position.distanceTo(
-          new THREE.Vector3(coin.mesh.position.x, 0, coin.mesh.position.z).lerp(
-            new THREE.Vector3(player.position.x, 0, player.position.z),
-            0.5
-          )
-        ) < 1.5;
-        return inSameLane && betweenCoinAndPlayer && closeToLine;
-      });
-      
-      if (!hasObstacle) {
-        // Strong magnet - coins fly directly to player (not just lerp, but override movement)
-        const direction = new THREE.Vector3().subVectors(player.position, coin.mesh.position).normalize();
-        const pullSpeed = 0.8; // Much faster than gameSpeed
-        coin.mesh.position.add(direction.multiplyScalar(pullSpeed));
-        coin.mesh.rotation.y += 0.2;
-      } else {
-        // Blocked by obstacle - continue normal movement
-        coin.mesh.position.z += gameSpeed;
-        coin.mesh.position.x = ((coin.lane - 1) * laneWidth) + getCurveX(coin.mesh.position.z);
-        coin.mesh.rotation.y += 0.1;
-      }
-    } else {
-      // No magnet - normal movement
-      coin.mesh.position.z += gameSpeed;
-      coin.mesh.position.x = ((coin.lane - 1) * laneWidth) + getCurveX(coin.mesh.position.z);
-      coin.mesh.rotation.y += 0.1;
-    }
-    
-    coin.mesh.position.y = (coin.mesh.baseY || 0.5) + getSurfaceY(coin.mesh.position.z);
-    coin.mesh.rotation.x = getSurfaceTilt(coin.mesh.position.z);
-    
-    if (dist < 1.2) {
-      coin.collected = true;
-      comboCount++;
-      if (comboCount > gameStats.maxCombo) gameStats.maxCombo = comboCount;
-      const now = Date.now();
-      const comboBonus = comboCount > 1 && (now - lastCoinTime) < 1000 ? comboCount * 10 : 0;
-      score.value += (100 + comboBonus) * scoreMultiplier;
-      lastCoinTime = now;
-      gameStats.totalCoins++;
-      
-      if (magnetRange > 0) gameStats.magnetCoins++;
-      
-      createParticleEffect(coin.mesh.position, 0xffd700, 15);
-      createFloatingText('+' + Math.floor((100 + comboBonus) * scoreMultiplier), coin.mesh.position.clone().add(new THREE.Vector3(0, 1, 0)));
-      playSound('coin', 0.9 + Math.random() * 0.2);
-      
-      scene.remove(coin.mesh);
-      coins.splice(index, 1);
-    } else if (coin.mesh.position.z > 15) {
-      scene.remove(coin.mesh);
-      coins.splice(index, 1);
-    }
+  // Update coins using extracted composable logic
+  const { updateCoins, updateBonusCoins } = useCoins({});
+  updateCoins({
+    coins,
+    player,
+    getSurfaceY,
+    getCurveX,
+    getSurfaceTilt,
+    createParticleEffect,
+    createFloatingText,
+    playSound,
+    gameSpeed,
+    obstacles,
+    activePowerup,
+    magnetRange,
+    gameStats,
+    score,
+    scoreMultiplier,
+    scene,
+    laneWidth
+  });
+  
+  updateBonusCoins({
+    bonusCoins,
+    player,
+    getSurfaceY,
+    getCurveX,
+    getSurfaceTilt,
+    createParticleEffect,
+    createFloatingText,
+    playSound,
+    gameSpeed,
+    gameStats,
+    score,
+    scoreMultiplier,
+    scene
   });
 
-  // Bonus coins movement and collection
-  bonusCoins.forEach((bc, index) => {
-    if (bc.collected) return;
-    bc.mesh.position.z += gameSpeed;
-    bc.mesh.position.x = (bc.baseX || 0) + getCurveX(bc.mesh.position.z);
-    bc.mesh.rotation.y += 0.1;
-    bc.mesh.position.y = 0.5 + getSurfaceY(bc.mesh.position.z);
-    bc.mesh.rotation.x = getSurfaceTilt(bc.mesh.position.z);
-    const dist = player.position.distanceTo(bc.mesh.position);
-    if (dist < 1.2) {
-      bc.collected = true;
-      comboCount++;
-      if (comboCount > gameStats.maxCombo) gameStats.maxCombo = comboCount;
-      const now = Date.now();
-      const comboBonus = comboCount > 1 && (now - lastCoinTime) < 1000 ? comboCount * 10 : 0;
-      score.value += (100 + comboBonus) * scoreMultiplier;
-      lastCoinTime = now;
-      gameStats.totalCoins++;
-      createParticleEffect(bc.mesh.position, 0xffd700, 15);
-      createFloatingText('+' + Math.floor((100 + comboBonus) * scoreMultiplier), bc.mesh.position.clone().add(new THREE.Vector3(0, 1, 0)));
-      playSound('coin', 0.9 + Math.random() * 0.2);
-      scene.remove(bc.mesh);
-      bonusCoins.splice(index, 1);
-    } else if (bc.mesh.position.z > 15) {
-      scene.remove(bc.mesh);
-      bonusCoins.splice(index, 1);
-    }
-  });
-
-  powerups.forEach((pw, index) => {
-    if (pw.collected) return;
-    
-    pw.mesh.position.z += gameSpeed;
-    pw.mesh.position.x = ((pw.lane - 1) * laneWidth) + getCurveX(pw.mesh.position.z);
-    pw.mesh.rotation.y += 0.15;
-    // Curved earth
-    pw.mesh.position.y = (pw.mesh.baseY || 1) + getSurfaceY(pw.mesh.position.z);
-    pw.mesh.rotation.x = getSurfaceTilt(pw.mesh.position.z);
-    
-    // Animate rings
-    if (pw.type === 'shield') {
-      pw.mesh.children[1].rotation.z += 0.05;
-    } else if (pw.type === 'magnet') {
-      pw.mesh.children.forEach((c, i) => {
-        c.scale.setScalar(1 + Math.sin(time * 5 + i) * 0.2);
-      });
-    }
-
-    const dist = player.position.distanceTo(pw.mesh.position);
-    if (dist < 1.2) {
-      pw.collected = true;
-      gameStats.powerupsCollected++;
-      activatePowerup(pw.type);
-      playSound('powerup', 0.9 + Math.random() * 0.2);
-      createParticleEffect(pw.mesh.position, pw.type === 'shield' ? 0x00bfff : (pw.type === 'speed' ? 0xffd700 : 0x9932cc), 20);
-      createFloatingText(pw.type === 'shield' ? '🛡️ SHIELD' : (pw.type === 'speed' ? '⚡ SPEED' : '🧲 MAGNET'), pw.mesh.position.clone().add(new THREE.Vector3(0, 1, 0)));
-      
-      scene.remove(pw.mesh);
-      powerups.splice(index, 1);
-    } else if (pw.mesh.position.z > 15) {
-      scene.remove(pw.mesh);
-      powerups.splice(index, 1);
-    }
+  // Update powerup positions, animations, and handle collection
+  updatePowerups({
+    powerups,
+    player,
+    gameSpeed,
+    laneWidth,
+    getCurveX,
+    getSurfaceY,
+    getSurfaceTilt,
+    time,
+    scene,
+    activatePowerup,
+    playSound,
+    createParticleEffect,
+    createFloatingText,
+    gameStats
   });
 
   // Animate clouds drifting + sky-aware coloring
