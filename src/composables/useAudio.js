@@ -109,10 +109,11 @@ export function useAudio({ currentStage, STAGES }) {
         osc.stop(now + 0.1);
         break;
       case 'coin':
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(1200, now);
-        osc.frequency.setValueAtTime(1600, now + 0.1);
-        gain.gain.setValueAtTime(0.3, now);
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(800, now);
+        osc.frequency.setValueAtTime(1200, now + 0.1);
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.3, now + 0.01);
         gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
         osc.start(now);
         osc.stop(now + 0.2);
