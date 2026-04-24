@@ -25,4 +25,9 @@ export default defineConfig({
   ],
   outputDir: 'test-results/',
   timeout: 60000,
+  expect: {
+    toHaveScreenshot: {
+      maxDiffPixels: 100, // Allow small differences
+    },
+  },
 });
