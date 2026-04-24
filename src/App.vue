@@ -502,7 +502,7 @@ const spawnWithOverlapCheck = (spawnFn, objectType, arrayName, isBoss = false) =
       group.baseY = group.position.y - getSurfaceY(-50);
       
       const targetArray = arrayName === 'obstacles' ? obstacles :
-n                        arrayName === 'coins' ? coins :
+                        arrayName === 'coins' ? coins :
                         arrayName === 'powerups' ? powerups : [];
       
       const entry = { mesh: group, lane, collected: false, ...extraData };
