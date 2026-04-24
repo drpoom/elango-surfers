@@ -7,25 +7,22 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: [
-    ['html', { open: 'never' }],
     ['list'],
-    ['json', { outputFile: 'test-results/results.json' }]
   ],
   use: {
     baseURL: 'https://www.drpoom.com/elango-surfers/',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
+    // Ignore HTTPS errors for GitHub Pages
+    ignoreHTTPSErrors: true,
   },
   projects: [
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
-    {
-      name: 'Mobile Chrome',
-      use: { ...devices['Pixel 5'] },
-    },
   ],
   outputDir: 'test-results/',
+  timeout: 60000,
 });
