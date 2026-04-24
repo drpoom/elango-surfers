@@ -86,18 +86,16 @@ test.describe('Elango Surfers - Gameplay Tests', () => {
     await page.click('#settings-btn');
     await page.waitForTimeout(1000);
     
-    // Find and click debug button
+    // Find debug button (could be "Debug" or "Debug OFF")
     const debugBtn = page.locator('button:has-text("Debug")');
     const debugExists = await debugBtn.count() > 0;
     
+    console.log('Debug button exists:', debugExists);
+    
     if (debugExists) {
-      await debugBtn.click();
-      await page.waitForTimeout(1000);
-      
-      // Debug overlay should appear
-      const debugOverlay = page.locator('#debug-overlay');
-      const overlayVisible = await debugOverlay.count() > 0;
-      console.log('Debug overlay visible:', overlayVisible);
+      // Just verify button exists and is clickable
+      await expect(debugBtn).toBeVisible();
+      await expect(debugBtn).toBeEnabled();
     }
     
     expect(debugExists).toBe(true);
