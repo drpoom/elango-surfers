@@ -56,22 +56,22 @@ export const STAGES = [
   },
   {
     id: 3,
-    name: 'The Infinite IKEA-pocalypse',
+    name: 'The Concrete Jungle',
     difficultyMultiplier: 1.8,
-    roadType: 'conveyor',
-    skyType: 'fluorescent',
-    backgroundColor: '#005B99',
-    accentColor: '#FECC00',
+    roadType: 'concrete',
+    skyType: 'urban',
+    backgroundColor: '#2C3E50',
+    accentColor: '#95A5A6',
     obstacleSpawnRates: {
-      meatball: 0.35,
-      allenKey: 0.25,
-      shoppingCart: 0.2,
-      bookshelf: 0.15
+      constructionCone: 0.3,
+      barrier: 0.25,
+      trafficSign: 0.2,
+      debris: 0.15
     },
     specialMechanics: {
-      screenEffects: true,
-      conveyorVariation: true,
-      portalShortcuts: true
+      screenEffects: false,
+      conveyorVariation: false,
+      portalShortcuts: false
     },
     bossType: 'giantMeatball',
     bossDuration: 25,

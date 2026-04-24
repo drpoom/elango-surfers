@@ -333,6 +333,17 @@ function applyStageVisuals(stageIndex) {
         }
       })
     }
+    // Apply concrete texture to trees (replace pine with urban trees)
+    if (trees.length) {
+      trees.forEach((t) => {
+        const mesh = t.children.find(c => c.isMesh)
+        if (mesh && mesh.material) {
+          // Use dark gray/green for urban trees
+          mesh.material.color.set(0x2d4a2d)
+          mesh.material.needsUpdate = true
+        }
+      })
+    }
     // Switch to urban/city BGM
     switchBGMTrack('highway');
   } else {
@@ -4071,9 +4082,9 @@ const animate = () => {
     groundTexture.offset.y -= gameSpeed * 0.15;
     if (grassTileTex) grassTileTex.offset.y += gameSpeed * 0.15;
   }
-  // Stage 3: scroll concrete road and pavement textures
+  // Stage 3: scroll concrete road and pavement textures (same direction as Stage 1)
   if (stage3Textures.road) {
-    stage3Textures.road.offset.y -= gameSpeed * 0.15;
+    stage3Textures.road.offset.y += gameSpeed * 0.15;
   }
   if (stage3Textures.pavement) {
     stage3Textures.pavement.offset.y += gameSpeed * 0.15;
@@ -4595,12 +4606,13 @@ const resetStage = (preserveScore = false, targetStage = -1) => {
   if (stars) scene.remove(stars);
   scene.userData.starsCreated = false;
 
-  // Buildings & trees — reset positions
+  // Buildings & trees — reset positions (including Y based on baseY)
   buildings.forEach(b => {
     b.visible = true;
     if (b.userData.initZ !== undefined) {
       b.position.z = b.userData.initZ;
       b.position.x = b.userData.initX;
+      b.position.y = b.baseY + getSurfaceY(b.userData.initZ);
       b.baseX = b.userData.initBaseX;
     }
   });
@@ -4609,6 +4621,7 @@ const resetStage = (preserveScore = false, targetStage = -1) => {
     if (t.userData.initZ !== undefined) {
       t.position.z = t.userData.initZ;
       t.position.x = t.userData.initX;
+      t.position.y = t.baseY + getSurfaceY(t.userData.initZ);
       t.baseX = t.userData.initBaseX;
     }
   });
@@ -4674,8 +4687,7 @@ const restartGame = () => {
   tiltInitialGamma = null;
   tiltCalibrationSamples = [];
   isCalibrating = false;
-  resetStage(false); // full reset, score = 0
-  applyStageVisuals(0);
+  resetStage(false); // full reset, score = 0 (already calls applyStageVisuals)
   clock.start();
   playSound('start');
 };
