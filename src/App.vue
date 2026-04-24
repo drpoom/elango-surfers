@@ -3831,12 +3831,7 @@ const animate = () => {
       
       createParticleEffect(coin.mesh.position, 0xffd700, 15);
       createFloatingText('+' + Math.floor((100 + comboBonus) * scoreMultiplier), coin.mesh.position.clone().add(new THREE.Vector3(0, 1, 0)));
-      // Stage 3: IKEA coins sound like cash register
-      if (currentStage.value === 2) {
-        playSound('cash_register');
-      } else {
-        playSound('coin', 0.9 + Math.random() * 0.2);
-      }
+      playSound('coin', 0.9 + Math.random() * 0.2);
       
       scene.remove(coin.mesh);
       coins.splice(index, 1);
@@ -3866,12 +3861,7 @@ const animate = () => {
       gameStats.totalCoins++;
       createParticleEffect(bc.mesh.position, 0xffd700, 15);
       createFloatingText('+' + Math.floor((100 + comboBonus) * scoreMultiplier), bc.mesh.position.clone().add(new THREE.Vector3(0, 1, 0)));
-      // Stage 3: IKEA coins sound like cash register
-      if (currentStage.value === 2) {
-        playSound('cash_register');
-      } else {
-        playSound('coin', 0.9 + Math.random() * 0.2);
-      }
+      playSound('coin', 0.9 + Math.random() * 0.2);
       scene.remove(bc.mesh);
       bonusCoins.splice(index, 1);
     } else if (bc.mesh.position.z > 15) {
