@@ -2714,14 +2714,15 @@ const animate = () => {
     bossStateTimer += realDelta
     
     // State machine: IDLE -> CHARGING -> VULNERABLE -> IDLE
+    // Dragon (bossType !== 'truck') stays in IDLE forever - no charging or vulnerable states
     if (bossState === 'idle') {
-      // IDLE: hover/sway, then CHARGE
-      if (bossStateTimer >= BOSS_IDLE_DURATION) {
+      // IDLE: hover/sway, then CHARGE (truck only - dragon stays idle)
+      if (bossType === 'truck' && bossStateTimer >= BOSS_IDLE_DURATION) {
         bossState = 'charging'
         bossStateTimer = 0
         bossCharging = true
         bossChargeTimer = 0
-        playSFX(bossType === 'truck' ? 'truck_rev' : 'dragon_cry', 0.4)
+        playSFX('truck_rev', 0.4)
         if (boss) {
           boss.userData = boss.userData || {}
           boss.userData.chargeTargetX = player.position.x
@@ -2730,7 +2731,7 @@ const animate = () => {
           boss.userData.chargeMissTriggered = false
         }
       } else {
-        // Idle hover animation
+        // Idle hover animation (both truck and dragon)
         const sway = Math.sin(Date.now() * 0.001) * 3
         boss.position.z = -54 + sway
         if (bossType === 'truck') {
@@ -2739,6 +2740,7 @@ const animate = () => {
           boss.position.y = getSurfaceY(boss.position.z)
           boss.rotation.y = 0
         } else {
+          // Dragon idle hover/sway in background
           boss.position.x = getCurveX(boss.position.z)
           boss.position.y = 5 + Math.sin(Date.now() * 0.002) * 1.5 + getSurfaceY(boss.position.z)
           boss.rotation.y = 0
@@ -2757,8 +2759,8 @@ const animate = () => {
           })
         }
       }
-    } else if (bossState === 'charging') {
-      // CHARGE: move toward player Z, dodgeable
+    } else if (bossType === 'truck' && bossState === 'charging') {
+      // CHARGE: move toward player Z, dodgeable (truck only)
       bossChargeTimer += realDelta
       // Difficulty scaling: faster charges at higher difficulty
       const difficultyMultiplier = 1 + (gameDuration / 60)
@@ -2772,7 +2774,7 @@ const animate = () => {
       const progress = Math.min(traveled / totalDist, 1)
       boss.position.x = startXX + (targetX - startXX) * progress
       boss.position.x = Math.max(-laneWidth * 1.5, Math.min(laneWidth * 1.5, boss.position.x))
-      if (bossType === 'truck') boss.position.y = getSurfaceY(boss.position.z)
+      boss.position.y = getSurfaceY(boss.position.z)
       
       // Charge ends - transition to VULNERABLE
       if (boss.position.z > 5 || bossChargeTimer > 1.5 || bossStateTimer >= 1.5) {
@@ -2800,8 +2802,8 @@ const animate = () => {
         }
         createFloatingText('VULNERABLE!', boss.position.clone().add(new THREE.Vector3(0, 3, 0)), '#00ffff')
       }
-    } else if (bossState === 'vulnerable') {
-      // VULNERABLE: time to collect orbs
+    } else if (bossType === 'truck' && bossState === 'vulnerable') {
+      // VULNERABLE: time to collect orbs (truck only)
       if (bossStateTimer >= BOSS_VULNERABLE_DURATION) {
         bossState = 'idle'
         bossStateTimer = 0
@@ -2814,13 +2816,8 @@ const animate = () => {
         // Hover in place during vulnerable
         const sway = Math.sin(Date.now() * 0.002) * 2
         boss.position.z = -54 + sway
-        if (bossType === 'truck') {
-          boss.position.x = getCurveX(boss.position.z)
-          boss.position.y = getSurfaceY(boss.position.z)
-        } else {
-          boss.position.x = getCurveX(boss.position.z)
-          boss.position.y = 5 + sway + getSurfaceY(boss.position.z)
-        }
+        boss.position.x = getCurveX(boss.position.z)
+        boss.position.y = getSurfaceY(boss.position.z)
       }
       // Animate and check collection of vulnerable orbs
       for (let i = bossVulnerableOrbs.length - 1; i >= 0; i--) {
