@@ -260,12 +260,15 @@ function applyStageVisuals(stageIndex) {
       cobblestoneTexture.repeat.set(1, 10);
       cobblestoneTexture.colorSpace = THREE.SRGBColorSpace;
     }
-    // Replace the toon material with standard material for cobblestone
-    roadMesh.material = new THREE.MeshStandardMaterial({
+    // Store original material for restoration when leaving Stage 2
+    if (!originalRoadMaterial) {
+      originalRoadMaterial = roadMesh.material;
+    }
+    // Use MeshToonMaterial with cobblestone texture for cartoon-style PBR look
+    roadMesh.material = new THREE.MeshToonMaterial({
       map: cobblestoneTexture,
       color: 0xffffff,  // White - let texture show through
-      roughness: 0.8,
-      metalness: 0.1
+      roughness: 0.8
     });
     roadMesh.material.needsUpdate = true;
     // Preload fachwerkhaus texture for medieval buildings
@@ -318,9 +321,19 @@ function applyStageVisuals(stageIndex) {
     switchBGMTrack('highway');
   } else {
     // Highway: restore original
-    roadMesh.material.map = originalGroundTexture;
-    roadMesh.material.color.set(originalGroundColor);
-    roadMesh.material.needsUpdate = true;
+    // Dispose cobblestone material if it exists to prevent memory leaks
+    if (roadMesh.material !== originalRoadMaterial && roadMesh.material) {
+      if (roadMesh.material.map && roadMesh.material.map !== originalGroundTexture) {
+        // Don't dispose cobblestoneTexture - it may be reused
+      }
+      roadMesh.material.dispose();
+    }
+    roadMesh.material = originalRoadMaterial || roadMesh.material;
+    if (originalGroundTexture) {
+      roadMesh.material.map = originalGroundTexture;
+      roadMesh.material.color.set(originalGroundColor);
+      roadMesh.material.needsUpdate = true;
+    }
     if (grassMesh) { grassMesh.material.color.set(0x3a7d2c); grassMesh.material.needsUpdate = true; }
     if (scene && scene.fog) { scene.fog.color.set(0x87ceeb); scene.background = new THREE.Color(0x87ceeb); }
     // Restore building facades to original textures
@@ -4271,8 +4284,16 @@ const resetStage = (preserveScore = false, targetStage = -1) => {
   if (originalRoadMaterial) {
     const roadCheck = scene.getObjectByName('road');
     if (roadCheck) {
-      roadCheck.material.dispose();
+      // Dispose current material if it's not the original
+      if (roadCheck.material !== originalRoadMaterial && roadCheck.material) {
+        roadCheck.material.dispose();
+      }
       roadCheck.material = originalRoadMaterial;
+      if (originalGroundTexture) {
+        roadCheck.material.map = originalGroundTexture;
+        roadCheck.material.color.set(originalGroundColor);
+        roadCheck.material.needsUpdate = true;
+      }
       originalRoadMaterial = null;
     }
   }
