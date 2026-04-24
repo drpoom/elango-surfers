@@ -345,14 +345,20 @@ function applyStageVisuals(stageIndex) {
         }
       })
     }
-    // Apply concrete texture to trees (replace pine with urban trees)
+    // Apply skyscraper texture to trees for Stage 3
+    if (!stage3Textures.treeSkyscraper) {
+      stage3Textures.treeSkyscraper = textureLoader.load('assets/stage3/tree_skyscraper.webp');
+      stage3Textures.treeSkyscraper.colorSpace = THREE.SRGBColorSpace;
+    }
     if (trees.length) {
       trees.forEach((t) => {
-        const mesh = t.children.find(c => c.isMesh)
-        if (mesh && mesh.material) {
-          // Use dark gray/green for urban trees
-          mesh.material.color.set(0x2d4a2d)
-          mesh.material.needsUpdate = true
+        const sprite = t.children.find(c => c.isSprite)
+        if (sprite && sprite.material) {
+          // Replace tree texture with skyscraper sprite
+          sprite.material.map = stage3Textures.treeSkyscraper
+          sprite.material.needsUpdate = true
+          // Adjust scale for skyscraper dimensions
+          sprite.scale.set(4.5, 8.0, 1)
         }
       })
     }
@@ -485,6 +491,18 @@ const checkOverlap = (x, z, objectType, excludeType = null) => {
         const dz = z - tree.position.z;
         const distance = Math.sqrt(dx * dx + dz * dz);
         if (distance < TREE_OVERLAP_RADIUS) return true;
+      }
+    }
+    // Stage 3: Also check against buildings to prevent skyscraper-building overlap
+    if (stage.id === 3) {
+      for (const bldg of buildings) {
+        if (bldg.position) {
+          const dx = x - bldg.position.x;
+          const dz = z - bldg.position.z;
+          const distance = Math.sqrt(dx * dx + dz * dz);
+          // Larger radius for skyscraper-building separation
+          if (distance < 10) return true;
+        }
       }
     }
   }
@@ -1540,12 +1558,14 @@ const createBackgroundElements = () => {
   // 2. Trees (billboard sprites) — grass already loaded above
   const treeRoundTex = textureLoader.load('assets/tree_round_clean.webp');
   const treePineTex = textureLoader.load('assets/tree_pine_clean.webp');
+  const treeSkyscraperTex = textureLoader.load('assets/stage3/tree_skyscraper.webp');
   
   for (let i = 0; i < 20; i++) {
     const isPine = Math.random() > 0.5;
-    const treeTex = isPine ? treePineTex : treeRoundTex;
-    const treeH = isPine ? 5.6 : 4.8;
-    const treeW = isPine ? 3.2 : 4.0;
+    // Stage 3 uses skyscraper texture, other stages use tree textures
+    const treeTex = currentStage.value === 2 ? treeSkyscraperTex : (isPine ? treePineTex : treeRoundTex);
+    const treeH = currentStage.value === 2 ? 8.0 : (isPine ? 5.6 : 4.8);
+    const treeW = currentStage.value === 2 ? 4.5 : (isPine ? 3.2 : 4.0);
     
     // Billboard tree sprite (always faces camera)
     const spriteMat = new THREE.SpriteMaterial({ 
@@ -1566,8 +1586,10 @@ const createBackgroundElements = () => {
     const treeScale = 0.7 + Math.random() * 0.3;
     tree.scale.setScalar(treeScale);
     const treeBaseY = (treeH / 2) * treeScale;
+    // Stage 3: spawn skyscrapers further back to avoid building overlap (buildings at 10-20, trees at 6-12)
+    const treeX = currentStage.value === 2 ? side * (6 + Math.random() * 6) : side * (8 + Math.random() * 10);
     tree.position.set(
-      side * (8 + Math.random() * 10),
+      treeX,
       treeBaseY + getSurfaceY(treeZ),
       treeZ
     );
@@ -3988,7 +4010,8 @@ const animate = () => {
       // Determine side from baseX (not position.x which has curve offset)
       const side = (tree.baseX || 0) > 0 ? 1 : -1;
     tree.position.z = -Math.random() * 80;
-    tree.baseX = side * (8 + Math.random() * 10);
+    // Stage 3: spawn skyscrapers closer to road (6-12) to avoid building overlap (buildings at 15-25)
+    tree.baseX = currentStage.value === 2 ? side * (6 + Math.random() * 6) : side * (8 + Math.random() * 10);
     tree.position.x = tree.baseX + getCurveX(tree.position.z);
     tree.position.y = (tree.baseY || 0) + getSurfaceY(tree.position.z);
     }
