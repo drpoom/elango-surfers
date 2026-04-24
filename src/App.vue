@@ -154,7 +154,7 @@ import { useCurve } from './composables/useCurve.js'
 import { useMic } from './composables/useMic.js'
 
 // Version - Update this for each release
-const VERSION = 'v5.0.1';
+const VERSION = 'v5.0.2';
 
 // Score & High Score refs
 const score = ref(0);
