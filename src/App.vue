@@ -2984,6 +2984,20 @@ const animate = () => {
     const bossType = STAGES[currentStage.value].bossType
     bossStateTimer += realDelta
     
+    // Animate Flying Spaghetti Meatball tentacles (disco rotation)
+    if (bossType === 'giantMeatball' && boss.userData.tentacles) {
+      boss.userData.tentacles.forEach((tentacle, i) => {
+        // Rotate tentacles around meatball
+        tentacle.rotation.z += 0.05
+        // Wave motion
+        tentacle.rotation.x = Math.PI / 4 + Math.sin(Date.now() * 0.003 + i) * 0.3
+        // Disco color cycle
+        const hue = (Date.now() * 0.0001 + i * 0.125) % 1
+        tentacle.material.color.setHSL(hue, 1, 0.5)
+        tentacle.material.emissive.setHSL(hue, 1, 0.3)
+      })
+    }
+    
     // State machine: IDLE -> CHARGING -> VULNERABLE -> IDLE
     // Dragon (bossType !== 'truck') stays in IDLE forever - no charging or vulnerable states
     if (bossState === 'idle') {
