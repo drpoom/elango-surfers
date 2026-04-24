@@ -3083,106 +3083,20 @@ const animate = () => {
       boss.position.x = Math.max(-laneWidth * 1.5, Math.min(laneWidth * 1.5, boss.position.x))
       boss.position.y = getSurfaceY(boss.position.z)
       
-      // Charge ends - transition to VULNERABLE
+      // Charge ends - transition to VULNERABLE (truck only - orbs removed, instant transition back to idle)
       if (boss.position.z > 5 || bossChargeTimer > 1.5 || bossStateTimer >= 1.5) {
-        bossState = 'vulnerable'
+        bossState = 'idle'
         bossStateTimer = 0
         bossCharging = false
         boss.userData.retreatPhase = false
-        // Spawn collectible orbs near boss
-        bossVulnerableOrbs = []
-        // Difficulty scaling: more orbs at higher difficulty
-        const difficultyMultiplier = 1 + (gameDuration / 60)
-        const orbCount = Math.min(BOSS_MAX_ORBS, BOSS_MIN_ORBS + Math.floor(Math.random() * 3 * difficultyMultiplier))
-        for (let i = 0; i < orbCount; i++) {
-          const orbGeo = new THREE.SphereGeometry(0.4, 12, 12)
-          const orbMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, emissive: 0x00aaaa, emissiveIntensity: 0.5 })
-          const orb = new THREE.Mesh(orbGeo, orbMat)
-          const angle = (i / orbCount) * Math.PI * 2
-          orb.position.set(
-            boss.position.x + Math.cos(angle) * 3,
-            boss.position.y + 1 + Math.random() * 2,
-            boss.position.z + Math.sin(angle) * 3
-          )
-          scene.add(orb)
-          bossVulnerableOrbs.push({ mesh: orb, collected: false })
-        }
-        createFloatingText('VULNERABLE!', boss.position.clone().add(new THREE.Vector3(0, 3, 0)), '#00ffff')
-      }
-    } else if (bossType === 'truck' && bossState === 'vulnerable') {
-      // VULNERABLE: time to collect orbs (truck only)
-      if (bossStateTimer >= BOSS_VULNERABLE_DURATION) {
-        bossState = 'idle'
-        bossStateTimer = 0
+        // V4: Truck boss - no orbs/projectiles, instant return to idle
         boss.position.z = -54
-        // Remove uncollected orbs
-        bossVulnerableOrbs.forEach(orb => scene.remove(orb.mesh))
-        bossVulnerableOrbs = []
         createFloatingText('ARMORED!', boss.position.clone().add(new THREE.Vector3(0, 3, 0)), '#ff4444')
-      } else {
-        // Hover in place during vulnerable
-        const sway = Math.sin(Date.now() * 0.002) * 2
-        boss.position.z = -54 + sway
-        boss.position.x = getCurveX(boss.position.z)
-        boss.position.y = getSurfaceY(boss.position.z)
       }
-      // Animate and check collection of vulnerable orbs
-      for (let i = bossVulnerableOrbs.length - 1; i >= 0; i--) {
-        const orbData = bossVulnerableOrbs[i]
-        orbData.mesh.rotation.y += 0.05
-        orbData.mesh.position.y += Math.sin(Date.now() * 0.005 + i) * 0.02
-        // Check collection
-        if (!orbData.collected && !gameOver.value && !countdownLocked) {
-          const dist = player.position.distanceTo(orbData.mesh.position)
-          if (dist < 1.5) {
-            orbData.collected = true
-            bossHealth.value -= 10
-            createFloatingText('-10', orbData.mesh.position.clone(), '#00ff00')
-            playSFX('coin_collect', 0.5)
-            scene.remove(orbData.mesh)
-            bossVulnerableOrbs.splice(i, 1)
-            // Check if boss defeated
-            if (bossHealth.value <= 0) {
-              bossDefeated.value = true
-              bossActive.value = false
-              bossWarning.value = false
-              bossHealth.value = 0
-              createFloatingText('✨ STAGE CLEAR! ✨', player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#44ff44')
-              playSFX('stage_clear')
-              stageTransitioning.value = true
-              if (boss) {
-                createParticleEffect(boss.position, 0x9933ff, 50)
-                scene.remove(boss)
-                boss = null
-              }
-              bossVulnerableOrbs.forEach(o => scene.remove(o.mesh))
-              bossVulnerableOrbs = []
-              bossDefeatTimeout1 = setTimeout(() => {
-                stageTransitioning.value = false
-                currentStage.value = (currentStage.value + 1) % STAGES.length
-                stageTime.value = 0
-                roadCurve.value = 0
-                roadCurveTarget.value = 0
-                stageTime.value = 0
-                createFloatingText('STAGE ' + (currentStage.value + 1), player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#4ecdc4')
-                // Start Stage 3 audio (IKEA BGM + conveyor ambient)
-                if (currentStage.value === 2) {
-                  startStage3Audio()
-                }
-                startStageCountdown()
-                bossDefeatTimeout1 = null
-              }, 1000)
-            }
-          }
-        }
-        // Remove if too far from player
-        if (orbData.mesh.position.z > 10) {
-          scene.remove(orbData.mesh)
-          bossVulnerableOrbs.splice(i, 1)
-        }
-      }
+    } else if (bossType === 'truck' && bossState === 'idle') {
+      // V4: Truck boss - no vulnerable state, no orbs to collect
+      // Damage boss via near-misses during charge only
     }
-    
     // Attack timer — only attack during IDLE state
     if (bossState === 'idle') {
       bossAttackTimer += realDelta
