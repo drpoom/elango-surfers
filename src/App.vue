@@ -590,6 +590,7 @@ let gameSpeed = 0.25;
 let lastSpawnTime = -2; // grace period before first spawn
 let spawnInterval = 1.2;
 let gameDuration = 0;
+let pauseStartTime = 0; // Track pause start for elapsed time adjustment
 let comboCount = 0;
 let lastCoinTime = 0;
 
@@ -4658,7 +4659,7 @@ const restartGame = () => {
 const pauseGame = () => {
   if (isPaused.value || gameOver.value || countdownActive.value) return;
   isPaused.value = true;
-  clock.stop();
+  pauseStartTime = clock.getElapsedTime(); // Record pause time
   // Show pause indicator
   createFloatingText('⏸️ PAUSED', player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#ffffff');
   console.log('[PAUSE] Game paused');
@@ -4667,7 +4668,9 @@ const pauseGame = () => {
 const resumeGame = () => {
   if (!isPaused.value) return;
   isPaused.value = false;
-  clock.start();
+  // Adjust clock to account for pause duration
+  const pauseDuration = clock.getElapsedTime() - pauseStartTime;
+  clock.elapsedTime -= pauseDuration;
   console.log('[RESUME] Game resumed');
 };
 
