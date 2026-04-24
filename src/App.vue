@@ -286,33 +286,46 @@ function applyStageVisuals(stageIndex) {
     // Switch to medieval BGM
     switchBGMTrack('medieval');
   } else if (stage.id === 3) {
-    // Stage 3: IKEA-pocalypse - conveyor road with Swedish flag colors
-    if (!stage3Textures.conveyor) {
-      stage3Textures.conveyor = textureLoader.load('assets/stage3/road-conveyor.webp');
-      stage3Textures.conveyor.wrapS = THREE.RepeatWrapping;
-      stage3Textures.conveyor.wrapT = THREE.RepeatWrapping;
-      stage3Textures.conveyor.repeat.set(1, 10);
-      stage3Textures.conveyor.colorSpace = THREE.SRGBColorSpace;
+    // Stage 3: Concrete Jungle - urban cityscape with concrete and glass
+    if (!stage3Textures.road) {
+      stage3Textures.road = textureLoader.load('assets/stage3/road_concrete_asphalt.png');
+      stage3Textures.road.wrapS = THREE.RepeatWrapping;
+      stage3Textures.road.wrapT = THREE.RepeatWrapping;
+      stage3Textures.road.repeat.set(1, 10);
+      stage3Textures.road.colorSpace = THREE.SRGBColorSpace;
     }
-    roadMesh.material.map = stage3Textures.conveyor;
+    roadMesh.material.map = stage3Textures.road;
     roadMesh.material.color.set(0xffffff); // White - let texture show
     roadMesh.material.needsUpdate = true;
-    // Tint grass for IKEA parking lot
-    if (grassMesh) { grassMesh.material.color.set(0x3a5a2c); grassMesh.material.needsUpdate = true; }
-    // Fluorescent lighting sky
-    if (scene && scene.fog) { scene.fog.color.set(0xE8E8E8); scene.background = new THREE.Color(0xE8E8E8); }
+    // Replace grass with concrete pavement
+    if (!stage3Textures.pavement) {
+      stage3Textures.pavement = textureLoader.load('assets/stage3/pavement_concrete.png');
+      stage3Textures.pavement.wrapS = THREE.RepeatWrapping;
+      stage3Textures.pavement.wrapT = THREE.RepeatWrapping;
+      stage3Textures.pavement.repeat.set(10, 25);
+      stage3Textures.pavement.colorSpace = THREE.SRGBColorSpace;
+    }
+    if (grassMesh) {
+      grassMesh.material.map = stage3Textures.pavement;
+      grassMesh.material.color.set(0xffffff);
+      grassMesh.material.needsUpdate = true;
+    }
+    // Urban cityscape sky
+    if (scene && scene.fog) { scene.fog.color.set(0x8a9a9a); scene.background = new THREE.Color(0x8a9a9a); }
     // Preload Stage 3 obstacle textures
     loadStage3Textures();
-    // Apply IKEA building facades (random blue/yellow for variety)
+    // Apply glass & steel building facades
+    if (!stage3Textures.building) {
+      stage3Textures.building = textureLoader.load('assets/stage3/building_glass_steel.png');
+      stage3Textures.building.colorSpace = THREE.SRGBColorSpace;
+    }
     if (buildings.length) {
       buildings.forEach((b, i) => {
         const mesh = b.children.find(c => c.isMesh)
         if (mesh && mesh.material && Array.isArray(mesh.material)) {
-          // Randomly assign blue or yellow IKEA texture
-          const ikeaTexture = (i % 2 === 0) ? stage3Textures.buildingIkeaBlue : stage3Textures.buildingIkeaYellow
           for (const idx of [0, 1, 4]) {
             if (mesh.material[idx].map) {
-              mesh.material[idx].map = ikeaTexture
+              mesh.material[idx].map = stage3Textures.building
               mesh.material[idx].color.set(0xffffff)
               mesh.material[idx].needsUpdate = true
             }
@@ -320,7 +333,7 @@ function applyStageVisuals(stageIndex) {
         }
       })
     }
-    // Switch to IKEA/upbeat BGM
+    // Switch to urban/city BGM
     switchBGMTrack('highway');
   } else {
     // Highway: restore original
@@ -379,6 +392,133 @@ let coins = [];
 let powerups = [];
 let particles = [];
 let floatingTexts = [];
+
+// Overlap detection constants
+const MAX_SPAWN_RETRIES = 3;
+const OBSTACLE_OVERLAP_RADIUS = 2.5; // Minimum distance between obstacles
+const COIN_OBSTACLE_OVERLAP_RADIUS = 1.8; // Minimum distance between coins and obstacles
+const BUILDING_OVERLAP_RADIUS = 8; // Minimum distance between buildings
+const TREE_OVERLAP_RADIUS = 4; // Minimum distance between trees
+
+/**
+ * Check if a position overlaps with existing objects
+ * @param {number} x - X position to check
+ * @param {number} z - Z position to check
+ * @param {string} objectType - Type: 'obstacle', 'coin', 'building', 'tree'
+ * @param {string} excludeType - Optional: exclude certain types from check (e.g., 'boss')
+ * @returns {boolean} - true if overlap detected
+ */
+const checkOverlap = (x, z, objectType, excludeType = null) => {
+  const stage = STAGES[currentStage.value];
+  const isBossSpawn = excludeType === 'boss';
+  
+  // Boss spawns are exempt from overlap checks
+  if (isBossSpawn) return false;
+  
+  if (objectType === 'obstacle') {
+    // Check against other obstacles
+    for (const obs of obstacles) {
+      if (obs.mesh && obs.mesh.position) {
+        const dx = x - obs.mesh.position.x;
+        const dz = z - obs.mesh.position.z;
+        const distance = Math.sqrt(dx * dx + dz * dz);
+        if (distance < OBSTACLE_OVERLAP_RADIUS) return true;
+      }
+    }
+    // Check against coins (obstacles shouldn't overlap coins)
+    for (const coin of coins) {
+      if (coin.mesh && coin.mesh.position) {
+        const dx = x - coin.mesh.position.x;
+        const dz = z - coin.mesh.position.z;
+        const distance = Math.sqrt(dx * dx + dz * dz);
+        if (distance < COIN_OBSTACLE_OVERLAP_RADIUS) return true;
+      }
+    }
+  } else if (objectType === 'coin') {
+    // Check against obstacles (coins shouldn't overlap obstacles)
+    for (const obs of obstacles) {
+      if (obs.mesh && obs.mesh.position) {
+        const dx = x - obs.mesh.position.x;
+        const dz = z - obs.mesh.position.z;
+        const distance = Math.sqrt(dx * dx + dz * dz);
+        if (distance < COIN_OBSTACLE_OVERLAP_RADIUS) return true;
+      }
+    }
+  } else if (objectType === 'building') {
+    // Check against other buildings
+    for (const bldg of buildings) {
+      if (bldg.position) {
+        const dx = x - bldg.position.x;
+        const dz = z - bldg.position.z;
+        const distance = Math.sqrt(dx * dx + dz * dz);
+        if (distance < BUILDING_OVERLAP_RADIUS) return true;
+      }
+    }
+  } else if (objectType === 'tree') {
+    // Check against other trees
+    for (const tree of trees) {
+      if (tree.position) {
+        const dx = x - tree.position.x;
+        const dz = z - tree.position.z;
+        const distance = Math.sqrt(dx * dx + dz * dz);
+        if (distance < TREE_OVERLAP_RADIUS) return true;
+      }
+    }
+  }
+  
+  return false;
+};
+
+/**
+ * Attempt to spawn with overlap detection and retry logic
+ * @param {Function} spawnFn - Function that creates the object and returns { group, lane, hitWidth? }
+ * @param {string} objectType - Type: 'obstacle', 'coin', 'building', 'tree'
+ * @param {string} arrayName - Name of array to add to: 'obstacles', 'coins', etc.
+ * @param {boolean} isBoss - true if this is a boss spawn (exempt from overlap checks)
+ * @returns {boolean} - true if spawn succeeded, false if skipped after retries
+ */
+const spawnWithOverlapCheck = (spawnFn, objectType, arrayName, isBoss = false) => {
+  let attempts = 0;
+  let success = false;
+  
+  while (attempts < MAX_SPAWN_RETRIES && !success) {
+    const result = spawnFn();
+    if (!result || !result.group) break;
+    
+    const { group, lane, hitWidth, extraData } = result;
+    const spawnX = group.position.x;
+    const spawnZ = group.position.z;
+    
+    // Check for overlap (skip for boss spawns)
+    const hasOverlap = checkOverlap(spawnX, spawnZ, objectType, isBoss ? 'boss' : null);
+    
+    if (hasOverlap) {
+      // Overlap detected, remove the object and retry
+      scene.remove(group);
+      attempts++;
+    } else {
+      // No overlap, apply Y position and add to array
+      group.position.y += getSurfaceY(-50);
+      group.baseY = group.position.y - getSurfaceY(-50);
+      
+      const targetArray = arrayName === 'obstacles' ? obstacles :
+n                        arrayName === 'coins' ? coins :
+                        arrayName === 'powerups' ? powerups : [];
+      
+      const entry = { mesh: group, lane, collected: false, ...extraData };
+      if (hitWidth !== undefined) entry.hitWidth = hitWidth;
+      if (objectType === 'obstacle') {
+        entry.type = extraData?.type || 'ground';
+        if (extraData?.obstacleType) entry.obstacleType = extraData.obstacleType;
+      }
+      
+      targetArray.push(entry);
+      success = true;
+    }
+  }
+  
+  return success;
+};
 
 // Initialize achievement composable (uses lazy getters for player + createFloatingText)
 const {
@@ -555,7 +695,7 @@ const applyFachwerkToBuildings = () => {
   })
 };
 
-// Stage 3 (IKEA) obstacle textures
+// Stage 3 (Concrete Jungle) obstacle textures
 let stage3Textures = {};
 const loadStage3Textures = () => {
   if (Object.keys(stage3Textures).length > 0) return; // already loaded
@@ -589,19 +729,6 @@ const loadStage3Textures = () => {
   // T3-07: Wardrobe portal (2-frame spritesheet) - load once, animation later
   stage3Textures.wardrobePortal = textureLoader.load(textureBase + 'obstacle-wardrobe-portal.webp');
   stage3Textures.wardrobePortal.colorSpace = THREE.SRGBColorSpace;
-  
-  // IKEA building facade textures
-  stage3Textures.buildingIkeaBlue = textureLoader.load(textureBase + 'building_ikea_blue.webp');
-  stage3Textures.buildingIkeaBlue.colorSpace = THREE.SRGBColorSpace;
-  stage3Textures.buildingIkeaYellow = textureLoader.load(textureBase + 'building_ikea_yellow.webp');
-  stage3Textures.buildingIkeaYellow.colorSpace = THREE.SRGBColorSpace;
-  
-  // Conveyor belt texture for road
-  stage3Textures.conveyor = textureLoader.load(textureBase + 'road-conveyor.webp');
-  stage3Textures.conveyor.wrapS = THREE.RepeatWrapping;
-  stage3Textures.conveyor.wrapT = THREE.RepeatWrapping;
-  stage3Textures.conveyor.repeat.set(1, 10);
-  stage3Textures.conveyor.colorSpace = THREE.SRGBColorSpace;
 };
 
 window.addEventListener('error', (e) => { console.log('GLOBAL ERROR:', e.message, 'at', e.filename + ':' + e.lineno + ':' + e.colno); });
@@ -2032,9 +2159,10 @@ const spawnObstacle = () => {
     }
   }
   
+  // Add to scene with overlap detection
   scene.add(group);
-  group.position.y += getSurfaceY(-50); // apply curve at spawn
-  group.baseY = group.position.y - getSurfaceY(-50); // store flat Y
+  group.position.y += getSurfaceY(-50);
+  group.baseY = group.position.y - getSurfaceY(-50);
   obstacles.push({ mesh: group, lane: obsLane, type: 'ground', obstacleType: obsType, hitWidth });
 };
 
@@ -2090,8 +2218,8 @@ const spawnFloatingObstacle = () => {
   
   ufoGroup.position.set(laneX, 2.2, -50);
   scene.add(ufoGroup);
-  ufoGroup.position.y += getSurfaceY(-50); // apply curve at spawn
-  ufoGroup.baseY = ufoGroup.position.y - getSurfaceY(-50); // store flat Y
+  ufoGroup.position.y += getSurfaceY(-50);
+  ufoGroup.baseY = ufoGroup.position.y - getSurfaceY(-50);
   obstacles.push({ mesh: ufoGroup, lane, type: 'floating' });
 };
 
@@ -2115,9 +2243,33 @@ const spawnCoin = () => {
   coinObj.castShadow = false;
   coinObj.position.set(laneX, 1, -50);
   
+  // Add to scene with overlap detection (coins shouldn't overlap obstacles)
   scene.add(coinObj);
-  coinObj.position.y += getSurfaceY(-50); // apply curve at spawn
-  coinObj.baseY = coinObj.position.y - getSurfaceY(-50); // store flat Y
+  const spawnX = coinObj.position.x;
+  const spawnZ = coinObj.position.z;
+  
+  // Check for overlap with obstacles
+  let hasOverlap = false;
+  for (const obs of obstacles) {
+    if (obs.mesh && obs.mesh.position) {
+      const dx = spawnX - obs.mesh.position.x;
+      const dz = spawnZ - obs.mesh.position.z;
+      const distance = Math.sqrt(dx * dx + dz * dz);
+      if (distance < COIN_OBSTACLE_OVERLAP_RADIUS) {
+        hasOverlap = true;
+        break;
+      }
+    }
+  }
+  
+  if (hasOverlap) {
+    // Skip this coin spawn - don't add to array
+    scene.remove(coinObj);
+    return;
+  }
+  
+  coinObj.position.y += getSurfaceY(-50);
+  coinObj.baseY = coinObj.position.y - getSurfaceY(-50);
   coins.push({ mesh: coinObj, lane, collected: false });
 };
 
@@ -2683,8 +2835,8 @@ const animate = () => {
   // === UPDATE ROAD MESH CURVE ===
   updateRoadCurve();
   
-  // Scroll cobblestone texture
-  if (cobblestoneTexture && currentStage.value > 0) {
+  // Scroll cobblestone texture (Stage 2 only)
+  if (cobblestoneTexture && currentStage.value === 1) {
     cobblestoneTexture.offset.y += gameSpeed * 0.05;
   }
 
@@ -3836,6 +3988,13 @@ const animate = () => {
   if (groundTexture) {
     groundTexture.offset.y -= gameSpeed * 0.15;
     if (grassTileTex) grassTileTex.offset.y += gameSpeed * 0.15;
+  }
+  // Stage 3: scroll concrete road and pavement textures
+  if (stage3Textures.road) {
+    stage3Textures.road.offset.y -= gameSpeed * 0.15;
+  }
+  if (stage3Textures.pavement) {
+    stage3Textures.pavement.offset.y += gameSpeed * 0.15;
   }
   
   // === CHARACTER ANIMATION ===
