@@ -625,6 +625,42 @@ const saveHighScore = () => {
 const { leaderboard, playerName, showNameEntry, isHighScore, submitScore, loadLeaderboard, syncStatus } = useLeaderboard({ VERSION, score, highScore })
 
 const initGame = () => {
+  // Clean up old trees and buildings before creating new scene
+  // Remove from scene and dispose geometries/materials to prevent memory leaks
+  trees.forEach(tree => {
+    scene.remove(tree);
+    tree.traverse(child => {
+      if (child.isMesh) {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach(mat => mat.dispose());
+          } else {
+            child.material.dispose();
+          }
+        }
+      }
+    });
+  });
+  trees = [];
+  
+  buildings.forEach(building => {
+    scene.remove(building);
+    building.traverse(child => {
+      if (child.isMesh) {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach(mat => mat.dispose());
+          } else {
+            child.material.dispose();
+          }
+        }
+      }
+    });
+  });
+  buildings = [];
+  
   scene = new THREE.Scene();
   
   // Colorful cartoon sky with gradient fog
