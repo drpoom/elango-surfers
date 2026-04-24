@@ -2,7 +2,7 @@
 
 **An infinite runner game — built entirely by open-source AI models, communicated over Telegram.**
 
-Play it: **[www.drpoom.com/Elango-surfers](https://www.drpoom.com/Elango-surfers)**
+Play it: **[www.drpoom.com/elango-surfers](https://www.drpoom.com/elango-surfers)**
 
 ---
 
@@ -12,14 +12,14 @@ This game was developed **without any human-written code**. Every line was gener
 
 **The human's role:** Final game testing. Nothing more.
 
-- **Code authoring:** Open-source AI models (GLM, via OpenClaw agent framework)
+- **Code authoring:** Open-source AI models (QWEN3.5, GLM5.1, and GEMMA4, via OpenClaw agent framework)
 - **Communication channel:** Telegram — the AI agent and human discussed features, bugs, and feedback in real-time chat
 - **Iteration loop:** AI writes code → deploys → human tests on device → reports bugs via Telegram → AI fixes → repeat
 - **No IDE, no manual coding** — the human never touched a source file
 
 ### Why This Matters
 
-We wanted to prove that modern open-source AI can build a complete, polished game from scratch — with a human-in-the-loop only for QA, not creation. Every feature, every bug fix, every asset (procedurally generated) came from the model.
+We wanted to prove that modern open-source AI can build a complete, polished game from scratch — with a human-in-the-loop only for design and QA, not creation. Every feature, every bug fix, every asset (procedurally generated) came from the model.
 
 ---
 
@@ -105,4 +105,3 @@ IKEA-pocalypse stage (Stage 3) with conveyor road and Swedish aesthetics. Fixed 
 
 **CC BY-NC-ND 4.0** — Non-commercial, no derivatives.
 
-Built by AI. Tested by Uncle John. 🐕
