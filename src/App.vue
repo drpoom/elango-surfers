@@ -2379,6 +2379,7 @@ const createFloatingText = (text, position, color) => {
 let bossAttackTimer = 0
 let bossNextAttack = 3 // seconds until first attack
 let bossProjectiles = []
+let bossDebris = [] // debris dropped by giantMeatball boss
 let bossCharging = false
 let bossChargeTimer = 0
 let bossChargeTarget = 0
@@ -2714,6 +2715,44 @@ function spawnBossProjectile(type) {
       boss.userData.chargeStartZ = boss.position.z
       boss.userData.chargeMissTriggered = false
     }
+  } else if (type === 'giantMeatball') {
+    // Stage 3 boss: Drops construction debris from above (urban theme)
+    const lanes = [0, 1, 2]
+    const attackLanes = lanes.sort(() => Math.random() - 0.5).slice(0, 2) // 2 random lanes
+    
+    attackLanes.forEach((lane, idx) => {
+      const targetX = (lane - 1) * laneWidth
+      
+      // Debris: falling concrete chunk (gray box)
+      const debrisGeo = new THREE.BoxGeometry(0.8, 0.8, 0.8)
+      const debrisMat = new THREE.MeshPhongMaterial({ color: 0x666666, emissive: 0x222222 })
+      const debris = new THREE.Mesh(debrisGeo, debrisMat)
+      
+      // Start high above, fall straight down
+      debris.position.set(targetX, 8 + idx * 2, -10) // high above, staggered
+      debris.userData = { targetX, targetY: 0.5, speed: 0.4 + Math.random() * 0.2, lane }
+      scene.add(debris)
+      bossProjectiles.push(debris)
+    })
+    createFloatingText('⚠️', new THREE.Vector3(0, 6, -10), '#888888')
+    playSFX('crash_metal', 0.4)
+  } else if (type === 'giantMeatball') {
+    // Giant meatball drops debris from sky - falls straight down
+    const lanes = [-1, 0, 1] // left, center, right
+    const targetLane = lanes[Math.floor(Math.random() * lanes.length)]
+    const targetX = targetLane * laneWidth
+    
+    const debrisGeo = new THREE.BoxGeometry(0.6, 0.6, 0.6)
+    const debrisMat = new THREE.MeshToonMaterial({ color: 0x8B4513 }) // brown meatball color
+    const debris = new THREE.Mesh(debrisGeo, debrisMat)
+    
+    // Start from top of screen, fall down
+    debris.position.set(targetX + (Math.random() - 0.5) * 0.5, 8, -40 + (Math.random() - 0.5) * 10)
+    debris.userData = { targetX, targetLane, speed: 0.15 + Math.random() * 0.1, rotationSpeed: Math.random() * 0.2 }
+    scene.add(debris)
+    bossDebris.push(debris)
+    createFloatingText('⚠️', new THREE.Vector3(targetX, 6, -30), '#ff6600')
+    playSFX('fire_shoot', 0.3)
   } else {
     // Dragon fires 2-3 fireballs at different lanes & heights
     const lanes = [0, 1, 2]
@@ -3073,7 +3112,8 @@ const animate = () => {
       bossAttackTimer += realDelta
       if (bossAttackTimer >= bossNextAttack) {
         bossAttackTimer = 0
-        bossNextAttack = 0.8 + Math.random() * 0.6
+        // giantMeatball attacks slower (3-5 sec), dragon/truck faster
+        bossNextAttack = bossType === 'giantMeatball' ? 3 + Math.random() * 2 : 0.8 + Math.random() * 0.6
         spawnBossProjectile(bossType)
         cameraShakeTimer = 0.3; cameraShakeIntensity = 0.15
       }
@@ -3122,6 +3162,48 @@ const animate = () => {
     if (fb.position.z > 10) {
       scene.remove(fb)
       bossProjectiles.splice(i, 1)
+    }
+  }
+  
+  // === GIANT MEATBALL DEBRIS MOVEMENT + COLLISION ===
+  // Debris falls from top of screen (y=8) down to ground (y=0)
+  for (let i = bossDebris.length - 1; i >= 0; i--) {
+    const debris = bossDebris[i]
+    // Fall downward
+    debris.position.y -= debris.userData.speed
+    // Rotate as it falls
+    debris.rotation.x += debris.userData.rotationSpeed
+    debris.rotation.z += debris.userData.rotationSpeed
+    
+    // Skip collision if game over, countdown, grace period, or stage transition
+    if (gameOver.value || countdownLocked || stageTransitioning.value || Date.now() - gameStartTime < 2000) {
+      if (debris.position.y < -1) {
+        scene.remove(debris)
+        bossDebris.splice(i, 1)
+      }
+      continue
+    }
+    
+    // Collision with player - debris hits when it reaches player height
+    const dist = player.position.distanceTo(debris.position)
+    if (dist < 1.5 && debris.position.y < 2) {
+      if (!isInvincible) {
+        // Debris hit = damage (like truck)
+        bossHealth.value = Math.min(100, bossHealth.value + 10)
+        createFloatingText('HIT', player.position.clone().add(new THREE.Vector3(0, 2, 0)), '#ff4444')
+        cameraShakeTimer = 0.5; cameraShakeIntensity = 0.25
+        isInvincible = true
+        invincibilityTimeout = setTimeout(() => { isInvincible = false; invincibilityTimeout = null }, 1500)
+      }
+      scene.remove(debris)
+      bossDebris.splice(i, 1)
+      continue
+    }
+    
+    // Remove if hits ground or past player
+    if (debris.position.y < 0 || debris.position.z > 10) {
+      scene.remove(debris)
+      bossDebris.splice(i, 1)
     }
   }
   
