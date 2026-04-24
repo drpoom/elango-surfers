@@ -16,6 +16,15 @@
         <div class="boss-health-track"><div class="boss-health-fill" :style="{ width: bossHealth + '%' }"></div></div>
       </div>
     </div>
+    <!-- DEBUG OVERLAY -->
+    <div v-if="showDebugOverlay" id="debug-overlay" style="position:absolute;top:60px;right:10px;background:rgba(0,0,0,0.85);color:#0f0;font-family:monospace;font-size:10px;padding:8px;border-radius:4px;max-width:280px;z-index:9999;pointer-events:none">
+      <div style="font-weight:bold;margin-bottom:4px;color:#ff0">🐛 DEBUG MODE</div>
+      <div><strong>TOUCH:</strong> start({{ touchStartX }},{{ touchStartY }}) end({{ touchEndX }},{{ touchEndY }}) delta({{ Math.round(touchEndX - touchStartX) }},{{ Math.round(touchEndY - touchStartY) }})</div>
+      <div><strong>TILT:</strong> beta={{ (lastBeta ?? 0).toFixed(1) }} gamma={{ (lastGamma ?? 0).toFixed(1) }} initBeta={{ tiltInitialBeta !== null ? tiltInitialBeta.toFixed(1) : 'null' }} enabled={{ tiltEnabled }}</div>
+      <div><strong>MIC:</strong> vol={{ (lastMicVolume ?? 0).toFixed(1) }} ctx={{ audioCtxState }} enabled={{ micEnabledRef }}</div>
+      <div><strong>STAGE:</strong> cur={{ currentStage }} debug={{ debugStartStage }} name={{ STAGES[currentStage]?.name || 'N/A' }}</div>
+      <div><strong>RENDER:</strong> grassY={{ grassY }} grassRO={{ grassRenderOrder }} grassDW={{ grassDepthWrite }} roadY={{ roadY }} roadRO={{ roadRenderOrder }}</div>
+    </div>
     <div id="floating-texts">
       <div id="near-miss" v-if="nearMissTextRef">{{ nearMissTextRef }}</div>
       <div id="event-alert" v-if="eventAlertTextRef">{{ eventAlertTextRef }}</div>
@@ -69,9 +78,6 @@
       <button @click="toggleSettings">Close</button>
       <div class="settings-section" style="border-bottom:1px solid #444;padding-bottom:1rem;margin-bottom:1rem">
         <h3>🎮 Game Settings</h3>
-        <label style="color:#fff;font-size:16px;display:flex;align-items:center;gap:8px;cursor:pointer">
-          <input type="checkbox" v-model="fovWarpRef" @change="toggleFovWarp" style="width:20px;height:20px;cursor:pointer" /> FOV Warp Effect
-        </label>
         <label style="color:#fff;font-size:16px;display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px">
           <input type="checkbox" v-model="roadCurveEnabled" style="width:20px;height:20px;cursor:pointer" /> Road Curves
         </label>
@@ -126,6 +132,7 @@
           </li>
         </ul>
       </div>
+      <button @click="toggleDebug" style="margin-top:8px;background:#333;color:#0f0;border:1px solid #0f0;padding:6px 12px;borderRadius:4px;cursor:pointer;fontSize:13px">🐛 Debug {{ showDebugOverlay ? 'ON' : 'OFF' }}</button>
     </div>
   </div>
 </template>
@@ -161,6 +168,21 @@ let countdownLocked = false; // prevents input during countdown
 const showSettings = ref(false);
 const debugStartStage = ref(-1);
 const tiltEnabledRef = ref(true);
+
+// Debug overlay refs
+const showDebugOverlay = ref(false);
+const lastBeta = ref(0);
+const lastGamma = ref(0);
+const lastMicVolume = ref(0);
+const grassY = ref(0);
+const grassRenderOrder = ref(0);
+const grassDepthWrite = ref(false);
+const roadY = ref(0);
+const roadRenderOrder = ref(0);
+
+const toggleDebug = () => {
+  showDebugOverlay.value = !showDebugOverlay.value;
+};
 
 const toggleSettings = () => {
   showSettings.value = !showSettings.value;
@@ -2549,6 +2571,19 @@ const animate = () => {
   const delta = realDelta;
   const time = clock.getElapsedTime();
   
+  // === DEBUG OVERLAY UPDATES ===
+  if (showDebugOverlay.value) {
+    if (roadMesh) {
+      roadY.value = roadMesh.position.y;
+      roadRenderOrder.value = roadMesh.renderOrder;
+    }
+    if (grassMesh) {
+      grassY.value = grassMesh.position.y;
+      grassRenderOrder.value = grassMesh.renderOrder;
+      grassDepthWrite.value = grassMesh.material.depthWrite;
+    }
+  }
+  
   const stage = STAGES[currentStage.value];
   const isStage3 = stage.id === 3;
   
@@ -3702,6 +3737,10 @@ const animate = () => {
 
   // Voice/fly - mic input
   const micVolume = getMicVolume();
+  if (showDebugOverlay.value) {
+    lastMicVolume.value = micVolume;
+    if (audioCtx) audioCtxState.value = audioCtx.state;
+  }
   if (micEnabledRef.value && micVolume > MIC_PEAK_THRESHOLD && !isJumping && !isFlying && !isSliding && !gameOver.value) {
     // Volume spike → start flying
     isFlying = true;
@@ -3868,16 +3907,8 @@ const animate = () => {
   camera.position.y += (6 - camera.position.y) * 0.05;
   camera.position.z += (12 - camera.position.z) * 0.05;
   camera.lookAt(0, 1, -8);
-  if (!fovWarpEnabled) {
-    camera.fov += (60 - camera.fov) * 0.05;
-    camera.updateProjectionMatrix();
-  }
-  
-  // === FOV WARP ===
-  if (fovWarpEnabled) {
-    camera.fov = 60 + difficultyMultiplier * 2;
-    camera.updateProjectionMatrix();
-  }
+  camera.fov += (60 - camera.fov) * 0.05;
+  camera.updateProjectionMatrix();
   
   // === RED VIGNETTE (edge glow at max difficulty) ===
   if (difficultyMultiplier > 2.5) {
@@ -4044,6 +4075,12 @@ const handleDeviceOrientation = (e) => {
   const gamma = e.gamma; // Left-right tilt (-90 to 90)
   
   if (beta === null || gamma === null) return;
+  
+  // Update debug overlay
+  if (showDebugOverlay.value) {
+    lastBeta.value = beta;
+    lastGamma.value = gamma;
+  }
   
   // During calibration (countdown), collect samples
   if (isCalibrating) {
