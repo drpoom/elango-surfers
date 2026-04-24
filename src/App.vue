@@ -35,6 +35,7 @@
          :style="{ opacity: Math.min(Math.abs(roadCurve) * 1.5, 1) }">
       {{ roadCurve > 0 ? '➡️' : '⬅️' }}
     </div>
+    <div id="pause-indicator" v-if="isPaused" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:48px;font-weight:bold;color:#fff;text-shadow:0 0 20px #000;z-index:9999;pointer-events:none">⏸️ PAUSED<br><span style="font-size:18px">Click/Tap/Press any key to resume</span></div>
     <div id="top-buttons">
       <div id="mic-btn" @click="toggleMic">{{ micEnabledRef ? '🎤' : '🎤🔴' }}</div>
       <div id="tilt-btn" @click="toggleTilt">{{ tiltEnabledRef ? '📱' : '📱🔴' }}</div>
@@ -170,6 +171,7 @@ const countdownActive = ref(false);
 const countdownText = ref('');
 let countdownLocked = false; // prevents input during countdown
 const showSettings = ref(false);
+const isPaused = ref(false); // Pause state
 const debugStartStage = ref(-1);
 const tiltEnabledRef = ref(true);
 
@@ -189,7 +191,17 @@ const toggleDebug = () => {
 };
 
 const toggleSettings = () => {
-  showSettings.value = !showSettings.value;
+  if (showSettings.value) {
+    // Closing settings - resume if game was paused
+    showSettings.value = false;
+    // Don't auto-resume - user needs to interact to resume
+  } else {
+    // Opening settings - pause the game
+    if (!gameOver.value && !countdownActive.value) {
+      pauseGame();
+    }
+    showSettings.value = true;
+  }
 };
 
 // Achievement system — extracted to useAchievements.js
@@ -2799,6 +2811,13 @@ function spawnBossProjectile(type) {
 const animate = () => {
   requestAnimationFrame(animate);
 
+  // Handle pause state
+  if (isPaused.value) {
+    clock.getDelta(); // consume delta to prevent time jump
+    composer.render();
+    return;
+  }
+
   if (gameOver.value) {
     // Still update powerup timer even when game over
     if (activePowerup) {
@@ -4692,6 +4711,42 @@ const restartGame = () => {
   playSound('start');
 };
 
+// === PAUSE/RESUME SYSTEM ===
+const pauseGame = () => {
+  if (isPaused.value || gameOver.value || countdownActive.value) return;
+  isPaused.value = true;
+  clock.stop();
+  // Show pause indicator
+  createFloatingText('⏸️ PAUSED', player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#ffffff');
+  console.log('[PAUSE] Game paused');
+};
+
+const resumeGame = () => {
+  if (!isPaused.value) return;
+  isPaused.value = false;
+  clock.start();
+  console.log('[RESUME] Game resumed');
+};
+
+const togglePause = () => {
+  if (isPaused.value) {
+    resumeGame();
+  } else {
+    pauseGame();
+  }
+};
+
+// Handle visibility change (tab switch, app switch)
+const handleVisibilityChange = () => {
+  if (document.hidden) {
+    // Tab/app became hidden - pause
+    pauseGame();
+  } else {
+    // Tab/app became visible - resume (with user interaction)
+    // Don't auto-resume, wait for user interaction
+  }
+};
+
 window.addEventListener('error', (e) => { console.log('GLOBAL ERROR:', e.message, 'at', e.filename + ':' + e.lineno + ':' + e.colno); });
 onMounted(() => {
   const saved = localStorage.getItem('elangoSurfersHighScore');
@@ -4741,9 +4796,18 @@ onMounted(() => {
     if (e.target.closest('#mute-btn, #tilt-btn, #mic-btn, #settings-btn, #settings-panel')) return;
     e.preventDefault();
   }, { passive: false, capture: true });
+  
+  // Visibility change (tab/app switch) - pause when hidden
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  
   window.addEventListener('click', (e) => {
     // Check if click is on settings panel, buttons, or name entry
     if (e.target.closest('#settings-panel') || e.target.closest('#settings-btn') || e.target.closest('#mute-btn') || e.target.closest('#tilt-btn') || e.target.closest('#mic-btn') || e.target.closest('#name-entry')) {
+      return;
+    }
+    // Resume game on any click if paused
+    if (isPaused.value) {
+      resumeGame();
       return;
     }
     if (gameOver.value && !showNameEntry.value && Date.now() - gameOverTime >= 1000) startCountdown();
@@ -4751,14 +4815,20 @@ onMounted(() => {
     tryStartBGMFromGesture();
   });
   
-  // Also initialize audio on any keypress
-  window.addEventListener('keydown', () => {
+  // Resume on any keypress if paused
+  window.addEventListener('keydown', (e) => {
+    if (isPaused.value && e.key !== 'Escape') {
+      resumeGame();
+    }
     initAudio();
     tryStartBGMFromGesture();
-  }, { once: true });
+  });
   
-  // Initialize audio on touch
+  // Resume on touch if paused
   window.addEventListener('touchstart', () => {
+    if (isPaused.value) {
+      resumeGame();
+    }
     initAudio();
     tryStartBGMFromGesture();
   }, { once: true, passive: true });
