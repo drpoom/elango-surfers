@@ -264,13 +264,12 @@ function applyStageVisuals(stageIndex) {
     if (!originalRoadMaterial) {
       originalRoadMaterial = roadMesh.material;
     }
-    // Use MeshToonMaterial with cobblestone texture for cartoon-style PBR look
-    roadMesh.material = new THREE.MeshToonMaterial({
-      map: cobblestoneTexture,
-      color: 0xffffff,  // White - let texture show through
-      roughness: 0.8
-    });
-    roadMesh.material.needsUpdate = true;
+    // Don't create new material — modify existing (v4 approach)
+    if (cobblestoneTexture) {
+      roadMesh.material.map = cobblestoneTexture;
+      roadMesh.material.color.set(0x888888);
+      roadMesh.material.needsUpdate = true;
+    }
     // Preload fachwerkhaus texture for medieval buildings
     loadFachwerk(() => {
       // Apply fachwerk to buildings once texture is ready
@@ -2717,10 +2716,7 @@ const animate = () => {
     // State machine: IDLE -> CHARGING -> VULNERABLE -> IDLE
     if (bossState === 'idle') {
       // IDLE: hover/sway, then CHARGE
-      // Stage 2 dragon: stay idle, only projectile attacks
-      if (bossType === 'dragon') {
-        // Dragon never charges - stays in idle, fires fireballs via attack timer
-      } else if (bossStateTimer >= BOSS_IDLE_DURATION) {
+      if (bossStateTimer >= BOSS_IDLE_DURATION) {
         bossState = 'charging'
         bossStateTimer = 0
         bossCharging = true
@@ -2762,8 +2758,6 @@ const animate = () => {
         }
       }
     } else if (bossState === 'charging') {
-      // Stage 2 dragon safety: dragon never charges
-      if (bossType === 'dragon') { bossState = 'idle'; bossStateTimer = 0; return; }
       // CHARGE: move toward player Z, dodgeable
       bossChargeTimer += realDelta
       // Difficulty scaling: faster charges at higher difficulty
@@ -2807,8 +2801,6 @@ const animate = () => {
         createFloatingText('VULNERABLE!', boss.position.clone().add(new THREE.Vector3(0, 3, 0)), '#00ffff')
       }
     } else if (bossState === 'vulnerable') {
-      // Stage 2 dragon safety: dragon never enters vulnerable state
-      if (bossType === 'dragon') { bossState = 'idle'; bossStateTimer = 0; return; }
       // VULNERABLE: time to collect orbs
       if (bossStateTimer >= BOSS_VULNERABLE_DURATION) {
         bossState = 'idle'
