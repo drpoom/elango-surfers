@@ -228,18 +228,13 @@ export function useAudio({ currentStage, STAGES }) {
     isMedievalBGM = (track === 'medieval');
 
     // ============================================
-    // STAGE 1 BGM - HIGHWAY THEME
+    // STAGE 1 BGM - ELANGO MAIN THEME
     // ============================================
-    // PLACEHOLDER FOR NEW STAGE 1 BGM:
-    // Drop your new Stage 1 BGM file in: /public/assets/
-    // Supported formats: .ogg OR .mp3
-    // Recommended filename: stage1_bgm.ogg or stage1_bgm.mp3
-    // Then update the STAGE1_BGM_FILE constant below.
-    //
-    // Current temp BGM: game_music.ogg (highway theme)
+    // Primary BGM: elango_main_theme.mp3 (user-provided main theme)
+    // Fallback: game_music.ogg (original highway theme)
     // ============================================
-    const STAGE1_BGM_FILE = 'assets/game_music.ogg'; // <-- REPLACE THIS with your new BGM filename
-    const STAGE1_BGM_FALLBACK = 'assets/game_music.mp3'; // Optional MP3 fallback
+    const STAGE1_BGM_FILE = 'assets/elango_main_theme.mp3'; // Elango Main Theme
+    const STAGE1_BGM_FALLBACK = 'assets/game_music.ogg'; // Fallback to original highway theme
 
     // Highway BGM
     bgmGain = audioCtx.createGain();
