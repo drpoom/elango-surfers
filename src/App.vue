@@ -154,7 +154,11 @@ import { useCurve } from './composables/useCurve.js'
 import { useMic } from './composables/useMic.js'
 
 // Version - Update this for each release
-const VERSION = 'v5.0.5';
+const VERSION = 'v5.0.6';
+
+// Building textures (module scope for access in applyStageVisuals)
+let buildingTextures = [];
+let buildingDominantColors = [];
 
 // Score & High Score refs
 const score = ref(0);
@@ -1335,13 +1339,13 @@ const updateEvent = (delta) => {
 const createBackgroundElements = () => {
   // Priority texture loading: most visible objects first
   // 1. Building facades (most visible, darkest when missing)
-  const buildingTextures = [
+  buildingTextures = [
     textureLoader.load('assets/building_pink.webp'),
     textureLoader.load('assets/building_blue.webp'),
     textureLoader.load('assets/building_green.webp'),
   ];
   // Set dominant colors as fallback so buildings don't appear dark before texture loads
-  const buildingDominantColors = [0xffb6c1, 0x87ceeb, 0x98fb98]; // pink, blue, green
+  buildingDominantColors = [0xffb6c1, 0x87ceeb, 0x98fb98]; // pink, blue, green
   buildingTextures.forEach((tex, idx) => {
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
