@@ -2604,15 +2604,36 @@ function spawnBoss(bossType) {
       group.add(w)
     }
   } else if (bossType === 'giantMeatball') {
-    // Giant meatball boss — large sphere with meatball texture
-    const meatballGeo = new THREE.SphereGeometry(2.5, 16, 16)
-    const meatballMat = new THREE.MeshPhongMaterial({ 
-      map: stage3Textures.meatball,
-      color: 0xffffff
+    // Flying Spaghetti Meatball boss — sprite-based with rotating colorful tentacles
+    const spriteMat = new THREE.SpriteMaterial({ 
+      map: textureLoader.load('assets/stage3/boss_spaghetti_meatball.png'),
+      transparent: true
     })
-    const meatball = new THREE.Mesh(meatballGeo, meatballMat)
-    meatball.position.y = 2.5
-    group.add(meatball)
+    const sprite = new THREE.Sprite(spriteMat)
+    sprite.scale.set(5, 5, 1)
+    sprite.position.y = 2.5
+    group.add(sprite)
+    
+    // Add rotating colorful tentacles with disco effect
+    const tentacleCount = 8
+    const tentacles = []
+    for (let i = 0; i < tentacleCount; i++) {
+      const tentacleGeo = new THREE.CylinderGeometry(0.15, 0.05, 2.5, 8)
+      const tentacleMat = new THREE.MeshPhongMaterial({ 
+        color: new THREE.Color().setHSL((i / tentacleCount) % 1, 1, 0.5),
+        emissive: new THREE.Color().setHSL((i / tentacleCount) % 1, 1, 0.3),
+        emissiveIntensity: 0.5
+      })
+      const tentacle = new THREE.Mesh(tentacleGeo, tentacleMat)
+      const angle = (i / tentacleCount) * Math.PI * 2
+      tentacle.position.set(Math.cos(angle) * 1.5, 0, Math.sin(angle) * 1.5)
+      tentacle.rotation.x = Math.PI / 4
+      tentacle.rotation.z = angle
+      tentacle.userData = { baseAngle: angle, offset: i }
+      group.add(tentacle)
+      tentacles.push(tentacle)
+    }
+    group.userData.tentacles = tentacles
   } else {
     // Dragon boss — detailed polygon dragon
     // Stage 2 (index 1) = red fire dragon, other stages = purple
@@ -2718,7 +2739,7 @@ function spawnBoss(bossType) {
     }
   }
   
-  group.position.set(0, bossType === 'truck' ? 0 : 5, -36)
+  group.position.set(0, bossType === 'truck' ? 0 : 5, -25) // Stage 3 boss closer to avoid fog
   scene.add(group)
   boss = group
 }
@@ -2739,43 +2760,32 @@ function spawnBossProjectile(type) {
       boss.userData.chargeMissTriggered = false
     }
   } else if (type === 'giantMeatball') {
-    // Stage 3 boss: Drops construction debris from above (urban theme)
+    // Stage 3 boss (spaghetti meatball): Drops metal beams from above (urban theme)
+    // Rapid random spawning - 4-6 beams per volley
+    const numBeams = 4 + Math.floor(Math.random() * 3) // 4-6 beams
     const lanes = [0, 1, 2]
-    const attackLanes = lanes.sort(() => Math.random() - 0.5).slice(0, 2) // 2 random lanes
+    const attackLanes = lanes.sort(() => Math.random() - 0.5).slice(0, Math.min(numBeams, 3))
     
     attackLanes.forEach((lane, idx) => {
       const targetX = (lane - 1) * laneWidth
       
-      // Debris: falling concrete chunk (gray box)
-      const debrisGeo = new THREE.BoxGeometry(0.8, 0.8, 0.8)
-      const debrisMat = new THREE.MeshPhongMaterial({ color: 0x666666, emissive: 0x222222 })
-      const debris = new THREE.Mesh(debrisGeo, debrisMat)
+      // Metal beam: use sprite texture for long beam that spreads across z-axis
+      const beamSpriteMat = new THREE.SpriteMaterial({
+        map: textureLoader.load('assets/stage3/obstacle-metal-beam.webp'),
+        transparent: true
+      })
+      const beam = new THREE.Sprite(beamSpriteMat)
+      beam.scale.set(1.2, 4.0, 1) // long vertical beam
       
-      // Start high above, fall straight down
-      debris.position.set(targetX, 8 + idx * 2, -10) // high above, staggered
-      debris.userData = { targetX, targetY: 0.5, speed: 0.4 + Math.random() * 0.2, lane }
-      scene.add(debris)
-      bossProjectiles.push(debris)
+      // Start high above, fall straight down with random z spread
+      const zSpread = (Math.random() - 0.5) * 20 // wide spread across z-axis
+      beam.position.set(targetX, 12 + idx * 2, -20 + zSpread)
+      beam.userData = { targetX, targetY: 0.5, speed: 0.6 + Math.random() * 0.3, lane, rotationSpeed: 0.15 + Math.random() * 0.2 }
+      scene.add(beam)
+      bossProjectiles.push(beam)
     })
-    createFloatingText('⚠️', new THREE.Vector3(0, 6, -10), '#888888')
-    playSFX('crash_metal', 0.4)
-  } else if (type === 'giantMeatball') {
-    // Giant meatball drops debris from sky - falls straight down
-    const lanes = [-1, 0, 1] // left, center, right
-    const targetLane = lanes[Math.floor(Math.random() * lanes.length)]
-    const targetX = targetLane * laneWidth
-    
-    const debrisGeo = new THREE.BoxGeometry(0.6, 0.6, 0.6)
-    const debrisMat = new THREE.MeshToonMaterial({ color: 0x8B4513 }) // brown meatball color
-    const debris = new THREE.Mesh(debrisGeo, debrisMat)
-    
-    // Start from top of screen, fall down
-    debris.position.set(targetX + (Math.random() - 0.5) * 0.5, 8, -40 + (Math.random() - 0.5) * 10)
-    debris.userData = { targetX, targetLane, speed: 0.15 + Math.random() * 0.1, rotationSpeed: Math.random() * 0.2 }
-    scene.add(debris)
-    bossDebris.push(debris)
-    createFloatingText('⚠️', new THREE.Vector3(targetX, 6, -30), '#ff6600')
-    playSFX('fire_shoot', 0.3)
+    createFloatingText('⚠️', new THREE.Vector3(0, 10, -20), '#aaaaaa')
+    playSFX('crash_metal', 0.5)
   } else {
     // Dragon fires 2-3 fireballs at different lanes & heights
     const lanes = [0, 1, 2]
@@ -3156,25 +3166,17 @@ const animate = () => {
     fb.position.z += fb.userData.speed
     fb.position.x += (fb.userData.targetX - fb.position.x) * 0.05
     fb.position.y += (fb.userData.targetY - fb.position.y) * 0.04 // converge to target height
-    fb.rotation.y += 0.1
+    fb.rotation.y += fb.userData.rotationSpeed || 0.1
     
     // Skip collision if game over, countdown, grace period, or stage transition
     if (gameOver.value || countdownLocked || stageTransitioning.value || Date.now() - gameStartTime < 2000) continue;
-    // Collision with player
+    // Collision with player - metal beams are instant death (like dragon fireballs)
     const dist = player.position.distanceTo(fb.position)
     if (dist < 1.5) {
       if (!isInvincible) {
-        // Dragon fireball = instant death, truck = damage
-        if (STAGES[currentStage.value].bossType === 'dragon') {
-          createFloatingText('HIT!', player.position.clone().add(new THREE.Vector3(0, 2, 0)), '#ff4444')
-          triggerGameOver(0.4)
-        } else {
-          bossHealth.value = Math.min(100, bossHealth.value + 10)
-          createFloatingText('HIT', player.position.clone().add(new THREE.Vector3(0, 2, 0)), '#ff4444')
-          cameraShakeTimer = 0.5; cameraShakeIntensity = 0.25
-          isInvincible = true
-          invincibilityTimeout = setTimeout(() => { isInvincible = false; invincibilityTimeout = null }, 1500)
-        }
+        // Metal beam hit = instant death (Stage 3 boss is deadly)
+        createFloatingText('HIT!', player.position.clone().add(new THREE.Vector3(0, 2, 0)), '#ff4444')
+        triggerGameOver(0.4)
       }
       scene.remove(fb)
       bossProjectiles.splice(i, 1)
