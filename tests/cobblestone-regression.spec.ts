@@ -39,7 +39,7 @@ test.describe('Cobblestone Road Regression Test', () => {
     console.log('Stage indicator:', stageText);
     
     expect(stageText).toContain('STAGE 2');
-    expect(stageText).toContain('Concrete'); // Stage 2 subtitle
+    expect(stageText).toContain('Medieval'); // Stage 2 subtitle (cobblestone)
   });
 
   test('game restarts without crashing', async ({ page }) => {
