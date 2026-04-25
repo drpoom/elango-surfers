@@ -19,24 +19,7 @@ Test timeout of 60000ms exceeded.
 Error: page.screenshot: Test timeout of 60000ms exceeded.
 Call log:
   - taking page screenshot
-  - waiting for fonts to load...
 
-```
-
-# Page snapshot
-
-```yaml
-- generic [ref=e3]:
-  - generic:
-    - generic: v5.0.25
-    - generic: "Score: 776"
-    - generic: "High Score: 0"
-    - generic: "STAGE 1: The Modern Highway"
-  - generic [ref=e4]:
-    - generic [ref=e5] [cursor=pointer]: 🎤🔴
-    - generic [ref=e6] [cursor=pointer]: 📱
-    - generic [ref=e7] [cursor=pointer]: 🔊
-    - generic [ref=e8] [cursor=pointer]: ⚙️
 ```
 
 # Test source

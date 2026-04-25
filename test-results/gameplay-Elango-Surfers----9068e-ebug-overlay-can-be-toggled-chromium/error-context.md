@@ -16,16 +16,7 @@ Test timeout of 60000ms exceeded.
 ```
 
 ```
-Error: expect(locator).toBeVisible() failed
-
-Locator:  locator('button:has-text("Debug")')
-Expected: visible
-Received: undefined
-
-Call log:
-  - Expect "toBeVisible" with timeout 5000ms
-  - waiting for locator('button:has-text("Debug")')
-
+Error: locator.count: Test timeout of 60000ms exceeded.
 ```
 
 # Page snapshot
@@ -34,9 +25,11 @@ Call log:
 - generic [ref=e3]:
   - generic:
     - generic: v5.0.25
-    - generic: "Score: 1880"
+    - generic: "Score: 2968"
     - generic: "High Score: 0"
     - generic: "STAGE 1: The Modern Highway"
+  - generic:
+    - generic: 🌫️ FOG!
   - generic: ⬅️
   - generic:
     - text: ⏸️ PAUSED
@@ -191,14 +184,14 @@ Call log:
   88  |     
   89  |     // Find debug button (could be "Debug" or "Debug OFF")
   90  |     const debugBtn = page.locator('button:has-text("Debug")');
-  91  |     const debugExists = await debugBtn.count() > 0;
+> 91  |     const debugExists = await debugBtn.count() > 0;
+      |                                        ^ Error: locator.count: Test timeout of 60000ms exceeded.
   92  |     
   93  |     console.log('Debug button exists:', debugExists);
   94  |     
   95  |     if (debugExists) {
   96  |       // Just verify button exists and is clickable
-> 97  |       await expect(debugBtn).toBeVisible();
-      |                              ^ Error: expect(locator).toBeVisible() failed
+  97  |       await expect(debugBtn).toBeVisible();
   98  |       await expect(debugBtn).toBeEnabled();
   99  |     }
   100 |     

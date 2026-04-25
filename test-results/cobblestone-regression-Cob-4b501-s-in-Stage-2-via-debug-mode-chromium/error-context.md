@@ -16,10 +16,11 @@ Test timeout of 60000ms exceeded.
 ```
 
 ```
-Error: expect(received).toBe(expected) // Object.is equality
+Error: page.screenshot: Test timeout of 60000ms exceeded.
+Call log:
+  - taking page screenshot
+  - waiting for fonts to load...
 
-Expected: true
-Received: false
 ```
 
 # Page snapshot
@@ -28,7 +29,7 @@ Received: false
 - generic [ref=e3]:
   - generic:
     - generic: v5.0.25
-    - generic: "Score: 364"
+    - generic: "Score: 0"
     - generic: "High Score: 0"
     - generic: "STAGE 2: The Medieval Path"
     - generic: 🐛
@@ -38,6 +39,10 @@ Received: false
     - generic [ref=e6] [cursor=pointer]: 📱
     - generic [ref=e7] [cursor=pointer]: 🔊
     - generic [ref=e8] [cursor=pointer]: ⚙️
+  - generic:
+    - text: A/D ←/→ Move | W/↑ Jump | S/↓ Slide
+    - text: 📱 Swipe | Tilt | 🎤 Blow to fly!
+  - generic: GO!
 ```
 
 # Test source
@@ -75,7 +80,8 @@ Received: false
   30 |     await page.waitForTimeout(2000);
   31 |     
   32 |     // Take screenshot to verify cobblestone is visible
-  33 |     await page.screenshot({ path: 'test-results/stage2-cobblestone.png' });
+> 33 |     await page.screenshot({ path: 'test-results/stage2-cobblestone.png' });
+     |                ^ Error: page.screenshot: Test timeout of 60000ms exceeded.
   34 |     console.log('Stage 2 cobblestone screenshot captured');
   35 |     
   36 |     // Verify cobblestone texture is applied by checking the road material
@@ -88,8 +94,7 @@ Received: false
   43 |     });
   44 |     
   45 |     console.log('Cobblestone applied:', cobblestoneApplied);
-> 46 |     expect(cobblestoneApplied).toBe(true);
-     |                                ^ Error: expect(received).toBe(expected) // Object.is equality
+  46 |     expect(cobblestoneApplied).toBe(true);
   47 |   });
   48 | 
   49 |   test('game restarts without crashing', async ({ page }) => {

@@ -29,10 +29,11 @@ Call log:
 - generic [ref=e3]:
   - generic:
     - generic: v5.0.25
-    - generic: "Score: 2106"
+    - generic: "Score: 3527"
     - generic: "High Score: 0"
     - generic: "STAGE 1: The Modern Highway"
-  - generic: ➡️
+  - generic:
+    - generic: 🌫️ FOG!
   - generic [ref=e4]:
     - generic [ref=e5] [cursor=pointer]: 🎤🔴
     - generic [ref=e6] [cursor=pointer]: 📱
