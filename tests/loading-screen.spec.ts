@@ -3,6 +3,10 @@ import { GAME_URL, navigateAndDismiss } from './helpers';
 
 test.describe('Elango Surfers Loading Screen', () => {
   test('1: Loading screen is visible on page load', async ({ page }) => {
+    await page.route('**/*', async route => {
+      await new Promise(r => setTimeout(r, 500));
+      route.continue();
+    });
     await page.goto(GAME_URL, { waitUntil: 'domcontentloaded' });
     const loadingScreen = page.locator('.loading-screen');
     await expect(loadingScreen).toBeVisible({ timeout: 60000 });
@@ -17,6 +21,10 @@ test.describe('Elango Surfers Loading Screen', () => {
   });
 
   test('3: Loading progress shows percentage', async ({ page }) => {
+    await page.route('**/*', async route => {
+      await new Promise(r => setTimeout(r, 500));
+      route.continue();
+    });
     await page.goto(GAME_URL, { waitUntil: 'domcontentloaded' });
     const loadingScreen = page.locator('.loading-screen');
     await expect(loadingScreen).toBeVisible({ timeout: 60000 });

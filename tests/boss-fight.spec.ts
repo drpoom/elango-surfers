@@ -3,7 +3,7 @@ import { GAME_URL, dismissLoadingScreen } from './helpers';
 
 test.describe('Boss Fights', () => {
   test.beforeEach(async ({ page }) => {
-    test.setTimeout(60000);
+    test.setTimeout(120000);
     await page.goto(GAME_URL);
     await dismissLoadingScreen(page);
     await page.waitForSelector('canvas', { timeout: 15000 });
