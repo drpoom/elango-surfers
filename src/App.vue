@@ -381,7 +381,7 @@ function applyStageVisuals(stageIndex) {
     }
     // Apply skyscraper texture to trees for Stage 3
     if (!stage3Textures.treeSkyscraper) {
-      stage3Textures.treeSkyscraper = textureLoader.load('assets/stage3/tree_skyscraper.webp');
+      stage3Textures.treeSkyscraper = textureLoader.load('assets/stage3/tree_skyscraper.png');
       stage3Textures.treeSkyscraper.colorSpace = THREE.SRGBColorSpace;
     }
     if (trees.length) {
@@ -2699,13 +2699,13 @@ function spawnBoss(bossType) {
       })
       const tentacle = new THREE.Mesh(tentacleGeo, tentacleMat)
       const angle = (i / tentacleCount) * Math.PI * 2
-      // Position in crown/halo below meatball, angled upward/outward
-      const radius = 1.8
-      const baseY = 1.5 // Below meatball (meatball at y=2.5)
+      // Position around CENTER of meatball, spanning outward in ALL directions like a sunray/halo
+      const radius = 2.5
+      const baseY = 2.5 // Center of meatball
       tentacle.position.set(Math.cos(angle) * radius, baseY, Math.sin(angle) * radius)
-      // Angle upward and outward for organic crown look
-      tentacle.rotation.x = -Math.PI / 6 // Tilt upward (-30 degrees)
-      tentacle.rotation.z = angle + Math.PI // Point outward from center
+      // No tilt - spread in all directions
+      tentacle.rotation.x = 0
+      tentacle.rotation.z = 0
       tentacle.userData = { baseAngle: angle, offset: i }
       group.add(tentacle)
       tentacles.push(tentacle)
@@ -2848,15 +2848,15 @@ function spawnBossProjectile(type) {
       
       // Metal beam: use sprite texture for long beam that spreads across z-axis
       const beamSpriteMat = new THREE.SpriteMaterial({
-        map: textureLoader.load('assets/stage3/obstacle-metal-beam.webp'),
+        map: textureLoader.load('assets/stage3/obstacle-metal-beam.png'),
         transparent: true
       })
       const beam = new THREE.Sprite(beamSpriteMat)
       beam.scale.set(1.2, 4.0, 1) // long vertical beam
       
-      // Start high above, fall straight down with random z spread
+      // Start lower, fall straight down with random z spread
       const zSpread = (Math.random() - 0.5) * 20 // wide spread across z-axis
-      beam.position.set(targetX, 12 + idx * 2, -20 + zSpread)
+      beam.position.set(targetX, 6 + idx * 1, -20 + zSpread)
       beam.userData = { targetX, targetY: 0.5, speed: 0.6 + Math.random() * 0.3, lane, rotationSpeed: 0.15 + Math.random() * 0.2 }
       scene.add(beam)
       bossProjectiles.push(beam)
@@ -3170,7 +3170,7 @@ const animate = () => {
     const fb = bossProjectiles[i]
     fb.position.z += fb.userData.speed
     fb.position.x += (fb.userData.targetX - fb.position.x) * 0.05
-    fb.position.y += (fb.userData.targetY - fb.position.y) * 0.04 // converge to target height
+    fb.position.y += (fb.userData.targetY - fb.position.y) * 0.08 // converge to target height (doubled speed)
     fb.rotation.y += fb.userData.rotationSpeed || 0.1
     
     // Skip collision if game over, countdown, grace period, or stage transition
