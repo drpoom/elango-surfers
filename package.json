@@ -1,7 +1,7 @@
 {
   "name": "elango-surfers",
   "private": true,
-  "version": "5.0.21",
+  "version": "5.0.26",
   "type": "module",
   "scripts": {
     "dev": "vite",
