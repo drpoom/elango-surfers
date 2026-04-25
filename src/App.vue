@@ -1,5 +1,6 @@
 <template>
   <div id="game-container">
+    <LoadingScreen v-if="showLoadingScreen" :version="VERSION" @start="onLoadingStart" />
     <div id="game-info">
       <div id="version">{{ VERSION }}</div>
       <div id="score">Score: {{ score }}</div>
@@ -157,9 +158,10 @@ import { EARTH_R, DAY_DURATION, jumpStrength, slideDuration, laneWidth, FLY_LIFT
 import { STAGES } from './data/stages.js'
 import { useCurve } from './composables/useCurve.js'
 import { useMic } from './composables/useMic.js'
+import LoadingScreen from './components/LoadingScreen.vue'
 
 // Version - Update this for each release
-const VERSION = 'v5.0.19';
+const VERSION = 'v5.0.20';
 // Extract major.minor for version-aware high score key
 const VERSION_MAJOR_MINOR = VERSION.replace(/^(v\d+\.\d+)\.\d+$/, '$1').replace(/\./g, '_');
 
@@ -169,6 +171,7 @@ let buildingDominantColors = [];
 
 // Score & High Score refs
 const score = ref(0);
+const showLoadingScreen = ref(true);
 const highScore = ref(0);
 
 // Game state refs
@@ -722,6 +725,14 @@ const toggleFovWarp = () => {
 // Mic input — extracted to useMic.js
 const { micEnabledRef, initMic, toggleMic: _toggleMic, getMicVolume, cleanupMic, startCalibration } = useMic()
 const toggleMic = () => _toggleMic(() => { isFlying = false })
+const onLoadingStart = () => {
+  initAudio();
+  startBGM();
+  setTimeout(() => {
+    showLoadingScreen.value = false;
+  }, 400);
+};
+
 const toggleMute = () => {
   const isMuted = _toggleMute();
   muteIcon.value = isMuted ? '🔇' : '🔊';
