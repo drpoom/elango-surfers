@@ -1,10 +1,10 @@
 import { test, expect } from '@playwright/test';
+import { GAME_URL, navigateAndDismiss } from './helpers';
 
 test.describe('Elango Surfers - Gameplay Tests', () => {
   
   test.beforeEach(async ({ page }) => {
-    await page.goto('https://www.drpoom.com/elango-surfers/');
-    await page.waitForLoadState('networkidle');
+    await navigateAndDismiss(page);
     await page.waitForTimeout(3000); // Wait for Vue mount
   });
 

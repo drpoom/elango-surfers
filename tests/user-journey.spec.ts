@@ -1,22 +1,18 @@
 import { test, expect } from '@playwright/test';
-
-const GAME_URL = 'https://www.drpoom.com/elango-surfers/';
+import { GAME_URL, navigateAndDismiss } from './helpers';
 
 test.describe('Elango Surfers User Journey', () => {
   test('1: Game loads, canvas renders, countdown shows', async ({ page }) => {
-    await page.goto(GAME_URL, { waitUntil: 'domcontentloaded' });
+    await navigateAndDismiss(page);
     const canvas = page.locator('canvas');
     await expect(canvas).toBeVisible({ timeout: 15000 });
-    // Wait for countdown or game UI to appear
-    await page.waitForTimeout(3000);
     await page.screenshot({ path: 'tests/screenshots/01-game-loaded.png' });
   });
 
   test('2: Arrow keys move character (left/right lane changes)', async ({ page }) => {
-    await page.goto(GAME_URL, { waitUntil: 'domcontentloaded' });
+    await navigateAndDismiss(page);
     const canvas = page.locator('canvas');
     await expect(canvas).toBeVisible({ timeout: 15000 });
-    await page.waitForTimeout(2000);
     // Press arrow keys to move character
     await page.keyboard.press('ArrowLeft');
     await page.waitForTimeout(300);
@@ -28,10 +24,9 @@ test.describe('Elango Surfers User Journey', () => {
   });
 
   test('3: P key pauses, click resumes', async ({ page }) => {
-    await page.goto(GAME_URL, { waitUntil: 'domcontentloaded' });
+    await navigateAndDismiss(page);
     const canvas = page.locator('canvas');
     await expect(canvas).toBeVisible({ timeout: 15000 });
-    await page.waitForTimeout(3000);
     // Pause with P
     await page.keyboard.press('p');
     await page.waitForTimeout(500);
@@ -43,10 +38,9 @@ test.describe('Elango Surfers User Journey', () => {
   });
 
   test('4: Settings panel opens/closes', async ({ page }) => {
-    await page.goto(GAME_URL, { waitUntil: 'domcontentloaded' });
+    await navigateAndDismiss(page);
     const canvas = page.locator('canvas');
     await expect(canvas).toBeVisible({ timeout: 15000 });
-    await page.waitForTimeout(2000);
     // Try S key or settings button
     await page.keyboard.press('s');
     await page.waitForTimeout(500);
@@ -57,10 +51,9 @@ test.describe('Elango Surfers User Journey', () => {
   });
 
   test('5: Debug overlay toggles on/off', async ({ page }) => {
-    await page.goto(GAME_URL, { waitUntil: 'domcontentloaded' });
+    await navigateAndDismiss(page);
     const canvas = page.locator('canvas');
     await expect(canvas).toBeVisible({ timeout: 15000 });
-    await page.waitForTimeout(2000);
     // Toggle debug with D key
     await page.keyboard.press('d');
     await page.waitForTimeout(500);

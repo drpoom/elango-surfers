@@ -162,7 +162,7 @@ import { useMic } from './composables/useMic.js'
 import LoadingScreen from './components/LoadingScreen.vue'
 
 // Version - Update this for each release
-const VERSION = 'v5.0.21';
+const VERSION = 'v5.0.22';
 // Extract major.minor for version-aware high score key
 const VERSION_MAJOR_MINOR = VERSION.replace(/^(v\d+\.\d+)\.\d+$/, '$1').replace(/\./g, '_');
 

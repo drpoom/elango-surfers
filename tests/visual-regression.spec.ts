@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { GAME_URL, navigateAndDismiss } from './helpers.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -11,9 +12,7 @@ test.describe('Elango Surfers - Visual Regression Tests', () => {
   const BASELINE_DIR = path.join(__dirname, '../visual-baselines');
   
   test.beforeEach(async ({ page }) => {
-    await page.goto('https://www.drpoom.com/elango-surfers/');
-    await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(2000);
+    await navigateAndDismiss(page);
   });
 
   test('title screen baseline', async ({ page }) => {

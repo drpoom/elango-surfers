@@ -1,9 +1,10 @@
 import { test, expect } from '@playwright/test';
+import { GAME_URL, navigateAndDismiss } from './helpers';
 
 test.describe('Elango Surfers - Essential Tests', () => {
   
   test('game loads at correct URL', async ({ page }) => {
-    await page.goto('https://www.drpoom.com/elango-surfers/');
+    await page.goto(GAME_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('networkidle');
     
     const url = page.url();
@@ -12,8 +13,7 @@ test.describe('Elango Surfers - Essential Tests', () => {
   });
 
   test('page title contains Elango', async ({ page }) => {
-    await page.goto('https://www.drpoom.com/elango-surfers/');
-    await page.waitForTimeout(3000);
+    await navigateAndDismiss(page);
     
     const title = await page.title();
     console.log('Page title:', title);
@@ -21,8 +21,7 @@ test.describe('Elango Surfers - Essential Tests', () => {
   });
 
   test('game canvas renders', async ({ page }) => {
-    await page.goto('https://www.drpoom.com/elango-surfers/');
-    await page.waitForTimeout(3000);
+    await navigateAndDismiss(page);
     
     // Take screenshot to verify visually
     const screenshot = await page.screenshot();

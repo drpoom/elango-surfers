@@ -1,11 +1,11 @@
 import { test, expect } from '@playwright/test';
-
-const GAME_URL = 'https://www.drpoom.com/elango-surfers/';
+import { GAME_URL, dismissLoadingScreen } from './helpers';
 
 test.describe('Boss Fights', () => {
   test.beforeEach(async ({ page }) => {
     test.setTimeout(60000);
     await page.goto(GAME_URL);
+    await dismissLoadingScreen(page);
     await page.waitForSelector('canvas', { timeout: 15000 });
     await page.waitForTimeout(3000);
   });
