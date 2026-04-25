@@ -189,10 +189,6 @@ export function useAudio({ currentStage, STAGES }) {
 
   const toggleMute = () => {
     isMuted = !isMuted;
-    const muteBtn = document.getElementById('mute-btn');
-    if (muteBtn) {
-      muteBtn.textContent = isMuted ? '🔇' : '🔊';
-    }
     if (audioCtx) {
       if (isMuted) {
         audioCtx.suspend();
@@ -203,6 +199,7 @@ export function useAudio({ currentStage, STAGES }) {
         }
       }
     }
+    return isMuted;
   };
 
   const getCurrentBGMTrack = () => {

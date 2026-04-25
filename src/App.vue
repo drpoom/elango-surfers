@@ -174,6 +174,7 @@ const showSettings = ref(false);
 const isPaused = ref(false); // Pause state
 const debugStartStage = ref(-1);
 const tiltEnabledRef = ref(true);
+const muteIcon = ref('🔊');
 
 // Debug overlay refs
 const showDebugOverlay = ref(false);
@@ -194,7 +195,7 @@ const toggleSettings = () => {
   if (showSettings.value) {
     // Closing settings - resume if game was paused
     showSettings.value = false;
-    // Don't auto-resume - user needs to interact to resume
+    resumeGame();
   } else {
     // Opening settings - pause the game
     if (!gameOver.value && !countdownActive.value) {
@@ -270,7 +271,21 @@ function applyStageVisuals(stageIndex) {
   if (stage.roadType === 'cobblestone') {
     // Load cobblestone texture if not cached
     if (!cobblestoneTexture) {
-      cobblestoneTexture = textureLoader.load('assets/road_cobblestone.webp');
+      cobblestoneTexture = textureLoader.load('assets/road_cobblestone.webp', () => {
+        // Texture loaded - retry applying if mesh is ready
+        if (roadMesh && cobblestoneTexture) {
+          cobblestoneTexture.wrapS = THREE.RepeatWrapping;
+          cobblestoneTexture.wrapT = THREE.RepeatWrapping;
+          cobblestoneTexture.repeat.set(1, 10);
+          cobblestoneTexture.colorSpace = THREE.SRGBColorSpace;
+          if (groundTexture) {
+            cobblestoneTexture.offset.y = groundTexture.offset.y;
+          }
+          roadMesh.material.map = cobblestoneTexture;
+          roadMesh.material.color.set(0x888888);
+          roadMesh.material.needsUpdate = true;
+        }
+      });
       cobblestoneTexture.wrapS = THREE.RepeatWrapping;
       cobblestoneTexture.wrapT = THREE.RepeatWrapping;
       cobblestoneTexture.repeat.set(1, 10);
@@ -281,7 +296,7 @@ function applyStageVisuals(stageIndex) {
       originalRoadMaterial = roadMesh.material;
     }
     // Don't create new material — modify existing (v4 approach)
-    if (cobblestoneTexture) {
+    if (cobblestoneTexture && cobblestoneTexture.image) {
       // Synchronize offset with ground texture to avoid visual jump
       if (groundTexture) {
         cobblestoneTexture.offset.y = groundTexture.offset.y;
@@ -408,7 +423,7 @@ function applyStageVisuals(stageIndex) {
 }
 
 // Initialize audio composable
-const { playSound, playSFX, startBGM, stopBGM, switchBGMTrack, toggleMute, initAudio, isBGMPlaying, bgmStarted, startStage3Audio, stopStage3Audio, updateIntercom } = useAudio({ currentStage, STAGES })
+const { playSound, playSFX, startBGM, stopBGM, switchBGMTrack, toggleMute: _toggleMute, initAudio, isBGMPlaying, bgmStarted, startStage3Audio, stopStage3Audio, updateIntercom } = useAudio({ currentStage, STAGES })
 
 // Attempt BGM start from a user gesture context (resolves autoplay policy)
 const tryStartBGMFromGesture = () => {
@@ -693,8 +708,12 @@ const toggleFovWarp = () => {
 };
 
 // Mic input — extracted to useMic.js
-const { micEnabledRef, initMic, toggleMic: _toggleMic, getMicVolume, cleanupMic } = useMic()
+const { micEnabledRef, initMic, toggleMic: _toggleMic, getMicVolume, cleanupMic, startCalibration } = useMic()
 const toggleMic = () => _toggleMic(() => { isFlying = false })
+const toggleMute = () => {
+  const isMuted = _toggleMute();
+  muteIcon.value = isMuted ? '🔇' : '🔊';
+}
 // Environment elements
 let clouds = [];
 let trees = [];
@@ -2452,6 +2471,10 @@ const BOSS_IDLE_DURATION = 2.5
 const startStageCountdown = () => {
   countdownLocked = true
   countdownActive.value = true
+  // Calibrate mic ambient noise baseline during countdown
+  if (micEnabledRef.value) {
+    startCalibration();
+  }
   let count = 3
   countdownText.value = count.toString()
   const stageTick = () => {

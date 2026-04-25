@@ -15,6 +15,9 @@ export function useMic() {
   let micDataArray = null;
   const micEnabledRef = ref(false);
   let micEnabled = false;
+  let ambientNoiseBaseline = 0;
+  let isCalibrating = false;
+  let calibrationSamples = [];
 
   const initMic = async () => {
     if (micStream) return;
@@ -54,7 +57,34 @@ export function useMic() {
     micAnalyser.getByteFrequencyData(micDataArray);
     let sum = 0;
     for (let i = 0; i < micDataArray.length; i++) sum += micDataArray[i];
-    return sum / micDataArray.length;
+    const rawVolume = sum / micDataArray.length;
+    // Subtract ambient baseline (clamped to 0)
+    return Math.max(0, rawVolume - ambientNoiseBaseline);
+  };
+
+  // Calibrate ambient noise baseline during countdown
+  const startCalibration = () => {
+    if (!micAnalyser || !micDataArray) return;
+    isCalibrating = true;
+    calibrationSamples = [];
+    const collectSample = () => {
+      if (!isCalibrating) return;
+      micAnalyser.getByteFrequencyData(micDataArray);
+      let sum = 0;
+      for (let i = 0; i < micDataArray.length; i++) sum += micDataArray[i];
+      calibrationSamples.push(sum / micDataArray.length);
+      if (calibrationSamples.length < 30) { // ~1.5s at 20Hz
+        setTimeout(collectSample, 50);
+      } else {
+        // Calculate average baseline
+        const avg = calibrationSamples.reduce((a, b) => a + b, 0) / calibrationSamples.length;
+        ambientNoiseBaseline = avg;
+        isCalibrating = false;
+        calibrationSamples = [];
+        console.log('Mic calibrated: ambient baseline =', ambientNoiseBaseline.toFixed(1));
+      }
+    };
+    collectSample();
   };
 
   // Cleanup: stop mic stream
@@ -75,5 +105,6 @@ export function useMic() {
     toggleMic,
     getMicVolume,
     cleanupMic,
+    startCalibration,
   };
 }
