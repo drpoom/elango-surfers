@@ -2,7 +2,6 @@
   <div 
     class="loading-screen" 
     :class="{ 'fade-out': isFadingOut }"
-    @click="handleStart"
   >
     <video class="video-bg" muted loop playsinline v-show="false">
       <!-- Future video source here -->
@@ -10,7 +9,11 @@
     
     <div class="content">
       <div class="version">{{ version }}</div>
-      <div class="prompt">Press any key / Tap to start</div>
+      <div v-if="!loaded" class="progress-bar-container">
+        <div class="progress-bar" :style="{ width: progress + '%' }"></div>
+      </div>
+      <div v-if="!loaded" class="loading-text">Loading... {{ progress }}%</div>
+      <div v-else class="prompt">Press any key / Tap to start</div>
     </div>
   </div>
 </template>
@@ -22,6 +25,14 @@ const props = defineProps({
   version: {
     type: String,
     default: 'v0.0.0'
+  },
+  progress: {
+    type: Number,
+    default: 0
+  },
+  loaded: {
+    type: Boolean,
+    default: false
   }
 });
 
@@ -39,12 +50,18 @@ const handleKeyDown = (event) => {
   handleStart();
 };
 
+const handleClick = () => {
+  handleStart();
+};
+
 onMounted(() => {
-  window.addEventListener('keydown', handleKeyDown);
+  document.addEventListener('keydown', handleKeyDown, { capture: true });
+  document.addEventListener('click', handleClick, { capture: true });
 });
 
 onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeyDown);
+  document.removeEventListener('keydown', handleKeyDown, { capture: true });
+  document.removeEventListener('click', handleClick, { capture: true });
 });
 </script>
 
@@ -91,6 +108,28 @@ onUnmounted(() => {
   font-size: 24px;
   margin-bottom: 20px;
   font-weight: bold;
+}
+
+.progress-bar-container {
+  width: 300px;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 0 auto 15px;
+}
+
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #4ecdc4, #44a08d);
+  border-radius: 4px;
+  transition: width 0.2s ease;
+}
+
+.loading-text {
+  font-size: 16px;
+  color: #aaa;
+  margin-bottom: 10px;
 }
 
 .prompt {

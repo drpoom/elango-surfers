@@ -1,6 +1,6 @@
 <template>
   <div id="game-container">
-    <LoadingScreen v-if="showLoadingScreen" :version="VERSION" @start="onLoadingStart" />
+    <LoadingScreen v-if="showLoadingScreen" :version="VERSION" :progress="loadingProgress" :loaded="isLoaded" @start="onLoadingStart" />
     <div id="game-info">
       <div id="version">{{ VERSION }}</div>
       <div id="score">Score: {{ score }}</div>
@@ -48,7 +48,7 @@
       <div id="settings-btn" @click="toggleSettings">⚙️</div>
     </div>
     <div id="instructions" v-if="score < 1 && !gameOver">A/D ←/→ Move | W/↑ Jump | S/↓ Slide<br>📱 Swipe | Tilt | 🎤 Blow to fly!</div>
-    <div id="game-canvas"></div>
+    <div id="game-canvas" tabindex="-1"></div>
     <div id="vignette-glow"></div>
     <div v-if="gameOver" id="game-over">
       <h1>GAME OVER</h1>
@@ -153,6 +153,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { useAudio } from './composables/useAudio.js'
 import { useLeaderboard } from './composables/useLeaderboard.js'
 import { useAchievements } from './composables/useAchievements.js'
+import { useLoadingProgress } from './composables/useLoadingProgress.js'
 import { reduceMotionRef, initScreenEffects, saveScreenEffects } from './composables/useScreenEffects.js'
 import { EARTH_R, DAY_DURATION, jumpStrength, slideDuration, laneWidth, FLY_LIFT, FLY_GRAVITY, FLY_MAX_HEIGHT, MIC_THRESHOLD, MIC_PEAK_THRESHOLD, minSwipeDistance, TILT_THRESHOLD, TILT_LR_THRESHOLD, TILT_LANE_COOLDOWN, CALIBRATION_MAX_SAMPLES } from './gameConstants.js'
 import { STAGES } from './data/stages.js'
@@ -161,7 +162,7 @@ import { useMic } from './composables/useMic.js'
 import LoadingScreen from './components/LoadingScreen.vue'
 
 // Version - Update this for each release
-const VERSION = 'v5.0.20';
+const VERSION = 'v5.0.21';
 // Extract major.minor for version-aware high score key
 const VERSION_MAJOR_MINOR = VERSION.replace(/^(v\d+\.\d+)\.\d+$/, '$1').replace(/\./g, '_');
 
@@ -173,6 +174,9 @@ let buildingDominantColors = [];
 const score = ref(0);
 const showLoadingScreen = ref(true);
 const highScore = ref(0);
+
+// Loading progress tracking
+const { loadingProgress, isLoaded, trackTexture, onTextureLoaded, resetProgress } = useLoadingProgress();
 
 // Game state refs
 const gameOver = ref(false);
@@ -889,12 +893,15 @@ const initGame = () => {
     night: 'assets/sky_night.webp'
   };
   Object.keys(skyUrls).forEach(key => {
+    trackTexture();
     textureLoader.load(skyUrls[key], (tex) => {
       skyTextures[key] = tex;
+      onTextureLoaded();
     });
   });
   
   // Load mountain texture for parallax
+  trackTexture();
   textureLoader.load('assets/mountains.webp', (tex) => {
     const mtGeo = new THREE.PlaneGeometry(80, 15);
     const mtMat = new THREE.MeshBasicMaterial({
@@ -915,6 +922,7 @@ const initGame = () => {
     mt2.scale.set(2.0, 1.5, 1);
     mt2.renderOrder = -3;
     scene.add(mt2);
+    onTextureLoaded();
   });
 
     // No texture loading - all procedural
@@ -1199,7 +1207,10 @@ const createGround = () => {
   
   // Add colorful grass borders with AI texture
   // Priority load: grass (large surface area)
-  grassTileTex = textureLoader.load('assets/grass_tile.webp');
+  trackTexture();
+  grassTileTex = textureLoader.load('assets/grass_tile.webp', () => {
+    onTextureLoaded();
+  });
   grassTileTex.wrapS = THREE.RepeatWrapping;
   grassTileTex.wrapT = THREE.RepeatWrapping;
   grassTileTex.repeat.set(10, 25);
@@ -1590,10 +1601,11 @@ const updateEvent = (delta) => {
 const createBackgroundElements = () => {
   // Priority texture loading: most visible objects first
   // 1. Building facades (most visible, darkest when missing)
+  trackTexture();
   buildingTextures = [
-    textureLoader.load('assets/building_pink.webp'),
-    textureLoader.load('assets/building_blue.webp'),
-    textureLoader.load('assets/building_green.webp'),
+    textureLoader.load('assets/building_pink.webp', () => onTextureLoaded()),
+    textureLoader.load('assets/building_blue.webp', () => onTextureLoaded()),
+    textureLoader.load('assets/building_green.webp', () => onTextureLoaded()),
   ];
   // Set dominant colors as fallback so buildings don't appear dark before texture loads
   buildingDominantColors = [0xffb6c1, 0x87ceeb, 0x98fb98]; // pink, blue, green
@@ -1603,9 +1615,12 @@ const createBackgroundElements = () => {
     tex.colorSpace = THREE.SRGBColorSpace;
   });
   // 2. Trees (billboard sprites) — grass already loaded above
-  const treeRoundTex = textureLoader.load('assets/tree_round_clean.webp');
-  const treePineTex = textureLoader.load('assets/tree_pine_clean.webp');
-  const treeSkyscraperTex = textureLoader.load('assets/stage3/tree_skyscraper.png');
+  trackTexture();
+  const treeRoundTex = textureLoader.load('assets/tree_round_clean.webp', () => onTextureLoaded());
+  trackTexture();
+  const treePineTex = textureLoader.load('assets/tree_pine_clean.webp', () => onTextureLoaded());
+  trackTexture();
+  const treeSkyscraperTex = textureLoader.load('assets/stage3/tree_skyscraper.png', () => onTextureLoaded());
   
   for (let i = 0; i < 20; i++) {
     const isPine = Math.random() > 0.5;
