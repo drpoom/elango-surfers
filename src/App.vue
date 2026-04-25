@@ -8,6 +8,10 @@
       <div id="powerup-indicator" v-if="activePowerup">{{ powerupIcon }} {{ powerupName }} {{ powerupTimeLeft }}s</div>
       <div id="fly-indicator" v-if="micEnabledRef">&#x1F3A4;&#x2708;ï¸</div>
       <div id="stage-indicator" v-if="!gameOver">STAGE {{ currentStage + 1 }}: {{ STAGES[currentStage].name }}</div>
+      <!-- Debug mode indicator -->
+      <div v-if="debugMode" style="position:fixed;top:10px;left:10px;font-size:18px;z-index:10000">🐛</div>
+      <!-- God mode indicator -->
+      <div v-if="godMode" style="position:fixed;top:10px;left:40px;font-size:14px;font-weight:bold;color:#ffd700;z-index:10000;text-shadow:0 0 5px #ffd700">GOD MODE</div>
       <div id="boss-warning" v-if="bossWarning && !bossActive" style="color:#ff4444;font-size:20px;font-weight:bold;animation:pulse 0.5s infinite">
         ⚠️ BOSS INCOMING! ⚠️
       </div>
@@ -210,6 +214,12 @@ const toggleSettings = () => {
 
 const fovWarpRef = ref(false);
 const roadCurveEnabled = ref(true);
+
+// Debug mode state
+const debugMode = ref(false);
+const godMode = ref(false);
+let debugKeyBuffer = '';
+let debugKeyTimer = null;
 
 // Stage & road curve state
 const currentStage = ref(0)
@@ -3226,7 +3236,7 @@ const animate = () => {
     const dx = player.position.x - boss.position.x
     const dz = player.position.z - boss.position.z
     const inZRange = Math.abs(dz) < 3
-    if (inZRange && Math.abs(dx) < 2.0 && !isInvincible) {
+    if (inZRange && Math.abs(dx) < 2.0 && !isInvincible && !godMode.value) {
       // Boss hit — instant kill
       createFloatingText('HIT!', player.position.clone().add(new THREE.Vector3(0, 2, 0)), '#ff4444')
       triggerGameOver(0.5)
@@ -3705,8 +3715,15 @@ const animate = () => {
         return; // skip game over (inside forEach, use return instead of continue)
       }
       
-      if (isInvincible) {
-        // Shield blocks the hit
+      if (isInvincible || godMode.value) {
+        // Shield blocks the hit (or god mode)
+        if (godMode.value) {
+          // God mode: just remove obstacle, no sound effect
+          obs.mesh.traverse(c => { if (c.geometry && c.geometry !== sharedCoinGeo) c.geometry.dispose(); });
+          scene.remove(obs.mesh);
+          obstacles.splice(index, 1);
+          return;
+        }
         playSound('shield_hit');
         createParticleEffect(obs.mesh.position, 0x00bfff, 15);
         deactivatePowerup();
@@ -4406,6 +4423,95 @@ const handleKeyDown = (e) => {
   // Prevent default for game controls to stop page scrolling
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space', ' '].includes(e.key)) {
     e.preventDefault();
+  }
+  
+  // === SECRET DEBUG CODE: D→E→B→U→G ===
+  const key = e.key.toUpperCase();
+  if (!debugMode.value && ['D', 'E', 'B', 'U', 'G'].includes(key)) {
+    const expectedSeq = 'DEBUG';
+    const nextIdx = debugKeyBuffer.length;
+    if (key === expectedSeq[nextIdx]) {
+      debugKeyBuffer += key;
+      // Clear existing timer
+      if (debugKeyTimer) clearTimeout(debugKeyTimer);
+      // Set 2-second timeout to clear buffer
+      debugKeyTimer = setTimeout(() => {
+        debugKeyBuffer = '';
+      }, 2000);
+      // Check if complete sequence entered
+      if (debugKeyBuffer === expectedSeq) {
+        debugMode.value = true;
+        debugKeyBuffer = '';
+        if (debugKeyTimer) clearTimeout(debugKeyTimer);
+        console.log('[DEBUG] Debug mode activated!');
+      }
+    } else {
+      // Wrong key - reset buffer
+      debugKeyBuffer = key === 'D' ? 'D' : '';
+      if (debugKeyTimer) clearTimeout(debugKeyTimer);
+      if (debugKeyBuffer) {
+        debugKeyTimer = setTimeout(() => {
+          debugKeyBuffer = '';
+        }, 2000);
+      }
+    }
+  }
+  
+  // === DEBUG MODE CONTROLS (only when debugMode is active) ===
+  if (debugMode.value) {
+    // Stage jump: 1/2/3 → stage 0/1/2
+    if (e.key === '1' || e.key === '2' || e.key === '3') {
+      e.preventDefault();
+      const targetStage = parseInt(e.key, 10) - 1;
+      console.log('[DEBUG] Stage jump to', targetStage);
+      resetStage(false, targetStage);
+      return;
+    }
+    // Boss early spawn: B key
+    if (e.key === 'b' || e.key === 'B') {
+      e.preventDefault();
+      if (!bossActive.value && !bossDefeated.value) {
+        console.log('[DEBUG] Boss early spawn!');
+        bossWarning.value = false;
+        bossActive.value = true;
+        const difficultyMultiplier = Math.min(1 + (gameDuration / 30), 3.5);
+        bossHealth.value = Math.min(250, Math.floor(BOSS_BASE_HEALTH * difficultyMultiplier));
+      }
+      return;
+    }
+    // God mode toggle: G key
+    if (e.key === 'g' || e.key === 'G') {
+      e.preventDefault();
+      godMode.value = !godMode.value;
+      console.log('[DEBUG] God mode', godMode.value ? 'ON' : 'OFF');
+      // Apply/remove gold glow effect on player
+      if (player && godMode.value) {
+        // Add gold emissive glow to player
+        player.traverse((child) => {
+          if (child.isMesh && child.material) {
+            child.userData.originalEmissive = child.material.emissive?.getHex() || 0x000000;
+            child.userData.originalEmissiveIntensity = child.material.emissiveIntensity || 0;
+            if (child.material.emissive) {
+              child.material.emissive.setHex(0xffd700);
+              child.material.emissiveIntensity = 0.8;
+              child.material.needsUpdate = true;
+            }
+          }
+        });
+      } else if (player) {
+        // Remove gold glow
+        player.traverse((child) => {
+          if (child.isMesh && child.material) {
+            if (child.material.emissive && child.userData.originalEmissive !== undefined) {
+              child.material.emissive.setHex(child.userData.originalEmissive);
+              child.material.emissiveIntensity = child.userData.originalEmissiveIntensity || 0;
+              child.material.needsUpdate = true;
+            }
+          }
+        });
+      }
+      return;
+    }
   }
   
   // Initialize audio on first keypress
