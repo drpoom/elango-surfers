@@ -3,9 +3,7 @@
     class="loading-screen" 
     :class="{ 'fade-out': isFadingOut }"
   >
-    <video class="video-bg" muted loop playsinline v-show="false">
-      <!-- Future video source here -->
-    </video>
+    <img class="loading-bg" src="/assets/loading-screen.jpg" alt="Elango Surfers" />
     
     <div class="content">
       <div class="version">{{ version }}</div>
@@ -96,7 +94,7 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
-.video-bg {
+.loading-bg {
   position: absolute;
   top: 0;
   left: 0;
