@@ -385,7 +385,13 @@ function applyStageVisuals(stageIndex) {
     }
     // Replace tree sprites with 3D glass skyscrapers for Stage 3
     if (trees.length) {
+      // Load the procedural glass texture
+      const glassTex = textureLoader.load('assets/stage3/skyscraper-glass.png');
+      glassTex.wrapS = THREE.RepeatWrapping;
+      glassTex.wrapT = THREE.RepeatWrapping;
+      
       const skyscraperMat = new THREE.MeshPhysicalMaterial({
+        map: glassTex,
         color: 0x88aacc,
         metalness: 0.85,
         roughness: 0.15,
