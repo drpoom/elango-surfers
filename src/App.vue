@@ -311,7 +311,8 @@ function applyStageVisuals(stageIndex) {
       cobblestoneTexture.colorSpace = THREE.SRGBColorSpace;
     }
     // Store original material for restoration when leaving Stage 2
-    if (!originalRoadMaterial) {
+    // Guard: only save if we haven't already saved it (prevents race condition on restart)
+    if (!originalRoadMaterial && roadMesh.material && roadMesh.material.map !== cobblestoneTexture) {
       originalRoadMaterial = roadMesh.material;
     }
     // Don't create new material — modify existing (v4 approach)
@@ -1148,9 +1149,6 @@ const initGame = () => {
   player.position.set(0, 0.5, 0);
   player.rotation.y = Math.PI;
   scene.add(player);
-  
-  // Reset road material reference to prevent stale reference on restart
-  originalRoadMaterial = null;
   
   // Update torso texture when loaded async
   clock = new THREE.Clock();
