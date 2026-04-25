@@ -43,7 +43,7 @@
     <div id="top-buttons">
       <div id="mic-btn" @click="toggleMic">{{ micEnabledRef ? '🎤' : '🎤🔴' }}</div>
       <div id="tilt-btn" @click="toggleTilt">{{ tiltEnabledRef ? '📱' : '📱🔴' }}</div>
-      <div id="mute-btn" @click="toggleMute">🔊</div>
+      <div id="mute-btn" @click="toggleMute">{{ muteIcon }}</div>
       <div id="settings-btn" @click="toggleSettings">⚙️</div>
     </div>
     <div id="instructions" v-if="score < 1 && !gameOver">A/D ←/→ Move | W/↑ Jump | S/↓ Slide<br>📱 Swipe | Tilt | 🎤 Blow to fly!</div>
@@ -160,6 +160,8 @@ import { useMic } from './composables/useMic.js'
 
 // Version - Update this for each release
 const VERSION = 'v5.0.19';
+// Extract major.minor for version-aware high score key
+const VERSION_MAJOR_MINOR = VERSION.replace(/^(v\d+\.\d+)\.\d+$/, '$1').replace(/\./g, '_');
 
 // Building textures (module scope for access in applyStageVisuals)
 let buildingTextures = [];
@@ -808,7 +810,7 @@ const loadStage3Textures = () => {
 
 window.addEventListener('error', (e) => { console.log('GLOBAL ERROR:', e.message, 'at', e.filename + ':' + e.lineno + ':' + e.colno); });
 onMounted(() => {
-  const saved = localStorage.getItem('elangoSurfersHighScore');
+  const saved = localStorage.getItem(`elangoSurfersHighScore_${VERSION_MAJOR_MINOR}`);
   if (saved) highScore.value = parseInt(saved, 10);
   initScreenEffects();
   loadProgress();
@@ -819,7 +821,7 @@ onMounted(() => {
 const saveHighScore = () => {
   if (score.value > highScore.value) {
     highScore.value = score.value;
-    localStorage.setItem('elangoSurfersHighScore', highScore.value.toString());
+    localStorage.setItem(`elangoSurfersHighScore_${VERSION_MAJOR_MINOR}`, highScore.value.toString());
   }
 };
 
@@ -4085,6 +4087,10 @@ const animate = () => {
     groundTexture.offset.y -= gameSpeed * 0.15;
     if (grassTileTex) grassTileTex.offset.y += gameSpeed * 0.15;
   }
+  // Scroll cobblestone texture with ground when active
+  if (cobblestoneTexture) {
+    cobblestoneTexture.offset.y -= gameSpeed * 0.15;
+  }
   // Stage 3: scroll concrete road and pavement textures (same direction as Stage 1)
   if (stage3Textures.road) {
     stage3Textures.road.offset.y += gameSpeed * 0.15;
@@ -4824,7 +4830,7 @@ const handleVisibilityChange = () => {
 
 window.addEventListener('error', (e) => { console.log('GLOBAL ERROR:', e.message, 'at', e.filename + ':' + e.lineno + ':' + e.colno); });
 onMounted(() => {
-  const saved = localStorage.getItem('elangoSurfersHighScore');
+  const saved = localStorage.getItem(`elangoSurfersHighScore_${VERSION_MAJOR_MINOR}`);
   if (saved) highScore.value = parseInt(saved, 10);
   initGame();
   // Start with countdown on initial load
