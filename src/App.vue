@@ -2982,7 +2982,7 @@ const animate = () => {
   
   // Scroll cobblestone texture (Stage 2 only) - match ground texture scroll direction
   if (cobblestoneTexture && currentStage.value === 1) {
-    cobblestoneTexture.offset.y -= gameSpeed * 0.15;
+    cobblestoneTexture.offset.y += gameSpeed * 0.15;
   }
 
   // === BOSS WARNING + SPAWN TRIGGER ===
@@ -4088,9 +4088,7 @@ const animate = () => {
     if (grassTileTex) grassTileTex.offset.y += gameSpeed * 0.15;
   }
   // Scroll cobblestone texture with ground when active
-  if (cobblestoneTexture) {
-    cobblestoneTexture.offset.y -= gameSpeed * 0.15;
-  }
+  // (removed duplicate - handled above in Stage 2 block)
   // Stage 3: scroll concrete road and pavement textures (same direction as Stage 1)
   if (stage3Textures.road) {
     stage3Textures.road.offset.y += gameSpeed * 0.15;

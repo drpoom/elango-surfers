@@ -210,6 +210,7 @@ export function useAudio({ currentStage, STAGES }) {
   let bgmStarted = false; // track whether BGM has ever started successfully
 
   const startBGM = () => {
+    if (isMuted) return false;
     if (!audioCtx) initAudio();
     if (!audioCtx) return;
     if (audioCtx.state === 'suspended') {
@@ -218,7 +219,6 @@ export function useAudio({ currentStage, STAGES }) {
       if (!bgmStarted) return false;
     }
     if (isBGMPlaying) return true;
-    if (isMuted) return false;
 
     isBGMPlaying = true;
     const track = getCurrentBGMTrack();
