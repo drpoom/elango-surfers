@@ -837,7 +837,7 @@ const loadFachwerk = (callback) => {
     if (callback) callback();
     return fachwerkTexture;
   }
-  fachwerkTexture = textureLoader.load('assets/building_fachwerk.webp', () => {
+  fachwerkTexture = textureLoader.load('assets/stage2/brick-wall-layered.png', () => {
     if (callback) callback();
   });
   fachwerkTexture.wrapS = THREE.RepeatWrapping;
@@ -1845,7 +1845,7 @@ const spawnObstacle = () => {
       group = new THREE.Group();
       const brickGeo = new THREE.BoxGeometry(1.8, 1.8, 1.8);
       const brickMat = new THREE.MeshToonMaterial({ 
-        map: textureLoader.load('assets/obstacles/brick-box.png'),
+        map: textureLoader.load('assets/stage2/brick-wall-layered.png'),
         color: 0x8B4513 
       });
       const brick = new THREE.Mesh(brickGeo, brickMat);
