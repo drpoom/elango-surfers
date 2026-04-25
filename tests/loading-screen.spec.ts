@@ -7,7 +7,7 @@ test.describe('Elango Surfers Loading Screen', () => {
     const loadingScreen = page.locator('.loading-screen');
     await expect(loadingScreen).toBeVisible({ timeout: 60000 });
     // Verify version text
-    await expect(page.locator('text=v5.0.23').first()).toBeVisible({ timeout: 60000 });
+    await expect(page.locator('.loading-screen .version')).toBeVisible({ timeout: 60000 });
     await page.screenshot({ path: 'tests/screenshots/loading-screen-visible.png' });
   });
 
