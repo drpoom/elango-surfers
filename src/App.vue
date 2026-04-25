@@ -155,7 +155,7 @@ import { useCurve } from './composables/useCurve.js'
 import { useMic } from './composables/useMic.js'
 
 // Version - Update this for each release
-const VERSION = 'v5.0.18';
+const VERSION = 'v5.0.19';
 
 // Building textures (module scope for access in applyStageVisuals)
 let buildingTextures = [];
