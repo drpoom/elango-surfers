@@ -1,88 +1,73 @@
-# TASKS.md — Stage 3 Deployment Fix Plan
+# TASKS.md — Elango Surfers Stage 2 & 3 Fixes
 
-## Priority 1: Regressions
+## Group A: Stage 3 Visuals & Textures
 
-### TASK-1: Fix Stage 2 boss regression — property name mismatch
-- **Issue:** #2 (Stage 2 boss doesn't function as released)
-- **Root cause:** `applyStageVisuals()` (line 232) checks `stage.roadTexture === 'cobblestone'` but `stages.js` defines `roadType: 'cobblestone'` (not `roadTexture`). Stage 2 visuals never apply → boss fight environment broken.
-- **Assignee:** Byte (code)
-- **File:** `src/App.vue` line 232
-- **Fix:** Change `stage.roadTexture` → `stage.roadType` in `applyStageVisuals()`
-- **Est:** 30s
-- **Lines changed:** ~1
+### A1. Fix Skyscraper Texture White Background
+- **Assignee:** Sashay 🎨
+- **Files:** `public/assets/stage3/building_glass_steel.png`
+- **Spec:** Remove white background from `building_glass_steel.png`. Crop tightly to building edges. Export as PNG with transparency. Keep original resolution.
+- **Acceptance:** No white halo/box around buildings when rendered in-game. Texture alpha channel is clean.
 
-### TASK-2: Fix obstacle spawn failure after boss-fight death
-- **Issue:** #3 (dying in boss fight → obstacles not spawned)
-- **Root cause:** When player dies during boss, `restartGame()` calls `resetStage(false)` which resets `currentStage` to 0. `applyStageVisuals(0)` runs but if Stage 2 cobblestone texture was loaded, the `roadMesh.material.map` may be in bad state. Also, `stage3Textures` are never cleared on restart, and obstacle creation for Stage 3 references `stage3Textures.*` which may be null if textures failed to load asynchronously.
-- **Assignee:** Byte (code)
-- **Files:** `src/App.vue` lines 4280-4290 (restartGame), lines 498-521 (loadStage3Textures)
-- **Fix:** In `restartGame()`, after `resetStage()`, explicitly call `applyStageVisuals(0)` and ensure `roadMesh.material.map = originalGroundTexture`. Add null guards in obstacle creation that uses `stage3Textures`.
-- **Est:** 120s
-- **Lines changed:** ~15
+### A2. Fix Stage 3 Obstacle Brightness/Colors
+- **Assignee:** Sashay 🎨
+- **Files:** `public/assets/stage3/obstacle-*.webp`
+- **Spec:** All Stage 3 obstacle sprites (`obstacle-allen-key.webp`, `obstacle-bookshelf-tower.webp`, `obstacle-flatpack-stack.webp`, `obstacle-meatball.webp`, `obstacle-metal-beam.webp`, `obstacle-price-tag-banner.webp`, `obstacle-shopping-cart.webp`, `obstacle-wardrobe-portal.webp`) appear overly bright/shiny white. Reduce brightness, desaturate highlights, match tone to Stage 1/2 obstacle textures. Keep recognizability but tone down the glow.
+- **Acceptance:** Obstacles look natural (not blown-out white). Visual parity with other stages' obstacle brightness.
 
-## Priority 2: Blockers
-
-### TASK-3: Fix Stage 2 texture loading (cobblestone + fachwerk)
-- **Issue:** #1 (Stage 2 textures not loading correctly)
-- **Root cause:** Same as TASK-1 — `stage.roadTexture` vs `stage.roadType` mismatch. Once TASK-1 is fixed, cobblestone road + fachwerkhaus building textures should load. Additionally verify `loadFachwerk()` (line 487) is called before buildings are iterated (line 250).
-- **Assignee:** Byte (code)
-- **Depends on:** TASK-1
-- **File:** `src/App.vue` lines 232, 487-494
-- **Fix:** After fixing property name, add `await` or callback to ensure `fachwerkTexture` is loaded before swapping building facades. Currently `loadFachwerk()` is synchronous `textureLoader.load()` which is async — texture may not be ready when buildings are iterated.
-- **Est:** 120s
-- **Lines changed:** ~20
-
-### TASK-4: Fix Stage 3 building textures (IKEA-style missing)
-- **Issue:** #4 (Stage 3 building textures not loaded correctly)
-- **Root cause:** `applyStageVisuals` for Stage 3 (line 267-296) restores buildings to `buildingTextures` (pink/blue/green modern). No IKEA-specific building textures exist in `public/assets/stage3/`. Buildings should show IKEA store facades (blue/yellow).
-- **Assignee:** Sashay (art) + Byte (code)
-- **Files:** Create `public/assets/stage3/building_ikea_blue.webp`, `public/assets/stage3/building_ikea_yellow.webp`. Update `src/App.vue` lines 276-296 to load and apply Stage 3 building textures instead of restoring modern ones.
-- **Est:** 180s (art) + 60s (code)
-- **Lines changed:** ~25 (code)
-
-### TASK-5: Fix Stage 3 boss — giantMeatball falls into dragon else-branch
-- **Issue:** #7 (Stage 3 boss looks like Stage 2 dragon)
-- **Root cause:** `spawnBoss()` (line 2273) only has `if (bossType === 'truck')` and `else` (dragon). `bossType: 'giantMeatball'` from stages.js hits the `else` → dragon mesh created. All boss behavior code (lines 2549-2810) also only checks `truck` vs `else` (dragon).
-- **Assignee:** Byte (code) + Sashay (art)
-- **Files:** `src/App.vue` lines 2273-2420 (spawnBoss), lines 2549-2810 (boss AI)
-- **Fix:** Add `else if (bossType === 'giantMeatball')` branch in `spawnBoss()` with a giant meatball mesh (sphere with texture `stage3Textures.meatball`). Update boss AI to handle meatball behavior (rolling charge instead of flying). Update all `bossType === 'truck' ? ... : ...` ternaries to include meatball case.
-- **Est:** 240s (code) + 120s (art for boss sprite if needed)
-- **Lines changed:** ~80
-
-## Priority 3: Polish
-
-### TASK-6: Bump version to 5.0.0
-- **Issue:** #5 (version not auto-bumped)
-- **Root cause:** `VERSION` hardcoded as `'v4.5.13'` at line 150. `package.json` version is `"0.0.0"`. No CI/deploy workflow auto-bumps.
-- **Assignee:** Byte (code)
-- **Files:** `src/App.vue` line 150, `package.json` line 4
-- **Fix:** Set `package.json` version to `"5.0.0"`, update `src/App.vue` line 150 to `const VERSION = 'v5.0.0'`. Optionally import version from package.json via Vite `define`.
-- **Est:** 30s
-- **Lines changed:** ~2
-
-### TASK-7: Improve Stage 3 texture quality
-- **Issue:** #6 (Stage 3 textures underwhelming)
-- **Root cause:** Stage 3 obstacle textures in `public/assets/stage3/` may be low-res or placeholder. No Stage 3 sky/environment textures (uses flat `#E8E8E8`). No IKEA-specific road texture (reuses asphalt).
-- **Assignee:** Sashay (art)
-- **Files:** All `public/assets/stage3/*.webp`, new `public/assets/stage3/road_conveyor.webp`, `public/assets/sky_fluorescent.webp`
-- **Fix:** Create higher-quality obstacle textures (meatball, allen key, shopping cart, bookshelf, flatpack, price tag, wardrobe). Add conveyor belt road texture. Add fluorescent ceiling sky texture. Byte updates `applyStageVisuals` to load new road/sky textures.
-- **Est:** 300s (art)
-- **Lines changed:** ~15 (code)
+### A3. Fix Stage 3 Object Colors (Mesh Materials)
+- **Assignee:** Byte ⚡
+- **Files:** `src/App.vue` (search for stage3 obstacle material creation, ~line 740-770 area)
+- **Spec:** If any obstacle meshes use overly bright `MeshPhongMaterial` with high emissive/light color values, reduce `emissiveIntensity` and adjust `color` to muted tones. Check `MeshPhongMaterial` instances created for stage 3 obstacles — ensure they don't have white/near-white diffuse or emissive values.
+- **Acceptance:** In-game stage 3 objects render with normal colors, not shiny bright white.
 
 ---
 
-## Dependency Graph
-```
-TASK-1 ──→ TASK-3
-TASK-2 (independent)
-TASK-4 (independent, needs art assets)
-TASK-5 (independent, needs art assets)
-TASK-6 (independent)
-TASK-7 (independent, needs art assets)
-```
+## Group B: Stage 3 Audio
+
+### B1. Replace Stage 3 Unique SFX with Common Crash Sounds
+- **Assignee:** Byte ⚡
+- **Files:** `src/App.vue` (~line 3686-3698), `src/composables/useAudio.js` (or equivalent audio module)
+- **Spec:** Stage 3 currently uses unique IKEA-themed sounds (`crash_wood`, `crash_metal`, `crash_glass`, `portal_whoosh`). Replace the crash-sound mapping so Stage 3 uses the same `crash` sound as other stages (like Stage 1/2 which use `playSound('crash')` at line 2561). Remove or comment out the `crashSounds` lookup for stage 3. Keep `crash_metal` for the metal beam projectile impact if needed, but obstacle collisions should use the common `crash` sound.
+- **Acceptance:** Hitting stage 3 obstacles plays the same crash SFX as other stages. No IKEA-specific sounds on collision.
+
+---
+
+## Group C: Stage 2 Road
+
+### C1. Fix Stage 2 Cobblestone Road Texture
+- **Assignee:** Byte ⚡
+- **Files:** `src/App.vue` (~line 255-285, cobblestone texture loading), `src/data/stages.js` (line 38: `roadType: 'cobblestone'`)
+- **Spec:** Stage 2 cobblestone texture isn't rendering correctly. The v4 reference used `assets/road_cobblestone.webp` which exists and looks good. Verify the texture is loading (line 273 already loads it). Check if `repeat` values (line 276: `repeat.set(1, 10)`) need adjustment. Check if the material is being applied correctly and not overridden. Compare with working Stage 1 asphalt texture flow.
+- **Acceptance:** Stage 2 road shows clear cobblestone pattern matching v4 reference. No blank/missing texture.
+
+---
+
+## Group D: Stage 3 Boss
+
+### D1. Rework Boss Tentacles to Beholder-Style Surround
+- **Assignee:** Byte ⚡
+- **Files:** `src/App.vue` (~line 2640-2675, tentacle creation)
+- **Spec:** Current: 8 cylinder tentacles positioned radially at radius 1.5, rotated outward with `rotation.x = PI/4`. They look like sticks around the sprite. Desired: Tentacles should visually surround the meatball like a beholder — curving upward/outward from below the meatball, creating a "crown" or "halo" effect. Increase count to 10-12. Position them in a ring below the meatball (y < 2.5), angled upward and outward. Use `rotation` to make them curve away from center. Consider using `ConeGeometry` (wider base) or tapering cylinders for organic look. Keep the rainbow HSL coloring but reduce emissive intensity.
+- **Acceptance:** Tentacles form a beholder-like crown around the meatball. Visible from the player's perspective (behind/below the boss). No floating stick appearance.
+
+### D2. Make Boss Projectiles Dodgeable (Fall Away from Player)
+- **Assignee:** Byte ⚡
+- **Files:** `src/App.vue` (~line 2786-2820, giantMeatball projectile spawning)
+- **Spec:** Current: Metal beams target specific lanes (`targetX = (lane - 1) * laneWidth`) making them too accurate. Desired: Beams should fall in a pattern the player can dodge. Changes:
+  1. Always leave at least 1 lane clear (never target all 3 lanes in one volley)
+  2. Add random X offset (`±1.5` to `±3`) from lane center so beams don't land exactly on lanes
+  3. Increase `zSpread` range so beams scatter more along the road
+  4. Add a shadow/warning indicator on the ground where beams will land (0.5s before impact)
+- **Acceptance:** Player can consistently dodge beams by reading the pattern. At least 1 safe lane per volley. Beams feel like environmental hazards, not homing attacks.
+
+---
 
 ## Execution Order
-1. TASK-1 + TASK-2 + TASK-6 (parallel, code-only, fast)
-2. TASK-3 (depends on TASK-1)
-3. TASK-4 + TASK-5 (need art from Sashay)
-4. TASK-7 (polish, last)
+
+1. **A1, A2** (Sashay) — texture work, can run in parallel
+2. **A3, B1, C1** (Byte) — code fixes, independent of each other
+3. **D1, D2** (Byte) — boss rework, do D1 before D2 (tentacle refactor first, then projectile tuning)
+
+## Notes
+- A2 and A3 may overlap (both address brightness). Sashay fixes textures, Byte fixes material code. Coordinate: if Sashay's texture fix resolves brightness, A3 may be a no-op.
+- C1 needs verification first — the cobblestone texture *is* loaded. Bug may be in material application or repeat values.

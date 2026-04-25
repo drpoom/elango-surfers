@@ -282,6 +282,10 @@ function applyStageVisuals(stageIndex) {
     }
     // Don't create new material — modify existing (v4 approach)
     if (cobblestoneTexture) {
+      // Synchronize offset with ground texture to avoid visual jump
+      if (groundTexture) {
+        cobblestoneTexture.offset.y = groundTexture.offset.y;
+      }
       roadMesh.material.map = cobblestoneTexture;
       roadMesh.material.color.set(0x888888);
       roadMesh.material.needsUpdate = true;
@@ -2637,21 +2641,25 @@ function spawnBoss(bossType) {
     sprite.position.y = 2.5
     group.add(sprite)
     
-    // Add rotating colorful tentacles with disco effect
-    const tentacleCount = 8
+    // Add beholder-style tentacles in crown/halo formation
+    const tentacleCount = 12
     const tentacles = []
     for (let i = 0; i < tentacleCount; i++) {
-      const tentacleGeo = new THREE.CylinderGeometry(0.15, 0.05, 2.5, 8)
+      const tentacleGeo = new THREE.CylinderGeometry(0.2, 0.08, 2.0, 8)
       const tentacleMat = new THREE.MeshPhongMaterial({ 
-        color: new THREE.Color().setHSL((i / tentacleCount) % 1, 1, 0.5),
-        emissive: new THREE.Color().setHSL((i / tentacleCount) % 1, 1, 0.3),
-        emissiveIntensity: 0.5
+        color: new THREE.Color().setHSL((i / tentacleCount) % 1, 0.7, 0.4),
+        emissive: new THREE.Color().setHSL((i / tentacleCount) % 1, 0.5, 0.2),
+        emissiveIntensity: 0.2
       })
       const tentacle = new THREE.Mesh(tentacleGeo, tentacleMat)
       const angle = (i / tentacleCount) * Math.PI * 2
-      tentacle.position.set(Math.cos(angle) * 1.5, 0, Math.sin(angle) * 1.5)
-      tentacle.rotation.x = Math.PI / 4
-      tentacle.rotation.z = angle
+      // Position in crown/halo below meatball, angled upward/outward
+      const radius = 1.8
+      const baseY = 1.5 // Below meatball (meatball at y=2.5)
+      tentacle.position.set(Math.cos(angle) * radius, baseY, Math.sin(angle) * radius)
+      // Angle upward and outward for organic crown look
+      tentacle.rotation.x = -Math.PI / 6 // Tilt upward (-30 degrees)
+      tentacle.rotation.z = angle + Math.PI // Point outward from center
       tentacle.userData = { baseAngle: angle, offset: i }
       group.add(tentacle)
       tentacles.push(tentacle)
@@ -2937,9 +2945,9 @@ const animate = () => {
   // === UPDATE ROAD MESH CURVE ===
   updateRoadCurve();
   
-  // Scroll cobblestone texture (Stage 2 only)
+  // Scroll cobblestone texture (Stage 2 only) - match ground texture scroll direction
   if (cobblestoneTexture && currentStage.value === 1) {
-    cobblestoneTexture.offset.y += gameSpeed * 0.05;
+    cobblestoneTexture.offset.y -= gameSpeed * 0.15;
   }
 
   // === BOSS WARNING + SPAWN TRIGGER ===
@@ -3683,19 +3691,11 @@ const animate = () => {
         scene.remove(obs.mesh);
         obstacles.splice(index, 1);
       } else {
-        // Stage 3 obstacles: play specific crash sound based on obstacle type
-        if (currentStage.value === 2) {
-          const crashSounds = {
-            'meatball': 'crash_wood',
-            'allenKey': 'crash_metal',
-            'shoppingCart': 'crash_metal',
-            'bookshelfTower': 'crash_wood',
-            'flatpackStack': 'crash_wood',
-            'priceTagBanner': 'crash_glass',
-            'wardrobePortal': 'portal_whoosh'
-          };
-          const crashSound = crashSounds[obs.obstacleType] || 'crash_wood';
-          playSound(crashSound);
+        // Stage 3 obstacles: use common crash sound (keep crash_metal only for beam impacts)
+        if (currentStage.value === 2 && obs.obstacleType === 'metalBeam') {
+          playSound('crash_metal');
+        } else {
+          playSound('crash');
         }
         triggerGameOver(0.5)
       }
