@@ -807,40 +807,28 @@ const applyFachwerkToBuildings = () => {
   })
 };
 
-// Stage 3 (Concrete Jungle) obstacle textures
+// Stage 3 (Urban Construction) obstacle textures
 let stage3Textures = {};
 const loadStage3Textures = () => {
   if (Object.keys(stage3Textures).length > 0) return; // already loaded
   
   const textureBase = 'assets/stage3/';
   
-  // T3-03: Meatball
-  stage3Textures.meatball = textureLoader.load(textureBase + 'obstacle-meatball.webp');
-  stage3Textures.meatball.colorSpace = THREE.SRGBColorSpace;
+  // Urban construction obstacles
+  stage3Textures.trafficCone = textureLoader.load(textureBase + 'trafficCone.png');
+  stage3Textures.trafficCone.colorSpace = THREE.SRGBColorSpace;
   
-  // T3-04: Allen key (5-frame spritesheet) - load once, animation later
-  stage3Textures.allenKey = textureLoader.load(textureBase + 'obstacle-allen-key.webp');
-  stage3Textures.allenKey.colorSpace = THREE.SRGBColorSpace;
+  stage3Textures.dumpster = textureLoader.load(textureBase + 'dumpster.png');
+  stage3Textures.dumpster.colorSpace = THREE.SRGBColorSpace;
   
-  // T3-05: Shopping cart (3-frame spritesheet) - load once, animation later
-  stage3Textures.shoppingCart = textureLoader.load(textureBase + 'obstacle-shopping-cart.webp');
-  stage3Textures.shoppingCart.colorSpace = THREE.SRGBColorSpace;
+  stage3Textures.scaffoldTower = textureLoader.load(textureBase + 'scaffoldTower.png');
+  stage3Textures.scaffoldTower.colorSpace = THREE.SRGBColorSpace;
   
-  // T3-06: Bookshelf tower (4-frame spritesheet) - load once, animation later
-  stage3Textures.bookshelfTower = textureLoader.load(textureBase + 'obstacle-bookshelf-tower.webp');
-  stage3Textures.bookshelfTower.colorSpace = THREE.SRGBColorSpace;
+  stage3Textures.concreteBarrier = textureLoader.load(textureBase + 'concreteBarrier.png');
+  stage3Textures.concreteBarrier.colorSpace = THREE.SRGBColorSpace;
   
-  // T3-08: Flatpack stack
-  stage3Textures.flatpackStack = textureLoader.load(textureBase + 'obstacle-flatpack-stack.webp');
-  stage3Textures.flatpackStack.colorSpace = THREE.SRGBColorSpace;
-  
-  // T3-10: Price tag banner (hanging obstacle)
-  stage3Textures.priceTagBanner = textureLoader.load(textureBase + 'obstacle-price-tag-banner.webp');
-  stage3Textures.priceTagBanner.colorSpace = THREE.SRGBColorSpace;
-  
-  // T3-07: Wardrobe portal (2-frame spritesheet) - load once, animation later
-  stage3Textures.wardrobePortal = textureLoader.load(textureBase + 'obstacle-wardrobe-portal.webp');
-  stage3Textures.wardrobePortal.colorSpace = THREE.SRGBColorSpace;
+  stage3Textures.billboard = textureLoader.load(textureBase + 'billboard.png');
+  stage3Textures.billboard.colorSpace = THREE.SRGBColorSpace;
 };
 
 window.addEventListener('error', (e) => { console.log('GLOBAL ERROR:', e.message, 'at', e.filename + ':' + e.lineno + ':' + e.colno); });
@@ -1766,21 +1754,18 @@ const spawnObstacle = () => {
   let types = [];
   
   if (isStage3) {
-    // Stage 3: IKEA-pocalypse obstacles
-    types = ['meatball', 'meatball', 'allenKey', 'shoppingCart'];
-    if (difficultyMultiplier > 1.3) types.push('bookshelfTower', 'flatpackStack');
-    if (difficultyMultiplier > 1.8) types.push('priceTagBanner', 'wardrobePortal');
+    // Stage 3: Urban construction site obstacles
+    types = ['trafficCone', 'metalBeam', 'dumpster', 'scaffoldTower', 'concreteBarrier', 'billboard'];
     if (difficultyMultiplier > 2.2) types.push('slippery');
-    if (difficultyMultiplier > 2.8) types.push('bookshelfTower', 'flatpackStack');
   } else if (isMedieval) {
-    types = ['fruit', 'fruit', 'barrel', 'stone']; // medieval: no cars/buses
+    types = ['brickBox', 'brickBox', 'barrel', 'stone']; // medieval: no cars/buses
     if (difficultyMultiplier > 1.3) types.push('stone', 'barrier');
     if (difficultyMultiplier > 1.8) types.push('wall', 'barrel');
     if (difficultyMultiplier > 2.2) types.push('barrier', 'stone');
     if (difficultyMultiplier > 2.8) types.push('wall', 'barrel');
   } else {
     // Modern highway
-    types = ['fruit', 'fruit', 'car'];
+    types = ['brickBox', 'brickBox', 'car'];
     if (difficultyMultiplier > 1.3) types.push('stone', 'barrier');
     if (difficultyMultiplier > 1.8) types.push('police', 'bus');
     if (difficultyMultiplier > 2.2) types.push('fireengine', 'wall');
@@ -1792,27 +1777,17 @@ const spawnObstacle = () => {
   let group, obsLane = lane, hitWidth = 1.5;
   
   switch (obsType) {
-    case 'fruit': {
+    case 'brickBox': {
       group = new THREE.Group();
-      const colors = [0xff0000, 0xffa500, 0x8b0000, 0xff69b4];
-      const fruitColor = colors[Math.floor(Math.random() * colors.length)];
-      const fruitGeo = new THREE.SphereGeometry(1.2, 24, 24);
-      const fruitMat = new THREE.MeshToonMaterial({ color: fruitColor });
-      const fruit = new THREE.Mesh(fruitGeo, fruitMat);
-      fruit.castShadow = false;
-      group.add(fruit);
-      const stemGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.5, 8);
-      const stemMat = new THREE.MeshToonMaterial({ color: 0x228b22 });
-      const stem = new THREE.Mesh(stemGeo, stemMat);
-      stem.position.y = 1.0;
-      group.add(stem);
-      const leafGeo = new THREE.SphereGeometry(0.3, 8, 8);
-      const leafMat = new THREE.MeshToonMaterial({ color: 0x32cd32 });
-      const leaf = new THREE.Mesh(leafGeo, leafMat);
-      leaf.position.set(0.2, 1.2, 0);
-      leaf.scale.set(1, 0.3, 1);
-      group.add(leaf);
-      group.position.set(laneX, 0.6, -50);
+      const brickGeo = new THREE.BoxGeometry(1.8, 1.8, 1.8);
+      const brickMat = new THREE.MeshToonMaterial({ 
+        map: textureLoader.load('assets/obstacles/brick-box.png'),
+        color: 0x8B4513 
+      });
+      const brick = new THREE.Mesh(brickGeo, brickMat);
+      brick.castShadow = false;
+      group.add(brick);
+      group.position.set(laneX, 0.9, -50);
       break;
     }
     
@@ -2294,6 +2269,93 @@ const spawnObstacle = () => {
       hitWidth = 1.5;
       break;
     }
+    
+    // Urban construction obstacles
+    case 'trafficCone': {
+      group = new THREE.Group();
+      const coneGeo = new THREE.ConeGeometry(0.4, 0.9, 16);
+      const coneMat = new THREE.MeshToonMaterial({ 
+        map: stage3Textures.trafficCone,
+        color: 0xff6600
+      });
+      const cone = new THREE.Mesh(coneGeo, coneMat);
+      cone.castShadow = false;
+      cone.position.y = 0.45;
+      group.add(cone);
+      group.position.set(laneX, 0, -50);
+      hitWidth = 0.8;
+      break;
+    }
+    
+    case 'dumpster': {
+      group = new THREE.Group();
+      const dumpsterGeo = new THREE.BoxGeometry(1.5, 1.2, 2.0);
+      const dumpsterMat = new THREE.MeshToonMaterial({ 
+        map: stage3Textures.dumpster,
+        color: 0x228822
+      });
+      const dumpster = new THREE.Mesh(dumpsterGeo, dumpsterMat);
+      dumpster.castShadow = false;
+      dumpster.position.y = 0.6;
+      group.add(dumpster);
+      group.position.set(laneX, 0, -50);
+      hitWidth = 1.5;
+      break;
+    }
+    
+    case 'scaffoldTower': {
+      group = new THREE.Group();
+      const scaffoldGeo = new THREE.BoxGeometry(1.2, 2.5, 1.2);
+      const scaffoldMat = new THREE.MeshToonMaterial({ 
+        map: stage3Textures.scaffoldTower,
+        color: 0x888888
+      });
+      const scaffold = new THREE.Mesh(scaffoldGeo, scaffoldMat);
+      scaffold.castShadow = false;
+      scaffold.position.y = 1.25;
+      group.add(scaffold);
+      group.position.set(laneX, 0, -50);
+      hitWidth = 1.3;
+      break;
+    }
+    
+    case 'concreteBarrier': {
+      group = new THREE.Group();
+      const barrierGeo = new THREE.BoxGeometry(2.0, 0.8, 0.5);
+      const barrierMat = new THREE.MeshToonMaterial({ 
+        map: stage3Textures.concreteBarrier,
+        color: 0xaaaaaa
+      });
+      const barrier = new THREE.Mesh(barrierGeo, barrierMat);
+      barrier.castShadow = false;
+      barrier.position.y = 0.4;
+      group.add(barrier);
+      group.position.set(laneX, 0, -50);
+      hitWidth = 1.8;
+      break;
+    }
+    
+    case 'billboard': {
+      group = new THREE.Group();
+      // Pole
+      const poleGeo = new THREE.CylinderGeometry(0.1, 0.1, 3.0, 8);
+      const poleMat = new THREE.MeshBasicMaterial({ color: 0x666666 });
+      const pole = new THREE.Mesh(poleGeo, poleMat);
+      pole.position.y = 1.5;
+      group.add(pole);
+      // Billboard sign
+      const signGeo = new THREE.PlaneGeometry(2.5, 1.5);
+      const signMat = new THREE.MeshBasicMaterial({ 
+        map: stage3Textures.billboard,
+        side: THREE.DoubleSide
+      });
+      const sign = new THREE.Mesh(signGeo, signMat);
+      sign.position.set(0, 2.8, 0.1);
+      group.add(sign);
+      group.position.set(laneX, 0, -50);
+      hitWidth = 1.5;
+      break;
+    }
   }
   
   // Add to scene with overlap detection
@@ -2732,6 +2794,11 @@ function spawnBoss(bossType) {
     sprite.position.y = 2.5
     group.add(sprite)
     
+    // Add glow at halo center
+    const glowLight = new THREE.PointLight(0xff00ff, 2, 10)
+    glowLight.position.set(0, 2.5, 0)
+    group.add(glowLight)
+    
     // Add beholder-style tentacles in crown/halo formation
     const tentacleCount = 12
     const tentacles = []
@@ -2744,13 +2811,15 @@ function spawnBoss(bossType) {
       })
       const tentacle = new THREE.Mesh(tentacleGeo, tentacleMat)
       const angle = (i / tentacleCount) * Math.PI * 2
-      // Position around CENTER of meatball, spanning outward in ALL directions like a sunray/halo
+      // Vertical halo: spread around Y axis
       const radius = 2.5
       const baseY = 2.5 // Center of meatball
-      tentacle.position.set(Math.cos(angle) * radius, baseY, Math.sin(angle) * radius)
-      // No tilt - spread in all directions
-      tentacle.rotation.x = 0
-      tentacle.rotation.z = 0
+      tentacle.position.set(
+        Math.cos(angle) * radius,  // X spread
+        baseY + Math.sin(angle) * radius,  // Y spread (vertical)
+        0  // Z = center
+      )
+      tentacle.rotation.z = angle
       tentacle.userData = { baseAngle: angle, offset: i }
       group.add(tentacle)
       tentacles.push(tentacle)
@@ -3106,14 +3175,13 @@ const animate = () => {
     const bossType = STAGES[currentStage.value].bossType
     bossStateTimer += realDelta
     
-    // Animate Flying Spaghetti Meatball tentacles (disco rotation)
+    // Animate Flying Spaghetti Meatball tentacles (vertical wiggle + disco)
     if (bossType === 'giantMeatball' && boss.userData.tentacles) {
       boss.userData.tentacles.forEach((tentacle, i) => {
-        // Rotate tentacles around meatball
-        tentacle.rotation.z += 0.05
-        // Wave motion
-        tentacle.rotation.x = Math.PI / 4 + Math.sin(Date.now() * 0.003 + i) * 0.3
-        // Disco color cycle
+        const t = Date.now() * 0.003
+        const baseAngle = tentacle.userData.baseAngle
+        tentacle.rotation.x = Math.sin(t + i * 0.5) * 0.4
+        tentacle.rotation.z = baseAngle + Math.sin(t * 1.5 + i * 0.7) * 0.3
         const hue = (Date.now() * 0.0001 + i * 0.125) % 1
         tentacle.material.color.setHSL(hue, 1, 0.5)
         tentacle.material.emissive.setHSL(hue, 1, 0.3)
