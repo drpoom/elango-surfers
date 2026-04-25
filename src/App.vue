@@ -414,8 +414,19 @@ function applyStageVisuals(stageIndex) {
         const width = 2 + Math.random();         // 2-3
         const depth = 2 + Math.random();         // 2-3
         const geo = new THREE.BoxGeometry(width, height, depth);
+        const skyscraperMat = new THREE.MeshPhysicalMaterial({
+          map: glassTex,
+          color: 0x88aacc,
+          metalness: 0.85,
+          roughness: 0.15,
+          transparent: true,
+          opacity: 0.9,
+          envMapIntensity: 1.5
+        });
         const building = new THREE.Mesh(geo, skyscraperMat);
-        building.position.set(0, height / 2, 0);
+        // Position building so its bottom sits at ground level
+        // Adjust by -0.5 to compensate for visual padding in texture
+        building.position.set(0, (height / 2) - 0.5, 0);
         building.castShadow = false;
         t.add(building);
       });
@@ -455,6 +466,52 @@ function applyStageVisuals(stageIndex) {
           }
         }
       })
+    }
+    // Restore tree sprites (removed in Stage 3)
+    if (trees.length) {
+      // Load tree textures if not already cached
+      const treeRoundTex = textureLoader.load('assets/tree_round_clean.webp');
+      const treePineTex = textureLoader.load('assets/tree_pine_clean.webp');
+      
+      trees.forEach((t) => {
+        // Remove any existing 3D building from Stage 3
+        const existingBuilding = t.children.find(c => c.isMesh);
+        if (existingBuilding) {
+          t.remove(existingBuilding);
+          if (existingBuilding.geometry) existingBuilding.geometry.dispose();
+          if (existingBuilding.material) {
+            if (Array.isArray(existingBuilding.material)) {
+              existingBuilding.material.forEach(m => m.dispose());
+            } else {
+              existingBuilding.material.dispose();
+            }
+          }
+        }
+        
+        // Recreate tree sprite
+        const isPine = Math.random() > 0.5;
+        const treeTex = isPine ? treePineTex : treeRoundTex;
+        const treeH = isPine ? 5.6 : 4.8;
+        const treeW = isPine ? 3.2 : 4.0;
+        
+        const spriteMat = new THREE.SpriteMaterial({ 
+          map: treeTex, 
+          transparent: true,
+          depthWrite: false
+        });
+        const sprite = new THREE.Sprite(spriteMat);
+        sprite.scale.set(treeW, treeH, 1);
+        t.add(sprite);
+        
+        // Restore scale and position
+        const treeScale = 0.7 + Math.random() * 0.3;
+        t.scale.setScalar(treeScale);
+        const treeBaseY = (treeH / 2) * treeScale;
+        t.baseY = treeBaseY;
+        if (t.userData.initX !== undefined && t.userData.initZ !== undefined) {
+          t.position.set(t.userData.initX, treeBaseY + getSurfaceY(t.userData.initZ), t.userData.initZ);
+        }
+      });
     }
     // Switch to highway BGM
     switchBGMTrack('highway');
@@ -1673,11 +1730,18 @@ const createBackgroundElements = () => {
       trees.push(tree);
     } else {
       // Stage 3: empty group, 3D buildings will be added by applyStageVisuals(3)
+      // Building bottom is at local Y=0 (positioned at height/2), so no baseY offset needed
+      tree.baseY = 0;
       tree.position.set(
         side * (6 + Math.random() * 6),
         getSurfaceY(treeZ),
         treeZ
       );
+      tree.baseX = tree.position.x; // store for road curve
+      // Store initial position for restart
+      tree.userData.initX = tree.position.x;
+      tree.userData.initZ = treeZ;
+      tree.userData.initBaseX = tree.baseX;
       scene.add(tree);
       trees.push(tree);
     }
