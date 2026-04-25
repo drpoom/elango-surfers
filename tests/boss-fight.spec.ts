@@ -6,8 +6,10 @@ test.describe('Boss Fights', () => {
     test.setTimeout(120000);
     await page.goto(GAME_URL);
     await dismissLoadingScreen(page);
-    await page.waitForSelector('canvas', { timeout: 15000 });
-    await page.waitForTimeout(3000);
+    // Canvas should already exist after dismissLoadingScreen
+    // Just verify it's visible, don't wait for it to appear
+    await expect(page.locator('canvas')).toBeVisible({ timeout: 5000 });
+    await page.waitForTimeout(2000);
   });
 
   async function enterDebugCode(page) {
