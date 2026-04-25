@@ -54,14 +54,21 @@ const handleClick = () => {
   handleStart();
 };
 
+const handleTouch = (event) => {
+  event.preventDefault();
+  handleStart();
+};
+
 onMounted(() => {
   document.addEventListener('keydown', handleKeyDown, { capture: true });
   document.addEventListener('click', handleClick, { capture: true });
+  document.addEventListener('touchstart', handleTouch, { capture: true, passive: false });
 });
 
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeyDown, { capture: true });
   document.removeEventListener('click', handleClick, { capture: true });
+  document.removeEventListener('touchstart', handleTouch, { capture: true });
 });
 </script>
 
