@@ -383,22 +383,35 @@ function applyStageVisuals(stageIndex) {
         }
       })
     }
-    // Apply skyscraper texture to trees for Stage 3
-    if (!stage3Textures.treeSkyscraper) {
-      stage3Textures.treeSkyscraper = textureLoader.load('assets/stage3/tree_skyscraper.png');
-      stage3Textures.treeSkyscraper.colorSpace = THREE.SRGBColorSpace;
-    }
+    // Replace tree sprites with 3D glass skyscrapers for Stage 3
     if (trees.length) {
+      const skyscraperMat = new THREE.MeshPhysicalMaterial({
+        color: 0x88aacc,
+        metalness: 0.85,
+        roughness: 0.15,
+        transparent: true,
+        opacity: 0.9,
+        envMapIntensity: 1.5
+      });
+      
       trees.forEach((t) => {
-        const sprite = t.children.find(c => c.isSprite)
-        if (sprite && sprite.material) {
-          // Replace tree texture with skyscraper sprite
-          sprite.material.map = stage3Textures.treeSkyscraper
-          sprite.material.needsUpdate = true
-          // Adjust scale for skyscraper dimensions
-          sprite.scale.set(4.5, 8.0, 1)
+        // Remove existing sprite
+        const sprite = t.children.find(c => c.isSprite);
+        if (sprite) {
+          t.remove(sprite);
+          sprite.material.dispose();
         }
-      })
+        
+        // Create 3D skyscraper
+        const height = 12 + Math.random() * 8;  // 12-20
+        const width = 2 + Math.random();         // 2-3
+        const depth = 2 + Math.random();         // 2-3
+        const geo = new THREE.BoxGeometry(width, height, depth);
+        const building = new THREE.Mesh(geo, skyscraperMat);
+        building.position.set(0, height / 2, 0);
+        building.castShadow = false;
+        t.add(building);
+      });
     }
     // Switch to urban/city BGM
     switchBGMTrack('highway');
@@ -1622,50 +1635,60 @@ const createBackgroundElements = () => {
   const treeRoundTex = textureLoader.load('assets/tree_round_clean.webp', () => onTextureLoaded());
   trackTexture();
   const treePineTex = textureLoader.load('assets/tree_pine_clean.webp', () => onTextureLoaded());
-  trackTexture();
-  const treeSkyscraperTex = textureLoader.load('assets/stage3/tree_skyscraper.png', () => onTextureLoaded());
   
   for (let i = 0; i < 20; i++) {
     const isPine = Math.random() > 0.5;
-    // Stage 3 uses skyscraper texture, other stages use tree textures
-    const treeTex = currentStage.value === 2 ? treeSkyscraperTex : (isPine ? treePineTex : treeRoundTex);
-    const treeH = currentStage.value === 2 ? 8.0 : (isPine ? 5.6 : 4.8);
-    const treeW = currentStage.value === 2 ? 4.5 : (isPine ? 3.2 : 4.0);
-    
-    // Billboard tree sprite (always faces camera)
-    const spriteMat = new THREE.SpriteMaterial({ 
-      map: treeTex, 
-      transparent: true,
-      depthWrite: false
-    });
-    const sprite = new THREE.Sprite(spriteMat);
-    // Offset sprite up so bottom of visible content aligns with ground
-    // Tree textures have ~12% bottom padding — shift center up by half
-    sprite.scale.set(treeW, treeH, 1);
-    
-    const tree = new THREE.Group();
-    tree.add(sprite);
-    
     const side = Math.random() > 0.5 ? 1 : -1;
     const treeZ = -10 - Math.random() * 30;
-    const treeScale = 0.7 + Math.random() * 0.3;
-    tree.scale.setScalar(treeScale);
-    const treeBaseY = (treeH / 2) * treeScale;
-    // Stage 3: spawn skyscrapers further back to avoid building overlap (buildings at 10-20, trees at 6-12)
-    const treeX = currentStage.value === 2 ? side * (6 + Math.random() * 6) : side * (8 + Math.random() * 10);
-    tree.position.set(
-      treeX,
-      treeBaseY + getSurfaceY(treeZ),
-      treeZ
-    );
-    tree.baseY = treeBaseY;
-    tree.baseX = tree.position.x; // store for road curve
-    // Store initial position for restart
-    tree.userData.initX = tree.position.x;
-    tree.userData.initZ = treeZ;
-    tree.userData.initBaseX = tree.baseX;
-    scene.add(tree);
-    trees.push(tree);
+    
+    // Stage 3: create empty tree group (3D buildings added by applyStageVisuals)
+    // Other stages use tree sprites
+    const tree = new THREE.Group();
+    
+    if (currentStage.value !== 2) {
+      const treeTex = isPine ? treePineTex : treeRoundTex;
+      const treeH = isPine ? 5.6 : 4.8;
+      const treeW = isPine ? 3.2 : 4.0;
+      
+      // Billboard tree sprite (always faces camera)
+      const spriteMat = new THREE.SpriteMaterial({ 
+        map: treeTex, 
+        transparent: true,
+        depthWrite: false
+      });
+      const sprite = new THREE.Sprite(spriteMat);
+      // Offset sprite up so bottom of visible content aligns with ground
+      // Tree textures have ~12% bottom padding — shift center up by half
+      sprite.scale.set(treeW, treeH, 1);
+      tree.add(sprite);
+      
+      const treeScale = 0.7 + Math.random() * 0.3;
+      tree.scale.setScalar(treeScale);
+      const treeBaseY = (treeH / 2) * treeScale;
+      const treeX = side * (8 + Math.random() * 10);
+      tree.baseY = treeBaseY;
+      tree.position.set(
+        treeX,
+        treeBaseY + getSurfaceY(treeZ),
+        treeZ
+      );
+      tree.baseX = tree.position.x; // store for road curve
+      // Store initial position for restart
+      tree.userData.initX = tree.position.x;
+      tree.userData.initZ = treeZ;
+      tree.userData.initBaseX = tree.baseX;
+      scene.add(tree);
+      trees.push(tree);
+    } else {
+      // Stage 3: empty group, 3D buildings will be added by applyStageVisuals(3)
+      tree.position.set(
+        side * (6 + Math.random() * 6),
+        getSurfaceY(treeZ),
+        treeZ
+      );
+      scene.add(tree);
+      trees.push(tree);
+    }
   }
   
   // buildingTextures and buildingDominantColors loaded above
