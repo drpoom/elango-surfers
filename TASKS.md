@@ -1,85 +1,83 @@
-# elango-surfers — v5.0.21 Task Plan
+# TASKS.md — v5.0.24 Bug Fix Plan
 
-## Overview
-Two items to address: **Bug fix** (loading screen keypress) and **Feature** (loading progress bar). Target version: **v5.0.21**.
+## Bug 1: Settings panel behind pause overlay
 
----
+**Root cause:** Pause indicator has inline `z-index: 9999` (App.vue line 43), settings panel has `z-index: 30` (game.css line 220). When both are visible, pause renders on top.
 
-## Bug: Loading screen doesn't respond to keypress
-
-**Symptom:** LoadingScreen shows v5.0.20 on black background with "Press any key / Tap to start", but pressing any key does NOT dismiss it. BGM doesn't start either.
-
-**Root cause analysis:**
-- `LoadingScreen.vue` registers `window.addEventListener('keydown', handleKeyDown)` in `onMounted` and emits `@start`
-- `App.vue` wires `@start="onLoadingStart"` which calls `initAudio()`, `startBGM()`, then hides after 400ms
-- **Likely cause:** The Three.js canvas (`renderer.domElement`) is appended to `#game-canvas` during `initGame()`, which runs inside `onMounted` in App.vue. If `initGame()` runs before the loading screen's `onMounted`, the canvas may capture/focus keyboard events before the loading screen registers its listener. Alternatively, the canvas may have `tabindex` or focus that steals keydown events.
-- **Another possibility:** `initGame()` is called somewhere that blocks the event loop, preventing the loading screen's `onMounted` from running until after the canvas is focused.
-
-**Fix approach:**
-1. Ensure loading screen event listener is registered before `initGame()` creates the canvas
-2. Add `tabindex="-1"` to the game canvas container to prevent it from stealing focus
-3. Consider using `document.addEventListener` with `capture: true` on the loading screen to guarantee event reception
-4. Add a fallback: also listen for `pointerdown`/`touchstart` on the document level
+**Fix:** In `src/game.css` line 220, change:
+```css
+z-index: 30;
+```
+→
+```css
+z-index: 10001;
+```
 
 ---
 
-## Feature: Loading progress bar
+## Bug 2: Cobblestone texture lost on restart
 
-**Requirement:** Show texture loading progress on the loading screen.
+**Root cause:** `originalRoadMaterial` is set to `null` in `resetStage()` (line 4700) **only if** `scene.getObjectByName('road')` is found. But `initGame()` (line 846) creates a brand new scene and road mesh. If `resetStage()` runs before the old scene is torn down, `originalRoadMaterial` gets set to null correctly. However, if `initGame()` is called and creates a new road without clearing `originalRoadMaterial`, the stale reference persists. When Stage 2 is re-entered, `applyStageVisuals(2)` checks `if (!originalRoadMaterial)` at line 314 — but it's not null (holds old reference), so it skips saving the new road's material. The cobblestone texture then gets applied to the new road, but on next reset, `originalRoadMaterial` points to a disposed material from the old scene.
 
-**Current state:** Textures load asynchronously via `THREE.TextureLoader.load()` with no progress tracking. The loading screen has no concept of loading state.
-
-**Implementation plan:**
-1. Create a texture loading manager (or use `THREE.LoadingManager`) that tracks total vs. loaded texture count
-2. Wrap all `textureLoader.load()` calls to go through the manager
-3. Expose progress as a reactive ref (0–100%)
-4. Pass progress to `LoadingScreen` as a prop
-5. In `LoadingScreen.vue`:
-   - Show "Loading... XX%" while progress < 100
-   - Only show "Press any key / Tap to start" when progress === 100
-   - Keep black background, version display, video placeholder
+**Fix:** In `initGame()` (around line 846), add after the new scene/road is created:
+```js
+originalRoadMaterial = null;
+```
+This ensures the next `applyStageVisuals(2)` call properly captures the new road mesh's material.
 
 ---
 
-## Tasks
+## Bug 3: Stage 3 skyscrapers should be 3D objects, not sprites
 
-### 1. Scout 🔍 — Create loading screen test case
-- Write a Playwright test that:
-  - Verifies the loading screen is visible on page load
-  - Verifies pressing a key dismisses the loading screen
-  - Verifies BGM starts after dismissal (check audio context state or play event)
-- File: `tests/loading-screen.spec.js`
+**Root cause:** Stage 3 trees use billboard `Sprite` with `tree_skyscraper.png` texture (App.vue lines 386-399). These are flat 2D sprites, not actual 3D buildings.
 
-### 2. Byte ⚡ — Fix the loading screen keypress bug
-- Root cause: investigate event listener registration order vs. canvas creation
-- Fix: ensure `keydown` listener on `window`/`document` fires before canvas can intercept
-- Options:
-  - Use `document.addEventListener('keydown', ..., { capture: true })` in LoadingScreen
-  - Prevent canvas from auto-focusing (set `tabindex="-1"` on `#game-canvas`)
-  - Defer `initGame()` until after loading screen is mounted
-- Verify fix with the test from Task 1
+**Fix:** In `applyStageVisuals(3)` (around line 386), replace the sprite-swap logic with 3D box mesh creation:
+```js
+// Instead of swapping sprite texture, replace each tree with a 3D building
+trees.forEach((t, i) => {
+  const sprite = t.children.find(c => c.isSprite)
+  if (sprite) {
+    t.remove(sprite)
+    sprite.material.dispose()
+  }
+  // Create 3D skyscraper box
+  const height = 12 + Math.random() * 8  // 12-20
+  const width = 2 + Math.random()        // 2-3
+  const depth = 2 + Math.random()         // 2-3
+  const geo = new THREE.BoxGeometry(width, height, depth)
+  const mat = new THREE.MeshPhysicalMaterial({
+    color: 0x88aacc,
+    metalness: 0.8,
+    roughness: 0.15,
+    transparent: true,
+    opacity: 0.85,
+    envMapIntensity: 1.5
+  })
+  const building = new THREE.Mesh(geo, mat)
+  building.position.set(0, height / 2, 0)
+  t.add(building)
+})
+```
+Also update the tree-spawning code (around line 1627) for Stage 3 to spawn 3D buildings instead of sprites, and adjust collision radii (line 534-541) for the wider buildings.
 
-### 3. Byte ⚡ — Implement loading progress tracking
-- Create `src/composables/useLoadingProgress.js`:
-  - Uses `THREE.LoadingManager` to track texture loads
-  - Exposes `loadingProgress` ref (0–100) and `isLoaded` computed
-- Modify `App.vue`:
-  - Instantiate loading manager, pass to texture loader
-  - Pass `loadingProgress` and `isLoaded` as props to `LoadingScreen`
-- Modify `LoadingScreen.vue`:
-  - Accept `progress` and `loaded` props
-  - Show "Loading... XX%" when `!loaded`
-  - Show "Press any key / Tap to start" only when `loaded`
-  - Add progress bar visual (thin bar or percentage text)
+---
 
-### 4. Byte ⚡ — Version bump to v5.0.21, build, deploy
-- Update `VERSION` in `App.vue` from `'v5.0.20'` → `'v5.0.21'`
-- Update `version` in `package.json` from `'5.0.20'` → `'5.0.21'`
-- Run `npm run build`
-- Deploy dist/ to hosting
+## Bug 4: Stage 3 boss beams too close, wrong axis
 
-### 5. Scout 🔍 — Run regression tests
-- Run full Playwright test suite against deployed v5.0.21
-- Specifically verify the new loading screen test passes
-- Check that game starts correctly after loading completes
-- Verify BGM starts on first keypress/tap after load
+**Root cause:** `spawnBossProjectile('giantMeatball')` (line 2854) spawns beams at `z = -20 + zSpread` where `zSpread` ranges from -10 to +10, placing beams at z=-30 to z=+10 (some behind, some ahead of player at z=0). Beams are scaled `(1.2, 4.0, 1)` — long on Y (vertical), not Z (forward). Players can't dodge sideways because beams are short on Z.
+
+**Fix:** In `src/App.vue` around line 2870-2874, change:
+```js
+beam.scale.set(1.2, 4.0, 1) // long vertical beam
+// ...
+const zSpread = (Math.random() - 0.5) * 20
+beam.position.set(targetX, 6 + idx * 1, -20 + zSpread)
+```
+→
+```js
+beam.scale.set(1.2, 1.5, 6.0) // long on Z axis for sideways dodging
+// ...
+const zSpread = -30 + (Math.random() - 0.5) * 10 // beams at z=-25 to z=-35
+beam.position.set(targetX, 6 + idx * 1, zSpread)
+```
+Also rotate the sprite to face along Z axis if needed (sprites face camera by default; consider using a plane mesh rotated to lie flat on Z instead).

@@ -1130,6 +1130,9 @@ const initGame = () => {
   player.rotation.y = Math.PI;
   scene.add(player);
   
+  // Reset road material reference to prevent stale reference on restart
+  originalRoadMaterial = null;
+  
   // Update torso texture when loaded async
   clock = new THREE.Clock();
   animate();
@@ -2867,11 +2870,11 @@ function spawnBossProjectile(type) {
         transparent: true
       })
       const beam = new THREE.Sprite(beamSpriteMat)
-      beam.scale.set(1.2, 4.0, 1) // long vertical beam
+      beam.scale.set(1.2, 1.5, 6.0) // long on Z axis
       
       // Start lower, fall straight down with random z spread
-      const zSpread = (Math.random() - 0.5) * 20 // wide spread across z-axis
-      beam.position.set(targetX, 6 + idx * 1, -20 + zSpread)
+      const zSpread = -30 + (Math.random() - 0.5) * 10 // beams at z=-25 to -35
+      beam.position.set(targetX, 6 + idx * 1, zSpread)
       beam.userData = { targetX, targetY: 0.5, speed: 0.6 + Math.random() * 0.3, lane, rotationSpeed: 0.15 + Math.random() * 0.2 }
       scene.add(beam)
       bossProjectiles.push(beam)
@@ -3285,7 +3288,7 @@ const animate = () => {
   // Speed increases every 30 seconds, caps at 3.5x base speed
   const difficultyMultiplier = Math.min(1 + (gameDuration / 30), 3.5);
   const targetSpeed = 0.25 * difficultyMultiplier * STAGES[currentStage.value].difficultyMultiplier;
-  gameSpeed = THREE.MathUtils.lerp(gameSpeed, targetSpeed, 0.01);
+  gameSpeed = THREE.MathUtils.lerp(gameSpeed, targetSpeed, Math.min(realDelta * 0.6, 0.01));
   
   
   // Spawn interval decreases over time (more obstacles)
