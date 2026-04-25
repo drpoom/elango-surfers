@@ -1605,7 +1605,7 @@ const createBackgroundElements = () => {
   // 2. Trees (billboard sprites) — grass already loaded above
   const treeRoundTex = textureLoader.load('assets/tree_round_clean.webp');
   const treePineTex = textureLoader.load('assets/tree_pine_clean.webp');
-  const treeSkyscraperTex = textureLoader.load('assets/stage3/tree_skyscraper.webp');
+  const treeSkyscraperTex = textureLoader.load('assets/stage3/tree_skyscraper.png');
   
   for (let i = 0; i < 20; i++) {
     const isPine = Math.random() > 0.5;
