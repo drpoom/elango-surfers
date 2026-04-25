@@ -424,9 +424,9 @@ function applyStageVisuals(stageIndex) {
           envMapIntensity: 1.5
         });
         const building = new THREE.Mesh(geo, skyscraperMat);
-        // Position building so its bottom sits at ground level
-        // Adjust by -0.5 to compensate for visual padding in texture
-        building.position.set(0, (height / 2) - 0.5, 0);
+        // Position building so its bottom sits exactly at ground level
+        // BoxGeometry centers at origin, so height/2 puts bottom at local Y=0
+        building.position.set(0, height / 2, 0);
         building.castShadow = false;
         t.add(building);
       });
