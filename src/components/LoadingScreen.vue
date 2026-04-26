@@ -6,7 +6,7 @@
     <img class="loading-bg" src="/assets/loading-screen.jpg" alt="Elango Surfers" />
     
     <div class="content">
-      <div class="version">{{ version }}</div>
+      <div class="version">Elango Surfers {{ version }}</div>
       <div v-if="!loaded" class="progress-bar-container">
         <div class="progress-bar" :style="{ width: progress + '%' }"></div>
       </div>
@@ -110,9 +110,16 @@ onUnmounted(() => {
 }
 
 .version {
-  font-size: 24px;
+  font-size: 28px;
   margin-bottom: 20px;
   font-weight: bold;
+  text-shadow: 
+    3px 3px 0 #000,
+    -3px -3px 0 #000,
+    3px -3px 0 #000,
+    -3px 3px 0 #000,
+    0 0 20px rgba(0,0,0,0.8);
+  letter-spacing: 2px;
 }
 
 .progress-bar-container {
@@ -132,14 +139,25 @@ onUnmounted(() => {
 }
 
 .loading-text {
-  font-size: 16px;
-  color: #aaa;
+  font-size: 18px;
+  color: #fff;
   margin-bottom: 10px;
+  text-shadow: 
+    2px 2px 0 #000,
+    -2px -2px 0 #000,
+    2px -2px 0 #000,
+    -2px 2px 0 #000;
 }
 
 .prompt {
-  font-size: 18px;
+  font-size: 20px;
+  font-weight: bold;
   animation: pulse 2s infinite ease-in-out;
+  text-shadow: 
+    2px 2px 0 #000,
+    -2px -2px 0 #000,
+    2px -2px 0 #000,
+    -2px 2px 0 #000;
 }
 
 @keyframes pulse {

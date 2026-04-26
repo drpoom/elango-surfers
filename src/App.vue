@@ -811,6 +811,12 @@ const onLoadingStart = () => {
   startBGM();
   setTimeout(() => {
     showLoadingScreen.value = false;
+    // Start countdown AFTER loading screen fades out (400ms)
+    setTimeout(() => {
+      if (!gameOver.value && !countdownActive.value) {
+        startStageCountdown();
+      }
+    }, 400);
   }, 400);
 };
 
@@ -837,7 +843,7 @@ const loadFachwerk = (callback) => {
     if (callback) callback();
     return fachwerkTexture;
   }
-  fachwerkTexture = textureLoader.load('assets/stage2/brick-wall-layered.png', () => {
+  fachwerkTexture = textureLoader.load('assets/stage2/building_fachwerk.webp', () => {
     if (callback) callback();
   });
   fachwerkTexture.wrapS = THREE.RepeatWrapping;
