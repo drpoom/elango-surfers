@@ -5266,6 +5266,8 @@ onMounted(() => {
       setTimeout(() => {
         countdownActive.value = false;
         countdownLocked = false;
+        gameDuration = 1.5;
+        lastSpawnTime = clock.getElapsedTime() - spawnInterval;
         // 2-second invincibility after game starts (green shield)
         isInvincible = true;
         gameStartTime = Date.now();
