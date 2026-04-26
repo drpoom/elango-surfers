@@ -291,6 +291,13 @@ function applyStageVisuals(stageIndex) {
     // Preload Stage 2 textures
     preloadStageTextures(2);
     
+    // Set color immediately (visual feedback while texture loads)
+    if (roadMesh && roadMesh.material) {
+      roadMesh.material.color.set(0x888888);
+      roadMesh.material.needsUpdate = true;
+      console.log('[STAGE-2] Cobblestone color set (immediate)');
+    }
+    
     // Load cobblestone texture if not cached
     if (!cobblestoneTexture) {
       cobblestoneTexture = loadTexture('assets/road_cobblestone.webp', () => {
@@ -298,7 +305,6 @@ function applyStageVisuals(stageIndex) {
         if (roadMesh && cobblestoneTexture && cobblestoneTexture.image) {
           cobblestoneTexture.offset.y = groundTexture?.offset.y || 0;
           roadMesh.material.map = cobblestoneTexture;
-          roadMesh.material.color.set(0x888888);
           roadMesh.material.needsUpdate = true;
           console.log('[STAGE-2] Cobblestone texture applied (callback)');
         }
@@ -312,7 +318,6 @@ function applyStageVisuals(stageIndex) {
     if (cobblestoneTexture && cobblestoneTexture.image) {
       cobblestoneTexture.offset.y = groundTexture?.offset.y || 0;
       roadMesh.material.map = cobblestoneTexture;
-      roadMesh.material.color.set(0x888888);
       roadMesh.material.needsUpdate = true;
       console.log('[STAGE-2] Cobblestone texture applied (immediate)');
     } else if (cobblestoneTexture) {
@@ -343,13 +348,29 @@ function applyStageVisuals(stageIndex) {
     // Preload Stage 3 textures
     preloadStageTextures(3);
     
+    // Set color immediately (visual feedback while texture loads)
+    if (roadMesh && roadMesh.material) {
+      roadMesh.material.color.set(0xffffff);
+      roadMesh.material.needsUpdate = true;
+      console.log('[STAGE-3] Concrete color set (immediate)');
+    }
+    
     // Stage 3: Concrete Jungle - urban cityscape with concrete and glass
     if (!stage3Textures.road) {
-      stage3Textures.road = loadTexture('assets/stage3/road_concrete_asphalt.png');
+      stage3Textures.road = loadTexture('assets/stage3/road_concrete_asphalt.png', () => {
+        if (roadMesh && stage3Textures.road && stage3Textures.road.image) {
+          roadMesh.material.map = stage3Textures.road;
+          roadMesh.material.needsUpdate = true;
+          console.log('[STAGE-3] Concrete texture applied (callback)');
+        }
+      });
     }
-    roadMesh.material.map = stage3Textures.road;
-    roadMesh.material.color.set(0xffffff);
-    roadMesh.material.needsUpdate = true;
+    // Apply immediately if cached
+    if (stage3Textures.road && stage3Textures.road.image) {
+      roadMesh.material.map = stage3Textures.road;
+      roadMesh.material.needsUpdate = true;
+      console.log('[STAGE-3] Concrete texture applied (immediate)');
+    }
     
     // Replace grass with concrete pavement
     if (!stage3Textures.pavement) {
