@@ -162,7 +162,7 @@ import { useMic } from './composables/useMic.js'
 import LoadingScreen from './components/LoadingScreen.vue'
 
 // Version - Update this for each release
-const VERSION = 'v5.0.28';
+const VERSION = 'v5.2.0';
 // Extract major.minor for version-aware high score key
 const VERSION_MAJOR_MINOR = VERSION.replace(/^(v\d+\.\d+)\.\d+$/, '$1').replace(/\./g, '_');
 
@@ -288,39 +288,28 @@ function applyStageVisuals(stageIndex) {
   }
   
   if (stage.roadType === 'cobblestone') {
+    // Preload Stage 2 textures
+    preloadStageTextures(2);
+    
     // Load cobblestone texture if not cached
     if (!cobblestoneTexture) {
-      cobblestoneTexture = textureLoader.load('assets/road_cobblestone.webp', () => {
+      cobblestoneTexture = loadTexture('assets/road_cobblestone.webp', () => {
         // Texture loaded - retry applying if mesh is ready
         if (roadMesh && cobblestoneTexture) {
-          cobblestoneTexture.wrapS = THREE.RepeatWrapping;
-          cobblestoneTexture.wrapT = THREE.RepeatWrapping;
-          cobblestoneTexture.repeat.set(1, 10);
-          cobblestoneTexture.colorSpace = THREE.SRGBColorSpace;
-          if (groundTexture) {
-            cobblestoneTexture.offset.y = groundTexture.offset.y;
-          }
+          cobblestoneTexture.offset.y = groundTexture?.offset.y || 0;
           roadMesh.material.map = cobblestoneTexture;
           roadMesh.material.color.set(0x888888);
           roadMesh.material.needsUpdate = true;
         }
       });
-      cobblestoneTexture.wrapS = THREE.RepeatWrapping;
-      cobblestoneTexture.wrapT = THREE.RepeatWrapping;
-      cobblestoneTexture.repeat.set(1, 10);
-      cobblestoneTexture.colorSpace = THREE.SRGBColorSpace;
     }
     // Store original material for restoration when leaving Stage 2
-    // Guard: only save if we haven't already saved it (prevents race condition on restart)
     if (!originalRoadMaterial && roadMesh.material && roadMesh.material.map !== cobblestoneTexture) {
       originalRoadMaterial = roadMesh.material;
     }
-    // Don't create new material — modify existing (v4 approach)
+    // Apply cobblestone texture
     if (cobblestoneTexture && cobblestoneTexture.image) {
-      // Synchronize offset with ground texture to avoid visual jump
-      if (groundTexture) {
-        cobblestoneTexture.offset.y = groundTexture.offset.y;
-      }
+      cobblestoneTexture.offset.y = groundTexture?.offset.y || 0;
       roadMesh.material.map = cobblestoneTexture;
       roadMesh.material.color.set(0x888888);
       roadMesh.material.needsUpdate = true;
@@ -333,7 +322,6 @@ function applyStageVisuals(stageIndex) {
         if (buildings.length && fachwerkTexture) {
           applyFachwerkToBuildings();
         } else {
-          // Retry in 100ms
           setTimeout(tryApplyFachwerk, 100);
         }
       };
@@ -346,24 +334,20 @@ function applyStageVisuals(stageIndex) {
     // Switch to medieval BGM
     switchBGMTrack('medieval');
   } else if (stage.id === 3) {
+    // Preload Stage 3 textures
+    preloadStageTextures(3);
+    
     // Stage 3: Concrete Jungle - urban cityscape with concrete and glass
     if (!stage3Textures.road) {
-      stage3Textures.road = textureLoader.load('assets/stage3/road_concrete_asphalt.png');
-      stage3Textures.road.wrapS = THREE.RepeatWrapping;
-      stage3Textures.road.wrapT = THREE.RepeatWrapping;
-      stage3Textures.road.repeat.set(1, 10);
-      stage3Textures.road.colorSpace = THREE.SRGBColorSpace;
+      stage3Textures.road = loadTexture('assets/stage3/road_concrete_asphalt.png');
     }
     roadMesh.material.map = stage3Textures.road;
-    roadMesh.material.color.set(0xffffff); // White - let texture show
+    roadMesh.material.color.set(0xffffff);
     roadMesh.material.needsUpdate = true;
+    
     // Replace grass with concrete pavement
     if (!stage3Textures.pavement) {
-      stage3Textures.pavement = textureLoader.load('assets/stage3/pavement_concrete.png');
-      stage3Textures.pavement.wrapS = THREE.RepeatWrapping;
-      stage3Textures.pavement.wrapT = THREE.RepeatWrapping;
-      stage3Textures.pavement.repeat.set(10, 25);
-      stage3Textures.pavement.colorSpace = THREE.SRGBColorSpace;
+      stage3Textures.pavement = loadTexture('assets/stage3/pavement_concrete.png');
     }
     if (grassMesh) {
       grassMesh.material.map = stage3Textures.pavement;
@@ -395,10 +379,8 @@ function applyStageVisuals(stageIndex) {
     }
     // Replace tree sprites with 3D glass skyscrapers for Stage 3
     if (trees.length) {
-      // Load the procedural glass texture
-      const glassTex = textureLoader.load('assets/stage3/skyscraper-glass.png');
-      glassTex.wrapS = THREE.RepeatWrapping;
-      glassTex.wrapT = THREE.RepeatWrapping;
+      // Load the procedural glass texture from cache
+      const glassTex = loadTexture('assets/stage3/skyscraper-glass.png');
       
       const skyscraperMat = new THREE.MeshPhysicalMaterial({
         map: glassTex,
@@ -418,23 +400,21 @@ function applyStageVisuals(stageIndex) {
           sprite.material.dispose();
         }
         
+        // Remove any existing skyscraper to avoid duplicates
+        const existingBuilding = t.children.find(c => c.isMesh);
+        if (existingBuilding) {
+          existingBuilding.geometry?.dispose();
+          existingBuilding.material?.dispose();
+          t.remove(existingBuilding);
+        }
+        
         // Create 3D skyscraper
         const height = 12 + Math.random() * 8;  // 12-20
         const width = 2 + Math.random();         // 2-3
         const depth = 2 + Math.random();         // 2-3
         const geo = new THREE.BoxGeometry(width, height, depth);
-        const skyscraperMat = new THREE.MeshPhysicalMaterial({
-          map: glassTex,
-          color: 0x88aacc,
-          metalness: 0.85,
-          roughness: 0.15,
-          transparent: true,
-          opacity: 0.9,
-          envMapIntensity: 1.5
-        });
         const building = new THREE.Mesh(geo, skyscraperMat);
         // Position building so its bottom sits exactly at ground level
-        // BoxGeometry centers at origin, so height/2 puts bottom at local Y=0
         building.position.set(0, height / 2, 0);
         building.castShadow = false;
         t.add(building);
@@ -848,19 +828,112 @@ let skyTextures = {};
 let mountainMesh;
 let textureLoader = new THREE.TextureLoader();
 
-// Medieval fachwerkhaus texture loader
+// === CENTRALIZED TEXTURE MANIFEST ===
+// Each stage declares its required textures for preloading
+const STAGE_TEXTURES = {
+  // Stage 1: Modern Highway (default)
+  1: {
+    name: 'Modern Highway',
+    trees: [
+      'assets/tree_round_clean.webp',
+      'assets/tree_pine_clean.webp'
+    ],
+    buildings: [
+      'assets/building_pink.webp',
+      'assets/building_blue.webp',
+      'assets/building_green.webp'
+    ],
+    road: null, // uses default
+    sky: ['assets/sky_sunny.webp'],
+    misc: ['assets/mountains.webp', 'assets/grass_tile.webp']
+  },
+  // Stage 2: Medieval Path
+  2: {
+    name: 'Medieval Path',
+    trees: [
+      'assets/tree_round_clean.webp',
+      'assets/tree_pine_clean.webp'
+    ],
+    buildings: [
+      'assets/stage2/building_fachwerk.webp' // fachwerkhaus (dominant)
+    ],
+    road: 'assets/road_cobblestone.webp',
+    sky: ['assets/sky_sunset.webp'],
+    misc: [
+      'assets/stage2/brick-wall-layered.png' // for brick-box obstacles
+    ]
+  },
+  // Stage 3: Concrete Jungle (Urban)
+  3: {
+    name: 'Concrete Jungle',
+    trees: [], // no tree sprites - uses 3D skyscrapers
+    buildings: [
+      'assets/stage3/skyscraper-glass.png' // for 3D skyscrapers
+    ],
+    road: 'assets/stage3/road_concrete_asphalt.png',
+    pavement: 'assets/stage3/pavement_concrete.png',
+    sky: ['assets/sky_night.webp'],
+    misc: [
+      'assets/stage3/trafficCone.png',
+      'assets/stage3/dumpster.png',
+      'assets/stage3/scaffoldTower.png',
+      'assets/stage3/concreteBarrier.png',
+      'assets/stage3/billboard.png',
+      'assets/stage3/obstacle-metal-beam.png',
+      'assets/stage3/boss_spaghetti_meatball.png'
+    ]
+  }
+};
+
+// Texture cache to avoid reloading
+const textureCache = {};
+
+// Load texture with caching and callback
+const loadTexture = (path, callback) => {
+  if (textureCache[path]) {
+    if (callback) callback(textureCache[path]);
+    return textureCache[path];
+  }
+  trackTexture();
+  const tex = textureLoader.load(path, () => {
+    onTextureLoaded();
+    if (callback) callback(tex);
+  });
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  textureCache[path] = tex;
+  return tex;
+};
+
+// Preload all textures for a stage
+const preloadStageTextures = (stageId) => {
+  const manifest = STAGE_TEXTURES[stageId];
+  if (!manifest) return;
+  
+  // Load all textures in parallel
+  const allTextures = [
+    ...(manifest.trees || []),
+    ...(manifest.buildings || []),
+    ...(manifest.misc || []),
+    ...(manifest.road ? [manifest.road] : []),
+    ...(manifest.pavement ? [manifest.pavement] : []),
+    ...(manifest.sky || [])
+  ];
+  
+  allTextures.forEach(path => loadTexture(path));
+};
+
+// Medieval fachwerkhaus texture loader (legacy wrapper)
 let fachwerkTexture = null;
 const loadFachwerk = (callback) => {
   if (fachwerkTexture) {
-    if (callback) callback();
+    if (callback) callback(fachwerkTexture);
     return fachwerkTexture;
   }
-  fachwerkTexture = textureLoader.load('assets/stage2/building_fachwerk.webp', () => {
-    if (callback) callback();
+  fachwerkTexture = loadTexture('assets/stage2/building_fachwerk.webp', () => {
+    if (callback) callback(fachwerkTexture);
   });
-  fachwerkTexture.wrapS = THREE.RepeatWrapping;
-  fachwerkTexture.wrapT = THREE.RepeatWrapping;
-  fachwerkTexture.colorSpace = THREE.SRGBColorSpace;
   return fachwerkTexture;
 };
 
@@ -927,6 +1000,8 @@ const saveHighScore = () => {
 const { leaderboard, playerName, showNameEntry, isHighScore, submitScore, loadLeaderboard, syncStatus } = useLeaderboard({ VERSION, score, highScore })
 
 const initGame = () => {
+  // Preload Stage 1 textures (default starting stage)
+  preloadStageTextures(1);
   // Clean up old trees and buildings before creating new scene
   // Remove from scene and dispose geometries/materials to prevent memory leaks
   trees.forEach(tree => {
