@@ -536,6 +536,9 @@ let scene, camera, renderer, player, clock;
 let boss = null;
 let obstacles = [];
 let coins = [];
+
+// Expose spawn counts for Playwright tests (outside animate loop)
+window.__getSpawnCounts = () => ({ obstacles: obstacles.length, coins: coins.length });
 let powerups = [];
 let particles = [];
 let floatingTexts = [];
@@ -3949,9 +3952,6 @@ const animate = () => {
     countdownLocked,
     gameSpeed,
   });
-
-  // Expose spawn counts for Playwright tests
-  window.__getSpawnCounts = () => ({ obstacles: obstacles.length, coins: coins.length });
 
   // Add this ONCE, right after __spawnDebug definition
   if (!window._spawnStateInterval) {
