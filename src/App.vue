@@ -2632,7 +2632,7 @@ const spawnCoin = () => {
 const spawnPowerup = () => {
   const lane = Math.floor(Math.random() * 3);
   const laneX = (lane - 1) * laneWidth;
-  const type = Math.random() < 0.33 ? 'shield' : (Math.random() < 0.5 ? 'speed' : 'magnet');
+  const type = Math.random() < 0.33 ? 'shield' : (Math.random() < 0.5 ? 'coldDrink' : 'magnet');
   
   const powerupGroup = new THREE.Group();
   
@@ -2653,33 +2653,55 @@ const spawnPowerup = () => {
     const ring = new THREE.Mesh(ringGeo, ringMat);
     ring.rotation.x = Math.PI / 2;
     powerupGroup.add(ring);
-  } else if (type === 'speed') {
-    const boltGeo = new THREE.ConeGeometry(0.3, 1, 8);
-    const boltMat = new THREE.MeshToonMaterial({ 
-      color: 0xffd700, 
-      emissive: 0xffd700, 
-      emissiveIntensity: 0.6 
+  } else if (type === 'coldDrink') {
+    // Energy drink / soda can - cylinder shape with can-like colors
+    const canGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.9, 16);
+    const canMat = new THREE.MeshToonMaterial({ 
+      color: 0xff4444, 
+      emissive: 0xff4444, 
+      emissiveIntensity: 0.3 
     });
-    const bolt = new THREE.Mesh(boltGeo, boltMat);
-    bolt.rotation.x = Math.PI / 2;
-    powerupGroup.add(bolt);
+    const can = new THREE.Mesh(canGeo, canMat);
+    // Add a label/stripe around the can
+    const labelGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.3, 16);
+    const labelMat = new THREE.MeshToonMaterial({ color: 0xffffff });
+    const label = new THREE.Mesh(labelGeo, labelMat);
+    label.position.y = 0.1;
+    can.add(label);
+    // Add top cap
+    const topGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.1, 16);
+    const topMat = new THREE.MeshToonMaterial({ color: 0xcccccc });
+    const top = new THREE.Mesh(topGeo, topMat);
+    top.position.y = 0.45;
+    can.add(top);
+    can.rotation.x = Math.PI / 2;
+    powerupGroup.add(can);
   } else if (type === 'magnet') {
-    const waveGeo = new THREE.TorusGeometry(0.6, 0.1, 8, 16);
-    const waveMat = new THREE.MeshToonMaterial({ 
-      color: 0x9932cc, 
-      emissive: 0x9932cc, 
-      emissiveIntensity: 0.5,
-      transparent: true, 
-      opacity: 0.7 
-    });
-    const wave = new THREE.Mesh(waveGeo, waveMat);
-    powerupGroup.add(wave);
+    // Horseshoe/U-shaped magnet with red and blue poles
+    const magnetGroup = new THREE.Group();
     
-    const wave2 = wave.clone();
-    wave2.scale.setScalar(1.3);
-    wave2.material = waveMat.clone();
-    wave2.material.opacity = 0.4;
-    powerupGroup.add(wave2);
+    // Main horseshoe body (U-shape) using TorusGeometry bent into a U
+    const horseshoeGeo = new THREE.TorusGeometry(0.5, 0.12, 8, 24, Math.PI);
+    const horseshoeMat = new THREE.MeshToonMaterial({ color: 0x888888, metalness: 0.8, roughness: 0.2 });
+    const horseshoe = new THREE.Mesh(horseshoeGeo, horseshoeMat);
+    horseshoe.rotation.z = -Math.PI / 2; // Open end facing forward
+    magnetGroup.add(horseshoe);
+    
+    // Red pole (left side)
+    const poleGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.3, 8);
+    const redMat = new THREE.MeshToonMaterial({ color: 0xff3333, emissive: 0xff3333, emissiveIntensity: 0.4 });
+    const redPole = new THREE.Mesh(poleGeo, redMat);
+    redPole.position.set(-0.5, 0, 0);
+    redPole.rotation.x = Math.PI / 2;
+    magnetGroup.add(redPole);
+    
+    // Blue pole (right side)
+    const bluePole = new THREE.Mesh(poleGeo, new THREE.MeshToonMaterial({ color: 0x3333ff, emissive: 0x3333ff, emissiveIntensity: 0.4 }));
+    bluePole.position.set(0.5, 0, 0);
+    bluePole.rotation.x = Math.PI / 2;
+    magnetGroup.add(bluePole);
+    
+    powerupGroup.add(magnetGroup);
   }
   
   powerupGroup.position.set(laneX, 1 + getSurfaceY(-50), -50);
@@ -4150,9 +4172,11 @@ const animate = () => {
     if (pw.type === 'shield') {
       pw.mesh.children[1].rotation.z += 0.05;
     } else if (pw.type === 'magnet') {
-      pw.mesh.children.forEach((c, i) => {
-        c.scale.setScalar(1 + Math.sin(time * 5 + i) * 0.2);
-      });
+      // Spin the horseshoe magnet
+      const magnetGroup = pw.mesh.children.find(c => c.isGroup);
+      if (magnetGroup) {
+        magnetGroup.rotation.y += 0.05;
+      }
     }
 
     const dist = player.position.distanceTo(pw.mesh.position);
@@ -4166,8 +4190,8 @@ const animate = () => {
       } else {
         playSound('powerup', 0.9 + Math.random() * 0.2);
       }
-      createParticleEffect(pw.mesh.position, pw.type === 'shield' ? 0x00bfff : (pw.type === 'speed' ? 0xffd700 : 0x9932cc), 20);
-      createFloatingText(pw.type === 'shield' ? '🛡️ SHIELD' : (pw.type === 'speed' ? '⚡ SPEED' : '🧲 MAGNET'), pw.mesh.position.clone().add(new THREE.Vector3(0, 1, 0)));
+      createParticleEffect(pw.mesh.position, pw.type === 'shield' ? 0x00bfff : (pw.type === 'coldDrink' ? 0xff4444 : 0x9932cc), 20);
+      createFloatingText(pw.type === 'shield' ? '🛡️ SHIELD' : (pw.type === 'coldDrink' ? '🥤 SLOW' : '🧲 MAGNET'), pw.mesh.position.clone().add(new THREE.Vector3(0, 1, 0)));
       
       scene.remove(pw.mesh);
       powerups.splice(index, 1);
@@ -4605,11 +4629,11 @@ const activatePowerup = (type) => {
     shield.name = 'shield-aura';
     player.add(shield);
     
-  } else if (type === 'speed') {
+  } else if (type === 'coldDrink') {
     powerupEndTime = now + 5000; // 5s
-    powerupIcon = '⚡';
-    powerupName = 'Speed';
-    scoreMultiplier = 2;
+    powerupIcon = '🥤';
+    powerupName = 'Cold Drink';
+    gameSpeed = gameSpeed * 0.6; // Slow down the game
     
   } else if (type === 'magnet') {
     powerupEndTime = now + 15000; // 15s
@@ -4626,8 +4650,8 @@ const deactivatePowerup = () => {
     isInvincible = false;
     const shield = player.getObjectByName('shield-aura');
     if (shield) player.remove(shield);
-  } else if (activePowerup === 'speed') {
-    scoreMultiplier = 1;
+  } else if (activePowerup === 'coldDrink') {
+    gameSpeed = 0.25; // Restore normal game speed
   } else if (activePowerup === 'magnet') {
     magnetRange = 0;
   }
@@ -4637,7 +4661,7 @@ const deactivatePowerup = () => {
   
   // Visual feedback that powerup expired
   if (prevPowerup) {
-    const icon = prevPowerup === 'shield' ? '🛡️' : prevPowerup === 'speed' ? '⚡' : '🧲';
+    const icon = prevPowerup === 'shield' ? '🛡️' : prevPowerup === 'coldDrink' ? '🥤' : '🧲';
     createFloatingText(icon + ' expired!', player.position.clone().add(new THREE.Vector3(0, 2, 0)));
   }
 };
