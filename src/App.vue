@@ -3950,6 +3950,9 @@ const animate = () => {
     gameSpeed,
   });
 
+  // Expose spawn counts for Playwright tests
+  window.__getSpawnCounts = () => ({ obstacles: obstacles.length, coins: coins.length });
+
   // Add this ONCE, right after __spawnDebug definition
   if (!window._spawnStateInterval) {
     window._spawnStateInterval = setInterval(() => {
@@ -5163,6 +5166,8 @@ const startCountdown = () => {
       setTimeout(() => {
         countdownActive.value = false;
         countdownLocked = false;
+        gameDuration = 1.5;
+        lastSpawnTime = clock.getElapsedTime() - spawnInterval;
         // 2-second invincibility after game starts (green shield)
         isInvincible = true;
         gameStartTime = Date.now();
