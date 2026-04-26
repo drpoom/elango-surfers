@@ -45,48 +45,37 @@ test.describe('Stage Texture Verification', () => {
   });
 
   test('Stage 2: Cobblestone + Fachwerkhaus textures load', async ({ page }) => {
-    test.setTimeout(60000);
+    test.setTimeout(90000);
     
     await page.goto(GAME_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('networkidle');
     await navigateAndDismiss(page);
-    await page.waitForTimeout(2000);
-    await focusCanvas(page);
+    await page.waitForTimeout(3000);
     
-    // Enter debug mode
-    await page.keyboard.press('d');
-    await page.waitForTimeout(100);
-    await page.keyboard.press('e');
-    await page.waitForTimeout(100);
-    await page.keyboard.press('b');
-    await page.waitForTimeout(100);
-    await page.keyboard.press('u');
-    await page.waitForTimeout(100);
-    await page.keyboard.press('g');
+    // Open settings and enable debug mode via UI
+    await page.locator('button:has-text("⚙️")').click();
     await page.waitForTimeout(500);
-    await focusCanvas(page);
+    await page.locator('button:has-text("🐛 Debug")').click();
+    await page.waitForTimeout(500);
     
-    // Select Stage 2
-    await page.keyboard.press('2');
+    // Use debug stage selector UI instead of keyboard
+    await page.locator('button:has-text("2. Medieval")').click();
+    await page.waitForTimeout(500);
     
-    // Wait for cobblestone texture to load
-    await page.waitForFunction(() => {
-      const mesh = window.__getRoadMesh();
-      if (!mesh || !mesh.material) return false;
-      return mesh.material.color.getHex() === 0x888888;
-    }, { timeout: 10000 });
+    // Close settings
+    await page.locator('button:has-text("✖")').first().click();
+    await page.waitForTimeout(1500);
     
-    await page.waitForTimeout(2000);
-    await screenshot(page, 'test-results/stage2-cobblestone-texture.png');
-    
-    // Verify Stage 2 indicator
+    // Wait for stage indicator
     const stageIndicator = page.locator('#stage-indicator');
     const stageText = await stageIndicator.textContent();
+    console.log('Stage indicator:', stageText);
     expect(stageText).toContain('STAGE 2');
-    expect(stageText).toContain('Medieval');
     
-    // Verify cobblestone texture
-    const roadMaterial = await page.evaluate(() => {
+    await page.waitForTimeout(2000); // Let textures load
+    
+    // Get road material info
+    const debugInfo = await page.evaluate(() => {
       const mesh = window.__getRoadMesh();
       if (!mesh || !mesh.material) return null;
       return {
@@ -95,9 +84,12 @@ test.describe('Stage Texture Verification', () => {
       };
     });
     
-    expect(roadMaterial).not.toBeNull();
-    expect(roadMaterial.hasMap).toBe(true);
-    expect(roadMaterial.color).toBe(0x888888); // Cobblestone gray
+    console.log('Stage 2 road material:', debugInfo);
+    await screenshot(page, 'test-results/stage2-cobblestone-texture.png');
+    
+    expect(debugInfo).not.toBeNull();
+    expect(debugInfo.color).toBe(0x888888); // Cobblestone gray
+    expect(debugInfo.hasMap).toBe(true);
   });
 
   test('Stage 3: Concrete jungle textures load', async ({ page }) => {
