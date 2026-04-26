@@ -162,7 +162,7 @@ import { useMic } from './composables/useMic.js'
 import LoadingScreen from './components/LoadingScreen.vue'
 
 // Version - Update this for each release
-const VERSION = 'v5.0.26';
+const VERSION = 'v5.0.28';
 // Extract major.minor for version-aware high score key
 const VERSION_MAJOR_MINOR = VERSION.replace(/^(v\d+\.\d+)\.\d+$/, '$1').replace(/\./g, '_');
 
@@ -328,7 +328,16 @@ function applyStageVisuals(stageIndex) {
     // Preload fachwerkhaus texture for medieval buildings
     loadFachwerk(() => {
       // Apply fachwerk to buildings once texture is ready
-      applyFachwerkToBuildings();
+      // Retry if buildings don't exist yet (texture loaded before buildings created)
+      const tryApplyFachwerk = () => {
+        if (buildings.length && fachwerkTexture) {
+          applyFachwerkToBuildings();
+        } else {
+          // Retry in 100ms
+          setTimeout(tryApplyFachwerk, 100);
+        }
+      };
+      tryApplyFachwerk();
     });
     // Tint grass darker for medieval
     if (grassMesh) { grassMesh.material.color.set(0x2d5a1e); grassMesh.material.needsUpdate = true; }
@@ -402,7 +411,7 @@ function applyStageVisuals(stageIndex) {
       });
       
       trees.forEach((t) => {
-        // Remove existing sprite
+        // Remove existing sprite (tree sprites should NOT be visible in Stage 3)
         const sprite = t.children.find(c => c.isSprite);
         if (sprite) {
           t.remove(sprite);
@@ -809,6 +818,9 @@ const toggleMic = () => _toggleMic(() => { isFlying = false })
 const onLoadingStart = () => {
   initAudio();
   startBGM();
+  // Lock game until loading screen fades and countdown completes
+  stageTransitioning.value = true;
+  countdownLocked = true;
   setTimeout(() => {
     showLoadingScreen.value = false;
     // Start countdown AFTER loading screen fades out (400ms)
