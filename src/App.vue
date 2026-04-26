@@ -3169,6 +3169,12 @@ function spawnBossProjectile(type) {
 const animate = () => {
   requestAnimationFrame(animate);
 
+  // Freeze everything during loading screen
+  if (showLoadingScreen.value) {
+    clock.getDelta(); // consume delta to prevent time jump
+    return;
+  }
+
   // Handle pause state
   if (isPaused.value) {
     clock.getDelta(); // consume delta to prevent time jump

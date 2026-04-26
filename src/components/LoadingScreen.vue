@@ -114,11 +114,10 @@ onUnmounted(() => {
   margin-bottom: 20px;
   font-weight: bold;
   text-shadow: 
-    3px 3px 0 #000,
-    -3px -3px 0 #000,
-    3px -3px 0 #000,
-    -3px 3px 0 #000,
-    0 0 20px rgba(0,0,0,0.8);
+    2px 2px 0 #000,
+    -2px -2px 0 #000,
+    2px -2px 0 #000,
+    -2px 2px 0 #000;
   letter-spacing: 2px;
 }
 
