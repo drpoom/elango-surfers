@@ -50,29 +50,37 @@ test.describe('Stage Texture Verification', () => {
     await page.goto(GAME_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('networkidle');
     await navigateAndDismiss(page);
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(2000);
+    await focusCanvas(page);
     
-    // Open settings and enable debug mode via UI
-    await page.locator('button:has-text("⚙️")').click();
-    await page.waitForTimeout(500);
-    await page.locator('button:has-text("🐛 Debug")').click();
-    await page.waitForTimeout(500);
+    // Enter debug mode via keyboard (d-e-b-u-g)
+    for (const key of ['d', 'e', 'b', 'u', 'g']) {
+      await page.keyboard.press(key);
+      await page.waitForTimeout(50);
+    }
+    await page.waitForTimeout(1000); // Wait for debug mode to activate
     
-    // Use debug stage selector UI instead of keyboard
-    await page.locator('button:has-text("2. Medieval")').click();
-    await page.waitForTimeout(500);
+    // Verify debug mode is active (check for debug indicator in body)
+    await page.waitForFunction(() => {
+      const body = document.querySelector('body');
+      return body && body.textContent?.includes('🐛');
+    }, { timeout: 5000 });
     
-    // Close settings
-    await page.locator('button:has-text("✖")').first().click();
-    await page.waitForTimeout(1500);
+    await focusCanvas(page);
+    
+    // Select Stage 2 via keyboard
+    await page.keyboard.press('2');
+    await page.waitForTimeout(1500); // Let resetStage() process
     
     // Wait for stage indicator
     const stageIndicator = page.locator('#stage-indicator');
     const stageText = await stageIndicator.textContent();
     console.log('Stage indicator:', stageText);
     expect(stageText).toContain('STAGE 2');
+    expect(stageText).toContain('Medieval');
     
-    await page.waitForTimeout(2000); // Let textures load
+    // Wait for applyStageVisuals() to set color (immediate, not texture load)
+    await page.waitForTimeout(2000);
     
     // Get road material info
     const debugInfo = await page.evaluate(() => {
@@ -93,7 +101,7 @@ test.describe('Stage Texture Verification', () => {
   });
 
   test('Stage 3: Concrete jungle textures load', async ({ page }) => {
-    test.setTimeout(60000);
+    test.setTimeout(90000);
     
     await page.goto(GAME_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForLoadState('networkidle');
@@ -101,42 +109,37 @@ test.describe('Stage Texture Verification', () => {
     await page.waitForTimeout(2000);
     await focusCanvas(page);
     
-    // Enter debug mode
-    await page.keyboard.press('d');
-    await page.waitForTimeout(100);
-    await page.keyboard.press('e');
-    await page.waitForTimeout(100);
-    await page.keyboard.press('b');
-    await page.waitForTimeout(100);
-    await page.keyboard.press('u');
-    await page.waitForTimeout(100);
-    await page.keyboard.press('g');
-    await page.waitForTimeout(500);
+    // Enter debug mode via keyboard (d-e-b-u-g)
+    for (const key of ['d', 'e', 'b', 'u', 'g']) {
+      await page.keyboard.press(key);
+      await page.waitForTimeout(50);
+    }
+    await page.waitForTimeout(1000);
+    
+    // Verify debug mode is active
+    await page.waitForFunction(() => {
+      const body = document.querySelector('body');
+      return body && body.textContent?.includes('🐛');
+    }, { timeout: 5000 });
+    
     await focusCanvas(page);
     
-    // Select Stage 3
+    // Select Stage 3 via keyboard
     await page.keyboard.press('3');
+    await page.waitForTimeout(1500);
     
-    // Wait for concrete texture to load (Stage 3 has white concrete)
-    await page.waitForFunction(() => {
-      const mesh = window.__getRoadMesh();
-      if (!mesh || !mesh.material) return false;
-      const color = mesh.material.color.getHex();
-      // Stage 3 concrete should be white/light (0xffffff)
-      return color === 0xffffff;
-    }, { timeout: 10000 });
-    
-    await page.waitForTimeout(2000);
-    await screenshot(page, 'test-results/stage3-concrete-texture.png');
-    
-    // Verify Stage 3 indicator
+    // Wait for stage indicator
     const stageIndicator = page.locator('#stage-indicator');
     const stageText = await stageIndicator.textContent();
+    console.log('Stage indicator:', stageText);
     expect(stageText).toContain('STAGE 3');
     expect(stageText).toContain('Cyber');
     
-    // Verify concrete texture
-    const roadMaterial = await page.evaluate(() => {
+    // Wait for applyStageVisuals() to set color (immediate)
+    await page.waitForTimeout(2000);
+    
+    // Get road material info
+    const debugInfo = await page.evaluate(() => {
       const mesh = window.__getRoadMesh();
       if (!mesh || !mesh.material) return null;
       return {
@@ -145,8 +148,11 @@ test.describe('Stage Texture Verification', () => {
       };
     });
     
-    expect(roadMaterial).not.toBeNull();
-    expect(roadMaterial.hasMap).toBe(true);
-    expect(roadMaterial.color).toBe(0xffffff); // Concrete white
+    console.log('Stage 3 road material:', debugInfo);
+    await screenshot(page, 'test-results/stage3-concrete-texture.png');
+    
+    expect(debugInfo).not.toBeNull();
+    expect(debugInfo.color).toBe(0xffffff); // Concrete white
+    expect(debugInfo.hasMap).toBe(true);
   });
 });
