@@ -14,4 +14,11 @@ async function navigateAndDismiss(page) {
   await dismissLoadingScreen(page);
 }
 
-export { GAME_URL, dismissLoadingScreen, navigateAndDismiss };
+// Focus the canvas before keyboard input to ensure events are captured
+async function focusCanvas(page) {
+  const canvas = page.locator('canvas');
+  await canvas.focus();
+  await page.waitForTimeout(100);
+}
+
+export { GAME_URL, dismissLoadingScreen, navigateAndDismiss, focusCanvas };

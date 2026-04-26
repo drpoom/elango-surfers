@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { GAME_URL, navigateAndDismiss } from './helpers';
+import { GAME_URL, navigateAndDismiss, focusCanvas } from './helpers';
 
 test.describe('Elango Surfers User Journey', () => {
   test('1: Game loads, canvas renders, countdown shows', async ({ page }) => {
@@ -13,6 +13,8 @@ test.describe('Elango Surfers User Journey', () => {
     await navigateAndDismiss(page);
     const canvas = page.locator('canvas');
     await expect(canvas).toBeVisible({ timeout: 15000 });
+    // Focus canvas before keyboard input
+    await focusCanvas(page);
     // Press arrow keys to move character
     await page.keyboard.press('ArrowLeft');
     await page.waitForTimeout(300);
@@ -27,10 +29,14 @@ test.describe('Elango Surfers User Journey', () => {
     await navigateAndDismiss(page);
     const canvas = page.locator('canvas');
     await expect(canvas).toBeVisible({ timeout: 15000 });
+    // Focus canvas before keyboard input
+    await focusCanvas(page);
     // Pause with P
     await page.keyboard.press('p');
     await page.waitForTimeout(500);
     await page.screenshot({ path: 'tests/screenshots/03a-paused.png' });
+    // Focus canvas before resume
+    await focusCanvas(page);
     // Resume by pressing P again
     await page.keyboard.press('p');
     await page.waitForTimeout(500);
@@ -41,6 +47,8 @@ test.describe('Elango Surfers User Journey', () => {
     await navigateAndDismiss(page);
     const canvas = page.locator('canvas');
     await expect(canvas).toBeVisible({ timeout: 15000 });
+    // Focus canvas before keyboard input
+    await focusCanvas(page);
     // Try S key or settings button
     await page.keyboard.press('s');
     await page.waitForTimeout(500);
@@ -54,6 +62,8 @@ test.describe('Elango Surfers User Journey', () => {
     await navigateAndDismiss(page);
     const canvas = page.locator('canvas');
     await expect(canvas).toBeVisible({ timeout: 15000 });
+    // Focus canvas before keyboard input
+    await focusCanvas(page);
     // Toggle debug with D key
     await page.keyboard.press('d');
     await page.waitForTimeout(500);

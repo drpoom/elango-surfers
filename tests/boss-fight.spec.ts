@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { GAME_URL, dismissLoadingScreen } from './helpers';
+import { GAME_URL, dismissLoadingScreen, focusCanvas } from './helpers';
 
 test.describe('Boss Fights', () => {
   test.beforeEach(async ({ page }) => {
@@ -13,6 +13,7 @@ test.describe('Boss Fights', () => {
   });
 
   async function enterDebugCode(page) {
+    await focusCanvas(page);
     await page.keyboard.press('d');
     await page.waitForTimeout(100);
     await page.keyboard.press('e');
@@ -27,8 +28,10 @@ test.describe('Boss Fights', () => {
 
   test('Stage 1 Boss', async ({ page }) => {
     await enterDebugCode(page);
+    await focusCanvas(page);
     await page.keyboard.press('1');
     await page.waitForTimeout(2000);
+    await focusCanvas(page);
     await page.keyboard.press('b');
     await page.waitForTimeout(3000);
     await page.screenshot({ path: 'tests/screenshots/stage1-boss.png' });
@@ -36,8 +39,10 @@ test.describe('Boss Fights', () => {
 
   test('Stage 2 Boss', async ({ page }) => {
     await enterDebugCode(page);
+    await focusCanvas(page);
     await page.keyboard.press('2');
     await page.waitForTimeout(2000);
+    await focusCanvas(page);
     await page.keyboard.press('b');
     await page.waitForTimeout(3000);
     await page.screenshot({ path: 'tests/screenshots/stage2-boss.png' });
@@ -45,8 +50,10 @@ test.describe('Boss Fights', () => {
 
   test('Stage 3 Boss', async ({ page }) => {
     await enterDebugCode(page);
+    await focusCanvas(page);
     await page.keyboard.press('3');
     await page.waitForTimeout(2000);
+    await focusCanvas(page);
     await page.keyboard.press('b');
     await page.waitForTimeout(3000);
     await page.screenshot({ path: 'tests/screenshots/stage3-boss.png' });
@@ -54,10 +61,13 @@ test.describe('Boss Fights', () => {
 
   test('God mode survives boss', async ({ page }) => {
     await enterDebugCode(page);
+    await focusCanvas(page);
     await page.keyboard.press('g');
     await page.waitForTimeout(500);
+    await focusCanvas(page);
     await page.keyboard.press('1');
     await page.waitForTimeout(2000);
+    await focusCanvas(page);
     await page.keyboard.press('b');
     await page.waitForTimeout(5000);
     // Verify no game over screen
@@ -69,8 +79,10 @@ test.describe('Boss Fights', () => {
   test('Player death by boss', async ({ page }) => {
     test.setTimeout(90000);
     await enterDebugCode(page);
+    await focusCanvas(page);
     await page.keyboard.press('1');
     await page.waitForTimeout(2000);
+    await focusCanvas(page);
     await page.keyboard.press('b');
     // Wait up to 10s for game over
     await page.waitForTimeout(10000);

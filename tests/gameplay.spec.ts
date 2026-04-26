@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { GAME_URL, navigateAndDismiss } from './helpers';
+import { GAME_URL, navigateAndDismiss, focusCanvas } from './helpers';
 
 test.describe('Elango Surfers - Gameplay Tests', () => {
   
@@ -48,9 +48,15 @@ test.describe('Elango Surfers - Gameplay Tests', () => {
     const scoreBefore = await page.locator('#score').textContent();
     console.log('Score before pause:', scoreBefore);
     
+    // Focus canvas before keyboard input
+    await focusCanvas(page);
+    
     // Press P to pause
     await page.keyboard.press('p');
     await page.waitForTimeout(1000);
+    
+    // Focus canvas before resume
+    await focusCanvas(page);
     
     // Press P to resume
     await page.keyboard.press('p');

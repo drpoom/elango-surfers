@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { GAME_URL, navigateAndDismiss } from './helpers';
+import { GAME_URL, navigateAndDismiss, focusCanvas } from './helpers';
 
 test.describe('Cobblestone Road Regression Test', () => {
   
@@ -13,6 +13,9 @@ test.describe('Cobblestone Road Regression Test', () => {
     // Wait for game to be fully loaded
     await page.waitForTimeout(2000);
     
+    // Focus canvas before keyboard input
+    await focusCanvas(page);
+    
     // Enter debug mode: debug
     await page.keyboard.press('d');
     await page.waitForTimeout(100);
@@ -24,6 +27,9 @@ test.describe('Cobblestone Road Regression Test', () => {
     await page.waitForTimeout(100);
     await page.keyboard.press('g');
     await page.waitForTimeout(500);
+    
+    // Focus canvas before stage jump
+    await focusCanvas(page);
     
     // Select Stage 2: press 2
     await page.keyboard.press('2');
@@ -52,6 +58,9 @@ test.describe('Cobblestone Road Regression Test', () => {
     // Wait for game to be fully loaded
     await page.waitForTimeout(2000);
     
+    // Focus canvas before keyboard input
+    await focusCanvas(page);
+    
     // Enter debug mode
     await page.keyboard.press('d');
     await page.waitForTimeout(100);
@@ -63,6 +72,9 @@ test.describe('Cobblestone Road Regression Test', () => {
     await page.waitForTimeout(100);
     await page.keyboard.press('g');
     await page.waitForTimeout(500);
+    
+    // Focus canvas before stage jump
+    await focusCanvas(page);
     
     // Select Stage 2: press 2
     await page.keyboard.press('2');
