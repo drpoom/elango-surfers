@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { GAME_URL, dismissLoadingScreen, focusCanvas } from './helpers';
+import { GAME_URL, dismissLoadingScreen, focusCanvas, screenshot } from './helpers';
 
 test.describe('Boss Fights', () => {
   test.beforeEach(async ({ page }) => {
@@ -34,7 +34,7 @@ test.describe('Boss Fights', () => {
     await focusCanvas(page);
     await page.keyboard.press('b');
     await page.waitForTimeout(3000);
-    await page.screenshot({ path: 'tests/screenshots/stage1-boss.png' });
+    await screenshot(page, 'tests/screenshots/stage1-boss.png');
   });
 
   test('Stage 2 Boss', async ({ page }) => {
@@ -45,7 +45,7 @@ test.describe('Boss Fights', () => {
     await focusCanvas(page);
     await page.keyboard.press('b');
     await page.waitForTimeout(3000);
-    await page.screenshot({ path: 'tests/screenshots/stage2-boss.png' });
+    await screenshot(page, 'tests/screenshots/stage2-boss.png');
   });
 
   test('Stage 3 Boss', async ({ page }) => {
@@ -56,7 +56,7 @@ test.describe('Boss Fights', () => {
     await focusCanvas(page);
     await page.keyboard.press('b');
     await page.waitForTimeout(3000);
-    await page.screenshot({ path: 'tests/screenshots/stage3-boss.png' });
+    await screenshot(page, 'tests/screenshots/stage3-boss.png');
   });
 
   test('God mode survives boss', async ({ page }) => {
@@ -73,7 +73,7 @@ test.describe('Boss Fights', () => {
     // Verify no game over screen
     const gameOverVisible = await page.locator('text=Game Over').isVisible().catch(() => false);
     expect(gameOverVisible).toBe(false);
-    await page.screenshot({ path: 'tests/screenshots/god-mode-boss.png' });
+    await screenshot(page, 'tests/screenshots/god-mode-boss.png');
   });
 
   test('Player death by boss', async ({ page }) => {
@@ -86,6 +86,6 @@ test.describe('Boss Fights', () => {
     await page.keyboard.press('b');
     // Wait up to 10s for game over
     await page.waitForTimeout(10000);
-    await page.screenshot({ path: 'tests/screenshots/player-death-boss.png' });
+    await screenshot(page, 'tests/screenshots/player-death-boss.png');
   });
 });

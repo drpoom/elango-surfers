@@ -27,4 +27,14 @@ async function focusCanvas(page) {
   }
 }
 
-export { GAME_URL, dismissLoadingScreen, navigateAndDismiss, focusCanvas };
+// Take screenshot with timeout to avoid hanging on font loading
+async function screenshot(page, path) {
+  try {
+    await page.screenshot({ path, timeout: 5000 });
+  } catch (e) {
+    console.log(`Screenshot failed for ${path}: ${e.message}`);
+    // Screenshot is non-critical - continue test
+  }
+}
+
+export { GAME_URL, dismissLoadingScreen, navigateAndDismiss, focusCanvas, screenshot };

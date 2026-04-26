@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { GAME_URL, navigateAndDismiss, focusCanvas } from './helpers';
+import { GAME_URL, navigateAndDismiss, focusCanvas, screenshot } from './helpers';
 
 test.describe('Cobblestone Road Regression Test', () => {
   
@@ -36,7 +36,7 @@ test.describe('Cobblestone Road Regression Test', () => {
     await page.waitForTimeout(3000);
     
     // Take screenshot to verify Stage 2 is loaded
-    await page.screenshot({ path: 'test-results/stage2-cobblestone.png' });
+    await screenshot(page, 'test-results/stage2-cobblestone.png');
     console.log('Stage 2 cobblestone screenshot captured');
     
     // Verify Stage 2 is active by checking the stage indicator
