@@ -294,12 +294,13 @@ function applyStageVisuals(stageIndex) {
     // Load cobblestone texture if not cached
     if (!cobblestoneTexture) {
       cobblestoneTexture = loadTexture('assets/road_cobblestone.webp', () => {
-        // Texture loaded - retry applying if mesh is ready
-        if (roadMesh && cobblestoneTexture) {
+        // Texture loaded - apply immediately
+        if (roadMesh && cobblestoneTexture && cobblestoneTexture.image) {
           cobblestoneTexture.offset.y = groundTexture?.offset.y || 0;
           roadMesh.material.map = cobblestoneTexture;
           roadMesh.material.color.set(0x888888);
           roadMesh.material.needsUpdate = true;
+          console.log('[STAGE-2] Cobblestone texture applied (callback)');
         }
       });
     }
@@ -307,23 +308,28 @@ function applyStageVisuals(stageIndex) {
     if (!originalRoadMaterial && roadMesh.material && roadMesh.material.map !== cobblestoneTexture) {
       originalRoadMaterial = roadMesh.material;
     }
-    // Apply cobblestone texture
+    // Apply cobblestone texture immediately if already cached/loaded
     if (cobblestoneTexture && cobblestoneTexture.image) {
       cobblestoneTexture.offset.y = groundTexture?.offset.y || 0;
       roadMesh.material.map = cobblestoneTexture;
       roadMesh.material.color.set(0x888888);
       roadMesh.material.needsUpdate = true;
+      console.log('[STAGE-2] Cobblestone texture applied (immediate)');
+    } else if (cobblestoneTexture) {
+      console.log('[STAGE-2] Cobblestone texture loading, will apply on load');
     }
     // Preload fachwerkhaus texture for medieval buildings
     loadFachwerk(() => {
       // Apply fachwerk to buildings once texture is ready
       if (buildings.length && fachwerkTexture) {
         applyFachwerkToBuildings();
+        console.log('[STAGE-2] Fachwerk texture applied (callback)');
       }
     });
     // Also apply to any buildings created during Stage 2
     if (stage.roadType === 'cobblestone' && buildings.length && fachwerkTexture) {
       applyFachwerkToBuildings();
+      console.log('[STAGE-2] Fachwerk texture applied (immediate)');
     }
     // Add rose/flower decorations for Stage 2
     createMedievalFlowers();
@@ -539,6 +545,7 @@ let coins = [];
 
 // Expose spawn counts for Playwright tests (outside animate loop)
 window.__getSpawnCounts = () => ({ obstacles: obstacles.length, coins: coins.length });
+window.__getRoadMesh = () => roadMesh;
 let powerups = [];
 let particles = [];
 let floatingTexts = [];

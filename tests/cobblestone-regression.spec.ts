@@ -46,6 +46,21 @@ test.describe('Cobblestone Road Regression Test', () => {
     
     expect(stageText).toContain('STAGE 2');
     expect(stageText).toContain('Medieval'); // Stage 2 subtitle (cobblestone)
+    
+    // Verify cobblestone texture is applied (road material should be gray, not default)
+    const roadMaterial = await page.evaluate(() => {
+      const mesh = window.__getRoadMesh();
+      if (!mesh || !mesh.material) return null;
+      return {
+        color: mesh.material.color.getHex(),
+        hasMap: !!mesh.material.map,
+        mapName: mesh.material.map?.source?.data?.currentSrc || null
+      };
+    });
+    console.log('Road material:', roadMaterial);
+    expect(roadMaterial).not.toBeNull();
+    expect(roadMaterial.hasMap).toBe(true); // Should have cobblestone texture
+    expect(roadMaterial.color).toBe(0x888888); // Gray color for cobblestone
   });
 
   test('game restarts without crashing', async ({ page }) => {
