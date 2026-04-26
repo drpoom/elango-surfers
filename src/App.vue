@@ -1369,6 +1369,7 @@ const initGame = () => {
   
   // Update torso texture when loaded async
   clock = new THREE.Clock();
+  clock.start(); // CRITICAL: Start the clock for initial game load
   animate();
 };
 
@@ -4985,9 +4986,10 @@ const resetStage = (preserveScore = false, targetStage = -1) => {
   // Speed & spawning
   gameSpeed = 0.25;
   spawnInterval = 1.2;
-  gameDuration = 0;
-  console.log('[RESET-STAGE] gameDuration reset to 0, lastSpawnTime:', lastSpawnTime);
-  lastSpawnTime = -2; // grace period: first obstacle 2s after start
+  gameDuration = 1.5; // Set to 1.5 to skip spawn grace period (allows immediate spawning)
+  countdownLocked = false; // Ensure game is unlocked after a reset
+  lastSpawnTime = clock.getElapsedTime() - spawnInterval; // Schedule spawn for next frame
+  console.log('[RESET-STAGE] gameDuration=1.5, countdownLocked=false, lastSpawnTime set for immediate spawn');
 
   // Stage
   currentStage.value = targetStage >= 0 ? targetStage : (debugStartStage.value >= 0 ? debugStartStage.value : 0);
