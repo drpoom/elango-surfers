@@ -3576,8 +3576,8 @@ const animate = () => {
   
   score.value += Math.floor(delta * 50 * difficultyMultiplier);
 
-  // === BONUS PORTAL SPAWN (not during boss) ===
-  if (!bonusPortal && !inBonusZone && !bossActive.value && Math.random() < 0.001) {
+  // === BONUS PORTAL SPAWN (always available, even during boss) ===
+  if (!bonusPortal && !inBonusZone && Math.random() < 0.001) {
     // 20% chance to spawn showroom portal (1 per ~45 seconds at 0.001 spawn rate)
     isShowroomPortal = Math.random() < 0.2;
     bonusPortalType = isShowroomPortal ? 'showroom' : 'bonus';
