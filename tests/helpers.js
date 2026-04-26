@@ -15,13 +15,15 @@ async function navigateAndDismiss(page) {
 }
 
 // Focus the canvas before keyboard input to ensure events are captured
-// Waits up to 5s for canvas, skips focus if canvas not found (non-fatal)
+// Uses short timeout and ignores errors - focus is best-effort only
 async function focusCanvas(page) {
-  const canvas = page.locator('canvas');
-  const exists = await canvas.count() > 0;
-  if (exists) {
-    await canvas.focus();
+  try {
+    await page.waitForSelector('canvas', { timeout: 2000, state: 'visible' });
+    await page.focus('canvas');
     await page.waitForTimeout(100);
+  } catch (e) {
+    // Canvas not found or not focusable - skip focus, continue test
+    console.log('Canvas focus skipped (not found)');
   }
 }
 
