@@ -317,16 +317,16 @@ function applyStageVisuals(stageIndex) {
     // Preload fachwerkhaus texture for medieval buildings
     loadFachwerk(() => {
       // Apply fachwerk to buildings once texture is ready
-      // Retry if buildings don't exist yet (texture loaded before buildings created)
-      const tryApplyFachwerk = () => {
-        if (buildings.length && fachwerkTexture) {
-          applyFachwerkToBuildings();
-        } else {
-          setTimeout(tryApplyFachwerk, 100);
-        }
-      };
-      tryApplyFachwerk();
+      if (buildings.length && fachwerkTexture) {
+        applyFachwerkToBuildings();
+      }
     });
+    // Also apply to any buildings created during Stage 2
+    if (stage.roadType === 'cobblestone' && buildings.length && fachwerkTexture) {
+      applyFachwerkToBuildings();
+    }
+    // Add rose/flower decorations for Stage 2
+    createMedievalFlowers();
     // Tint grass darker for medieval
     if (grassMesh) { grassMesh.material.color.set(0x2d5a1e); grassMesh.material.needsUpdate = true; }
     // Darker sky
@@ -358,17 +358,14 @@ function applyStageVisuals(stageIndex) {
     if (scene && scene.fog) { scene.fog.color.set(0x8a9a9a); scene.background = new THREE.Color(0x8a9a9a); }
     // Preload Stage 3 obstacle textures
     loadStage3Textures();
-    // Apply glass & steel building facades
-    if (!stage3Textures.building) {
-      stage3Textures.building = textureLoader.load('assets/stage3/building_glass_steel.png');
-      stage3Textures.building.colorSpace = THREE.SRGBColorSpace;
-    }
-    if (buildings.length) {
+    // Apply glass & steel building facades with callback-based loading
+    const applyStage3Facade = () => {
+      if (!buildings.length || !stage3Textures.building) return;
       buildings.forEach((b, i) => {
         const mesh = b.children.find(c => c.isMesh)
         if (mesh && mesh.material && Array.isArray(mesh.material)) {
           for (const idx of [0, 1, 4]) {
-            if (mesh.material[idx].map) {
+            if (mesh.material[idx] && mesh.material[idx].map) {
               mesh.material[idx].map = stage3Textures.building
               mesh.material[idx].color.set(0xffffff)
               mesh.material[idx].needsUpdate = true
@@ -376,21 +373,25 @@ function applyStageVisuals(stageIndex) {
           }
         }
       })
+    };
+    
+    if (!stage3Textures.building) {
+      stage3Textures.building = textureLoader.load('assets/stage3/building_glass_steel.png', () => {
+        stage3Textures.building.colorSpace = THREE.SRGBColorSpace;
+        // Re-apply once texture is loaded
+        applyStage3Facade();
+      });
+    } else {
+      stage3Textures.building.colorSpace = THREE.SRGBColorSpace;
+    }
+    // Apply immediately if texture already loaded
+    if (stage3Textures.building && buildings.length) {
+      applyStage3Facade();
     }
     // Replace tree sprites with 3D glass skyscrapers for Stage 3
     if (trees.length) {
       // Load the procedural glass texture from cache
       const glassTex = loadTexture('assets/stage3/skyscraper-glass.png');
-      
-      const skyscraperMat = new THREE.MeshPhysicalMaterial({
-        map: glassTex,
-        color: 0x88aacc,
-        metalness: 0.85,
-        roughness: 0.15,
-        transparent: true,
-        opacity: 0.9,
-        envMapIntensity: 1.5
-      });
       
       trees.forEach((t) => {
         // Remove existing sprite (tree sprites should NOT be visible in Stage 3)
@@ -401,22 +402,33 @@ function applyStageVisuals(stageIndex) {
         }
         
         // Remove any existing skyscraper to avoid duplicates
-        const existingBuilding = t.children.find(c => c.isMesh);
+        const existingBuilding = t.children.find(c => c.isMesh && c.userData.isSkyscraper);
         if (existingBuilding) {
           existingBuilding.geometry?.dispose();
           existingBuilding.material?.dispose();
           t.remove(existingBuilding);
         }
         
-        // Create 3D skyscraper
+        // Create 3D skyscraper with cloned material for per-building variation
         const height = 12 + Math.random() * 8;  // 12-20
         const width = 2 + Math.random();         // 2-3
         const depth = 2 + Math.random();         // 2-3
         const geo = new THREE.BoxGeometry(width, height, depth);
-        const building = new THREE.Mesh(geo, skyscraperMat);
+        // Clone material and add slight variation per building
+        const mat = new THREE.MeshPhysicalMaterial({
+          map: glassTex,
+          color: new THREE.Color(0x88aacc).offsetHSL(0, 0, (Math.random() - 0.5) * 0.1),
+          metalness: 0.85 + (Math.random() - 0.5) * 0.1,
+          roughness: 0.15 + (Math.random() - 0.5) * 0.05,
+          transparent: true,
+          opacity: 0.85 + Math.random() * 0.1,
+          envMapIntensity: 1.5
+        });
+        const building = new THREE.Mesh(geo, mat);
         // Position building so its bottom sits exactly at ground level
         building.position.set(0, height / 2, 0);
         building.castShadow = false;
+        building.userData.isSkyscraper = true;
         t.add(building);
       });
     }
@@ -424,6 +436,8 @@ function applyStageVisuals(stageIndex) {
     switchBGMTrack('highway');
   } else {
     // Highway: restore original
+    // Cleanup medieval flowers when leaving Stage 2
+    cleanupMedievalFlowers();
     // Dispose cobblestone material if it exists to prevent memory leaks
     if (roadMesh.material !== originalRoadMaterial && roadMesh.material) {
       if (roadMesh.material.map && roadMesh.material.map !== originalGroundTexture) {
@@ -690,6 +704,11 @@ const gravity = 0.015;
 // Voice/fly controls
 let isFlying = false;
 let flyVelocity = 0;
+// Speed system: base speed + multiplier with clamping
+const SPEED_MIN = 0.15;
+const SPEED_MAX = 1.2;
+let baseGameSpeed = 0.25; // increases over time
+let speedMultiplier = 1.0; // powerups modify this
 let gameSpeed = 0.25;
 let lastSpawnTime = -2; // grace period before first spawn
 let spawnInterval = 1.2;
@@ -820,6 +839,7 @@ const toggleMute = () => {
 let clouds = [];
 let trees = [];
 let buildings = [];
+let medievalFlowers = [];
 let composer;
 let groundTexture;
 let roadMesh, grassMesh, leftCurbMesh, rightCurbMesh;
@@ -945,7 +965,7 @@ const applyFachwerkToBuildings = () => {
     if (mesh && mesh.material && Array.isArray(mesh.material)) {
       // Facade can be at index 0 (left building), 1 (right building), or 4 (front)
       for (const idx of [0, 1, 4]) {
-        if (mesh.material[idx].map) { // only swap facade-textured faces
+        if (mesh.material[idx] && mesh.material[idx].map) { // safety check for material existence
           mesh.material[idx].map = fachwerkTexture
           mesh.material[idx].color.set(0xd4c4a0)
           mesh.material[idx].needsUpdate = true
@@ -977,6 +997,62 @@ const loadStage3Textures = () => {
   
   stage3Textures.billboard = textureLoader.load(textureBase + 'billboard.png');
   stage3Textures.billboard.colorSpace = THREE.SRGBColorSpace;
+};
+
+// Helper to apply Stage 3 glass/steel facades to buildings
+const applyStage3FacadeToBuildings = () => {
+  if (!buildings.length || !stage3Textures.building) return;
+  buildings.forEach((b, i) => {
+    const mesh = b.children.find(c => c.isMesh)
+    if (mesh && mesh.material && Array.isArray(mesh.material)) {
+      for (const idx of [0, 1, 4]) {
+        if (mesh.material[idx] && mesh.material[idx].map) {
+          mesh.material[idx].map = stage3Textures.building
+          mesh.material[idx].color.set(0xffffff)
+          mesh.material[idx].needsUpdate = true
+        }
+      }
+    }
+  })
+};
+
+// Create medieval rose/flower decorations along road edges for Stage 2
+const createMedievalFlowers = () => {
+  // Clear existing flowers first
+  medievalFlowers.forEach(f => {
+    if (f.parent) f.parent.remove(f);
+    f.geometry?.dispose();
+    f.material?.dispose();
+  });
+  medievalFlowers = [];
+  
+  // Create flower clusters along both sides of the road
+  for (let i = 0; i < 40; i++) {
+    const side = i % 2 === 0 ? 1 : -1;
+    const flowerGeo = new THREE.SphereGeometry(0.15, 8, 8);
+    const flowerColor = Math.random() > 0.5 ? 0xff0066 : 0xff6699; // red or pink roses
+    const flowerMat = new THREE.MeshBasicMaterial({ color: flowerColor });
+    const flower = new THREE.Mesh(flowerGeo, flowerMat);
+    
+    flower.position.set(
+      side * (4 + Math.random() * 2),
+      0.1,
+      -Math.random() * 80
+    );
+    flower.userData = { baseX: flower.position.x, life: 1.0 };
+    scene.add(flower);
+    medievalFlowers.push(flower);
+  }
+};
+
+// Cleanup medieval flowers
+const cleanupMedievalFlowers = () => {
+  medievalFlowers.forEach(f => {
+    if (f.parent) f.parent.remove(f);
+    f.geometry?.dispose();
+    f.material?.dispose();
+  });
+  medievalFlowers = [];
 };
 
 window.addEventListener('error', (e) => { console.log('GLOBAL ERROR:', e.message, 'at', e.filename + ':' + e.lineno + ':' + e.colno); });
@@ -1894,6 +1970,14 @@ const createBackgroundElements = () => {
     buildingGroup.userData.initZ = bldgZ;
     buildingGroup.userData.initBaseX = buildingGroup.baseX;
     buildings.push(buildingGroup);
+    // Apply fachwerk texture if in Stage 2
+    if (currentStage.value === 1 && fachwerkTexture) {
+      applyFachwerkToBuildings();
+    }
+    // Apply Stage 3 facade if in Stage 3
+    if (currentStage.value === 2 && stage3Textures.building) {
+      applyStage3FacadeToBuildings();
+    }
   }
 };
 
@@ -3291,8 +3375,9 @@ const animate = () => {
   updateRoadCurve();
   
   // Scroll cobblestone texture (Stage 2 only) - match ground texture scroll direction
-  if (cobblestoneTexture && currentStage.value === 1) {
-    cobblestoneTexture.offset.y += gameSpeed * 0.15;
+  // Note: currentStage is 0-indexed, so === 1 means Stage 2 (Medieval)
+  if (cobblestoneTexture && currentStage.value === 1 && cobblestoneTexture.image) {
+    cobblestoneTexture.offset.y -= gameSpeed * 0.15;
   }
 
   // === BOSS WARNING + SPAWN TRIGGER ===
@@ -3567,8 +3652,9 @@ const animate = () => {
   // Progressive difficulty scaling
   // Speed increases every 30 seconds, caps at 3.5x base speed
   const difficultyMultiplier = Math.min(1 + (gameDuration / 30), 3.5);
-  const targetSpeed = 0.25 * difficultyMultiplier * STAGES[currentStage.value].difficultyMultiplier;
-  gameSpeed = THREE.MathUtils.lerp(gameSpeed, targetSpeed, Math.min(realDelta * 0.6, 0.01));
+  const targetBase = 0.25 * difficultyMultiplier * STAGES[currentStage.value].difficultyMultiplier;
+  baseGameSpeed = THREE.MathUtils.lerp(baseGameSpeed, targetBase, Math.min(realDelta * 0.6, 0.01));
+  gameSpeed = THREE.MathUtils.clamp(baseGameSpeed * speedMultiplier, SPEED_MIN, SPEED_MAX);
   
   
   // Spawn interval decreases over time (more obstacles)
@@ -4285,6 +4371,19 @@ const animate = () => {
     }
   });
   
+  // Animate medieval flowers scrolling (Stage 2 only)
+  if (currentStage.value === 1) {
+    medievalFlowers.forEach((flower, idx) => {
+      flower.position.z += gameSpeed;
+      flower.position.x = flower.userData.baseX + getCurveX(flower.position.z);
+      if (flower.position.z > 10) {
+        flower.position.z = -Math.random() * 80;
+        flower.userData.baseX = (flower.userData.baseX > 0 ? 1 : -1) * (4 + Math.random() * 2);
+        flower.position.x = flower.userData.baseX + getCurveX(flower.position.z);
+      }
+    });
+  }
+  
   // Animate buildings moving
   buildings.forEach((building) => {
     building.position.z += gameSpeed;
@@ -4402,10 +4501,10 @@ const animate = () => {
   // (removed duplicate - handled above in Stage 2 block)
   // Stage 3: scroll concrete road and pavement textures (same direction as Stage 1)
   if (stage3Textures.road) {
-    stage3Textures.road.offset.y += gameSpeed * 0.15;
+    stage3Textures.road.offset.y -= gameSpeed * 0.15;
   }
   if (stage3Textures.pavement) {
-    stage3Textures.pavement.offset.y += gameSpeed * 0.15;
+    stage3Textures.pavement.offset.y -= gameSpeed * 0.15;
   }
   
   // === CHARACTER ANIMATION ===
@@ -4633,7 +4732,7 @@ const activatePowerup = (type) => {
     powerupEndTime = now + 5000; // 5s
     powerupIcon = '🥤';
     powerupName = 'Cold Drink';
-    gameSpeed = gameSpeed * 0.6; // Slow down the game
+    speedMultiplier = 0.6; // Slow down the game
     
   } else if (type === 'magnet') {
     powerupEndTime = now + 15000; // 15s
@@ -4651,7 +4750,7 @@ const deactivatePowerup = () => {
     const shield = player.getObjectByName('shield-aura');
     if (shield) player.remove(shield);
   } else if (activePowerup === 'coldDrink') {
-    gameSpeed = 0.25; // Restore normal game speed
+    speedMultiplier = 1.0; // Restore normal game speed
   } else if (activePowerup === 'magnet') {
     magnetRange = 0;
   }
@@ -5094,6 +5193,10 @@ const restartGame = () => {
   tiltInitialGamma = null;
   tiltCalibrationSamples = [];
   isCalibrating = false;
+  // Reset speed system
+  baseGameSpeed = 0.25;
+  speedMultiplier = 1.0;
+  gameSpeed = 0.25;
   resetStage(false); // full reset, score = 0 (already calls applyStageVisuals)
   clock.start();
   playSound('start');

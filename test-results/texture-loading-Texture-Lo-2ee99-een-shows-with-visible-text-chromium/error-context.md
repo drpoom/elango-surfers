@@ -25,6 +25,30 @@ Call log:
 
 ```
 
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - generic [ref=e4] [cursor=pointer]:
+    - img "Elango Surfers" [ref=e5]
+    - generic [ref=e6]:
+      - generic [ref=e7]: Elango Surfers v5.2.1
+      - generic [ref=e8]: Press any key / Tap to start
+  - generic:
+    - generic: v5.2.1
+    - generic: "Score: 0"
+    - generic: "High Score: 0"
+    - generic: "STAGE 1: The Modern Highway"
+  - generic [ref=e9]:
+    - generic [ref=e10] [cursor=pointer]: 🎤🔴
+    - generic [ref=e11] [cursor=pointer]: 📱
+    - generic [ref=e12] [cursor=pointer]: 🔊
+    - generic [ref=e13] [cursor=pointer]: ⚙️
+  - generic:
+    - text: A/D ←/→ Move | W/↑ Jump | S/↓ Slide
+    - text: 📱 Swipe | Tilt | 🎤 Blow to fly!
+```
+
 # Test source
 
 ```ts
