@@ -3919,21 +3919,25 @@ const animate = () => {
 
   // Grace period: don't spawn obstacles for the first 1.5 seconds (but still move existing ones)
   const spawnGraceActive = gameDuration < 1.5;
-  
-  const willSpawn = !spawnGraceActive && (time - lastSpawnTime) > spawnInterval && !bonusNoSpawn && !bossActive.value && !stageTransitioning.value;
+  const timeSinceLastSpawn = time - lastSpawnTime;
+  const willSpawn = !spawnGraceActive && timeSinceLastSpawn > spawnInterval && !bonusNoSpawn && !bossActive.value && !stageTransitioning.value;
   if (!willSpawn && !countdownLocked) {
     if (!window._spawnLogTimer || Date.now() - window._spawnLogTimer > 1000) {
       console.log('[SPAWN-DEBUG]', {
         spawnGraceActive,
-        timeSinceLastSpawn: time - lastSpawnTime,
+        gameDuration,
+        timeSinceLastSpawn,
         spawnInterval,
+        willSpawn,
         bonusNoSpawn,
         bossActive: bossActive.value,
         stageTransitioning: stageTransitioning.value,
-        gameDuration,
         lastSpawnTime,
         time,
-        obstaclesLen: obstacles.length
+        obstaclesLen: obstacles.length,
+        countdownLocked,
+        clockRunning: clock.running,
+        clockElapsedTime: clock.getElapsedTime()
       });
       window._spawnLogTimer = Date.now();
     }
