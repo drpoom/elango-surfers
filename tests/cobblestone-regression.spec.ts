@@ -33,7 +33,16 @@ test.describe('Cobblestone Road Regression Test', () => {
     
     // Select Stage 2: press 2
     await page.keyboard.press('2');
-    await page.waitForTimeout(3000);
+    
+    // Wait for cobblestone texture to load (check via road material color)
+    await page.waitForFunction(() => {
+      const mesh = window.__getRoadMesh();
+      if (!mesh || !mesh.material) return false;
+      // Cobblestone should have gray color (0x888888)
+      return mesh.material.color.getHex() === 0x888888;
+    }, { timeout: 10000 });
+    
+    await page.waitForTimeout(2000); // Allow render after texture load
     
     // Take screenshot to verify Stage 2 is loaded
     await screenshot(page, 'test-results/stage2-cobblestone.png');

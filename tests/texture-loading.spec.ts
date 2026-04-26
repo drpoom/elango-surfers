@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { GAME_URL, navigateAndDismiss } from './helpers';
+import { GAME_URL, navigateAndDismiss, screenshot } from './helpers';
 
 test.describe('Texture Loading', () => {
   test('Stage 1 textures load correctly', async ({ page }) => {
@@ -15,7 +15,7 @@ test.describe('Texture Loading', () => {
     expect(box!.width).toBeGreaterThan(0);
     expect(box!.height).toBeGreaterThan(0);
 
-    await page.screenshot({ path: 'tests/screenshots/stage1-textures-loaded.png' });
+    await screenshot(page, 'tests/screenshots/stage1-textures-loaded.png');
   });
 
   test('obstacles spawn at game start', async ({ page }) => {
@@ -33,7 +33,7 @@ test.describe('Texture Loading', () => {
     expect(box!.width).toBeGreaterThan(0);
     expect(box!.height).toBeGreaterThan(0);
 
-    await page.screenshot({ path: 'tests/screenshots/obstacles-spawn-at-start.png' });
+    await screenshot(page, 'tests/screenshots/obstacles-spawn-at-start.png');
   });
 
   test('loading screen shows with visible text', async ({ page }) => {
@@ -60,7 +60,7 @@ test.describe('Texture Loading', () => {
     });
     expect(bgColor).toMatch(/rgb\(0,\s*0,\s*0\)/);
 
-    await page.screenshot({ path: 'tests/screenshots/loading-screen-text-visible.png' });
+    await screenshot(page, 'tests/screenshots/loading-screen-text-visible.png');
   });
 
   test('countdown starts after loading screen fades', async ({ page }) => {
@@ -79,6 +79,6 @@ test.describe('Texture Loading', () => {
     const canvas = page.locator('canvas');
     await expect(canvas).toBeVisible({ timeout: 10000 });
 
-    await page.screenshot({ path: 'tests/screenshots/countdown-after-loading.png' });
+    await screenshot(page, 'tests/screenshots/countdown-after-loading.png');
   });
 });
