@@ -43,7 +43,6 @@ test.describe('Stage Texture Verification', () => {
     expect(roadMaterial.hasMap).toBe(true); // Should have highway texture
     expect(roadMaterial.color).not.toBe(0x888888); // Not cobblestone gray
   });
-
   test('Stage 2: Cobblestone + Fachwerkhaus textures load', async ({ page }) => {
     test.setTimeout(90000);
     
@@ -80,27 +79,25 @@ test.describe('Stage Texture Verification', () => {
     expect(stageText).toContain('Medieval');
     
     // Wait for applyStageVisuals() to set color (should be immediate)
-    await page.waitForTimeout(3000);
+    // Use waitForFunction to wait for color change instead of fixed timeout
+    await page.waitForFunction(() => {
+      const mesh = window.__getRoadMesh();
+      if (!mesh || !mesh.material) return false;
+      const color = mesh.material.color.getHex();
+      return color === 0x888888; // Wait for cobblestone gray
+    }, { timeout: 10000 });
     
-    // Get road material info with retries
-    let debugInfo = null;
-    let attempts = 0;
-    while (!debugInfo && attempts < 5) {
-      debugInfo = await page.evaluate(() => {
-        const mesh = window.__getRoadMesh();
-        if (!mesh || !mesh.material) return null;
-        return {
-          color: mesh.material.color.getHex(),
-          colorHex: mesh.material.color.getHexString(),
-          hasMap: !!mesh.material.map,
-          mapName: mesh.material.map?.source?.data?.currentSrc || 'no-map'
-        };
-      });
-      if (!debugInfo) {
-        attempts++;
-        await page.waitForTimeout(500);
-      }
-    }
+    // Get road material info
+    const debugInfo = await page.evaluate(() => {
+      const mesh = window.__getRoadMesh();
+      if (!mesh || !mesh.material) return null;
+      return {
+        color: mesh.material.color.getHex(),
+        colorHex: mesh.material.color.getHexString(),
+        hasMap: !!mesh.material.map,
+        mapName: mesh.material.map?.source?.data?.currentSrc || 'no-map'
+      };
+    });
     
     console.log('Stage 2 road material:', debugInfo);
     await screenshot(page, 'test-results/stage2-cobblestone-texture.png');
