@@ -18,9 +18,14 @@ test.describe('Spawn After Restart', () => {
   }
 
   async function assertSpawns(page, stageNum: number) {
-    await page.waitForTimeout(5000);
-    const counts = await page.evaluate(() => window.__getSpawnCounts());
-    const debug = await page.evaluate(() => window.__getSpawnDebug());
+    // Wait up to 5 seconds for obstacles AND coins to spawn (deterministic, not probabilistic)
+    await page.waitForFunction(() => {
+      const counts = (window as any).__getSpawnCounts();
+      return counts.obstacles > 0 && counts.coins > 0;
+    }, { timeout: 5000 });
+    
+    const counts = await page.evaluate(() => (window as any).__getSpawnCounts());
+    const debug = await page.evaluate(() => (window as any).__getSpawnDebug());
     console.log('Spawn debug:', JSON.stringify(debug, null, 2));
     expect(counts.obstacles, `No obstacles spawned. Debug: ${JSON.stringify(debug)}`).toBeGreaterThan(0);
     expect(counts.coins, `No coins spawned. Debug: ${JSON.stringify(debug)}`).toBeGreaterThan(0);

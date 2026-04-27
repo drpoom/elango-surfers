@@ -185,11 +185,26 @@ const countdownActive = ref(false);
 const countdownText = ref('');
 let countdownLocked = false; // prevents input during countdown
 let initialCountdownTimeout = null; // Track initial countdown timeout to clear on reset
+let stageCountdownTimeout = null; // Track stage countdown timeout
+let debugKeyTimer: any = null; // Track debug key sequence timer
+let gameOverShakeInterval: any = null; // Track game over shake interval
+let spawnStateInterval: any = null; // Track spawn debug interval
 const showSettings = ref(false);
 const isPaused = ref(false); // Pause state
 const debugStartStage = ref(-1);
 const tiltEnabledRef = ref(true);
 const muteIcon = ref('🔊');
+
+// Clear ALL pending timeouts and intervals - call on stage reset to prevent stale callbacks
+const clearAllTimers = () => {
+  if (initialCountdownTimeout) { clearTimeout(initialCountdownTimeout); initialCountdownTimeout = null; }
+  if (stageCountdownTimeout) { clearTimeout(stageCountdownTimeout); stageCountdownTimeout = null; }
+  if (debugKeyTimer) { clearTimeout(debugKeyTimer); debugKeyTimer = null; }
+  if (gameOverShakeInterval) { clearInterval(gameOverShakeInterval); gameOverShakeInterval = null; }
+  if (spawnStateInterval) { clearInterval(spawnStateInterval); spawnStateInterval = null; }
+  if (invincibilityTimeout) { clearTimeout(invincibilityTimeout); invincibilityTimeout = null; }
+  if (bossDefeatTimeout1) { clearTimeout(bossDefeatTimeout1); bossDefeatTimeout1 = null; }
+};
 
 // Debug overlay refs
 const showDebugOverlay = ref(false);
@@ -4916,6 +4931,10 @@ const handleKeyDown = (e) => {
       const targetStage = parseInt(e.key, 10) - 1;
       console.log('[DEBUG] Stage jump to', targetStage);
       resetStage(false, targetStage);
+      // Debug jumps skip countdown - start spawning immediately
+      clock.start();
+      lastSpawnTime = clock.getElapsedTime() - spawnInterval - 0.1;
+      console.log('[DEBUG-STAGE-JUMP] Clock started, spawning enabled immediately');
       return;
     }
     // Boss early spawn: B key
@@ -4996,10 +5015,9 @@ const handleKeyDown = (e) => {
 // Reset the game world for a new stage. Optionally preserves score and targets a specific stage.
 // Used by both restartGame (game over) and boss-defeat stage transitions.
 const resetStage = (preserveScore = false, targetStage = -1) => {
-  // Cancel any pending timeouts
-  if (bossDefeatTimeout1) { clearTimeout(bossDefeatTimeout1); bossDefeatTimeout1 = null; }
-  if (invincibilityTimeout) { clearTimeout(invincibilityTimeout); invincibilityTimeout = null; }
-  if (gameOverShakeInterval) { clearInterval(gameOverShakeInterval); gameOverShakeInterval = null; }
+  // CRITICAL: Clear ALL pending timeouts/intervals FIRST to prevent stale callbacks
+  clearAllTimers();
+  clock.stop(); // Stop clock before resetting state
 
   // Game state
   if (!preserveScore) {
@@ -5022,20 +5040,13 @@ const resetStage = (preserveScore = false, targetStage = -1) => {
   gameDuration = 1.5; // Set to 1.5 to skip spawn grace period (allows immediate spawning)
   countdownLocked = false; // Ensure game is unlocked after a reset
   countdownActive.value = false;
-  // Clear pending initial countdown timeout to prevent it from overwriting spawn state
-  if (initialCountdownTimeout) {
-    clearTimeout(initialCountdownTimeout);
-    initialCountdownTimeout = null;
-  }
+  stageTransitioning.value = false; // Ensure not stuck in transition
   // Cleanup medieval flowers from Stage 2 to prevent pink objects in other stages
   cleanupMedievalFlowers();
-  clock.start(); // CRITICAL: Restart clock to ensure getElapsedTime() works correctly
-  const clockTime = clock.getElapsedTime();
-  lastSpawnTime = clockTime - spawnInterval - 0.1; // Subtract extra 0.1s to ensure (time - lastSpawnTime) > spawnInterval is true on first frame
-  console.log('[RESET-STAGE] gameDuration=1.5, countdownLocked=false, countdownActive=false');
-  console.log('[RESET-STAGE] clockTime=', clockTime, 'lastSpawnTime=', lastSpawnTime, 'spawnInterval=', spawnInterval);
-  console.log('[RESET-STAGE] First frame check: timeSinceLastSpawn will be', (clockTime - lastSpawnTime).toFixed(3), 'vs spawnInterval', spawnInterval);
-
+  
+  console.log('[RESET-STAGE] All timers cleared, countdownLocked=false, countdownActive=false, stageTransitioning=false');
+  console.log('[RESET-STAGE] gameDuration=1.5, spawning should start immediately');
+  
   // Stage
   currentStage.value = targetStage >= 0 ? targetStage : (debugStartStage.value >= 0 ? debugStartStage.value : 0);
   stageTime.value = targetStage >= 0 ? 0 : (debugStartStage.value >= 0 ? Math.max(0, STAGES[debugStartStage.value].stageDuration - 20) : 0);
