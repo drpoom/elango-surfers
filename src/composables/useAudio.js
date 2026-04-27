@@ -46,12 +46,7 @@ export function useAudio({ currentStage, STAGES }) {
     ],
   };
   
-  // Stage 3 BGM and ambient
-  let ambientAudio = null;
-  let ambientGain = null;
-  let bgmIkeaAudio = null;
-  let bgmIkeaGain = null;
-  let isStage3BGM = false;
+
   
   // Intercom randomizer state
   let intercomTimer = 0;
@@ -97,25 +92,15 @@ export function useAudio({ currentStage, STAGES }) {
     };
     bgmAudio.load(); // Start loading immediately
     
-    // Preload Medieval BGM (Stage 2)
-    bgmMedievalAudio = new Audio('assets/medieval_music.ogg');
+    // Preload Medieval BGM (Stage 2) - using Elango main theme for now
+    // Original: assets/medieval_music.ogg (commented out, keep structure for future stage-specific BGM)
+    bgmMedievalAudio = new Audio('assets/elango_main_theme.mp3');
     bgmMedievalAudio.preload = 'auto';
     bgmMedievalAudio.loop = true;
     bgmMedievalAudio.volume = 1;
     bgmMedievalAudio.load();
     
-    // Preload Stage 3 (IKEA) BGM and ambient
-    const ikeaBgm = new Audio('assets/bgm-ikea-polka.ogg');
-    ikeaBgm.preload = 'auto';
-    ikeaBgm.loop = true;
-    ikeaBgm.volume = 1;
-    ikeaBgm.load();
-    
-    const ambientHum = new Audio('assets/ambient-conveyor-hum.ogg');
-    ambientHum.preload = 'auto';
-    ambientHum.loop = true;
-    ambientHum.volume = 1;
-    ambientHum.load();
+
   };
 
   const playSound = (type, pitchMod = 1) => {
@@ -298,10 +283,11 @@ export function useAudio({ currentStage, STAGES }) {
       });
     }
 
-    // Medieval BGM - use preloaded audio
+    // Medieval BGM - use preloaded audio (Elango main theme for all stages)
     if (!bgmMedievalAudio) {
       // Fallback: create if not preloaded
-      bgmMedievalAudio = new Audio('assets/medieval_music.ogg');
+      // Original: assets/medieval_music.ogg (kept for future stage-specific BGM)
+      bgmMedievalAudio = new Audio('assets/elango_main_theme.mp3');
       bgmMedievalAudio.loop = true;
       bgmMedievalAudio.volume = 1;
     }
@@ -373,83 +359,43 @@ export function useAudio({ currentStage, STAGES }) {
     clone.play().catch(() => {});
   };
   
-  // Stage 3: IKEA-pocalypse BGM and ambient controls
+  // Stage 3: Use Elango main theme (same as Stage 1)
   const startStage3Audio = () => {
     if (!audioCtx) initAudio();
     if (!audioCtx || isMuted) return;
     if (audioCtx.state === 'suspended') audioCtx.resume();
     
-    isStage3BGM = true;
-    
-    // IKEA polka BGM
-    if (!bgmIkeaAudio) {
-      bgmIkeaAudio = new Audio('assets/bgm-ikea-polka.ogg');
-      bgmIkeaAudio.loop = true;
-      bgmIkeaAudio.volume = 1;
+    // Use Elango main theme (same as Stage 1)
+    if (!bgmAudio) {
+      bgmAudio = new Audio('assets/elango_main_theme.mp3');
+      bgmAudio.loop = true;
+      bgmAudio.volume = 1;
     }
-    if (!bgmIkeaGain) {
-      bgmIkeaGain = audioCtx.createGain();
-      bgmIkeaGain.gain.value = 0.5;
-      bgmIkeaGain.connect(audioCtx.destination);
-      const source = audioCtx.createMediaElementSource(bgmIkeaAudio);
-      source.connect(bgmIkeaGain);
+    if (!bgmSource) {
+      bgmSource = audioCtx.createMediaElementSource(bgmAudio);
     }
-    bgmIkeaAudio.currentTime = 0;
-    bgmIkeaAudio.play().catch(e => console.warn('IKEA BGM play failed:', e));
-    
-    // Conveyor ambient hum
-    if (!ambientAudio) {
-      ambientAudio = new Audio('assets/ambient-conveyor-hum.ogg');
-      ambientAudio.loop = true;
-      ambientAudio.volume = 1;
+    if (!bgmGain) {
+      bgmGain = audioCtx.createGain();
+      bgmGain.gain.value = 0.5;
+      bgmGain.connect(audioCtx.destination);
+      bgmSource.connect(bgmGain);
     }
-    if (!ambientGain) {
-      ambientGain = audioCtx.createGain();
-      ambientGain.gain.value = 0.3;
-      ambientGain.connect(audioCtx.destination);
-      const ambientSource = audioCtx.createMediaElementSource(ambientAudio);
-      ambientSource.connect(ambientGain);
-    }
-    ambientAudio.currentTime = 0;
-    ambientAudio.play().catch(e => console.warn('Ambient hum play failed:', e));
+    bgmAudio.currentTime = 0;
+    bgmAudio.play().catch(e => console.warn('Stage 3 BGM play failed:', e));
   };
   
   const stopStage3Audio = () => {
-    isStage3BGM = false;
-    if (bgmIkeaAudio) {
-      bgmIkeaAudio.pause();
-      bgmIkeaAudio.currentTime = 0;
+    if (bgmAudio) {
+      bgmAudio.pause();
+      bgmAudio.currentTime = 0;
     }
-    if (ambientAudio) {
-      ambientAudio.pause();
-      ambientAudio.currentTime = 0;
-    }
-    if (bgmIkeaGain) {
-      try { bgmIkeaGain.disconnect(); } catch(e) {}
-      bgmIkeaGain = null;
-    }
-    if (ambientGain) {
-      try { ambientGain.disconnect(); } catch(e) {}
-      ambientGain = null;
+    if (bgmGain) {
+      try { bgmGain.disconnect(); } catch(e) {}
+      bgmGain = null;
     }
   };
   
-  // Intercom randomizer - call this every frame in animate loop
-  const updateIntercom = (delta, isStage3) => {
-    if (!isStage3 || isMuted || !audioCtx) return;
-    intercomTimer += delta * 1000;
-    if (intercomTimer >= intercomInterval) {
-      intercomTimer = 0;
-      intercomInterval = 20000 + Math.random() * 10000; // 20-30 seconds
-      const clips = sfxCache.intercom;
-      if (clips && clips.length > 0) {
-        const clip = clips[Math.floor(Math.random() * clips.length)];
-        const clone = clip.cloneNode();
-        clone.volume = 0.6;
-        clone.play().catch(() => {});
-      }
-    }
-  };
+
 
   return {
     playSound,
@@ -461,7 +407,6 @@ export function useAudio({ currentStage, STAGES }) {
     initAudio,
     startStage3Audio,
     stopStage3Audio,
-    updateIntercom,
     get isMuted() { return isMuted; },
     get isBGMPlaying() { return isBGMPlaying; },
     get bgmStarted() { return bgmStarted; },
