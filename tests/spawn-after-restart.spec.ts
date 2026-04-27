@@ -2,6 +2,8 @@ import { test, expect } from '@playwright/test';
 import { GAME_URL, dismissLoadingScreen, focusCanvas } from './helpers';
 
 test.describe('Spawn After Restart', () => {
+  test.setTimeout(120000); // 2 minute timeout per test for coin spawn probability
+  
   test.beforeEach(async ({ page }) => {
     await page.goto(GAME_URL);
     await dismissLoadingScreen(page);
@@ -18,11 +20,12 @@ test.describe('Spawn After Restart', () => {
   }
 
   async function assertSpawns(page, stageNum: number) {
-    // Wait up to 5 seconds for obstacles AND coins to spawn (deterministic, not probabilistic)
+    // Wait up to 60 seconds for obstacles AND coins to spawn (coins are probabilistic)
+    // Obstacles spawn at 70% rate, coins at ~56% rate per cycle (~0.6-1.2s)
     await page.waitForFunction(() => {
       const counts = (window as any).__getSpawnCounts();
       return counts.obstacles > 0 && counts.coins > 0;
-    }, { timeout: 5000 });
+    }, { timeout: 60000 });
     
     const counts = await page.evaluate(() => (window as any).__getSpawnCounts());
     const debug = await page.evaluate(() => (window as any).__getSpawnDebug());

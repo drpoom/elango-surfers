@@ -1,4 +1,5 @@
-const GAME_URL = 'https://www.drpoom.com/elango-surfers/';
+// Use relative URL - Playwright config sets baseURL (local or CI)
+const GAME_URL = '/';
 
 async function dismissLoadingScreen(page) {
   // Wait for loading to complete and prompt to appear

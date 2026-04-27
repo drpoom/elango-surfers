@@ -186,9 +186,8 @@ const countdownText = ref('');
 let countdownLocked = false; // prevents input during countdown
 let initialCountdownTimeout = null; // Track initial countdown timeout to clear on reset
 let stageCountdownTimeout = null; // Track stage countdown timeout
-let debugKeyTimer: any = null; // Track debug key sequence timer
-let gameOverShakeInterval: any = null; // Track game over shake interval
-let spawnStateInterval: any = null; // Track spawn debug interval
+let gameOverShakeInterval = null; // Track game over shake interval
+let spawnStateInterval = null; // Track spawn debug interval
 const showSettings = ref(false);
 const isPaused = ref(false); // Pause state
 const debugStartStage = ref(-1);
@@ -202,6 +201,7 @@ const clearAllTimers = () => {
   if (debugKeyTimer) { clearTimeout(debugKeyTimer); debugKeyTimer = null; }
   if (gameOverShakeInterval) { clearInterval(gameOverShakeInterval); gameOverShakeInterval = null; }
   if (spawnStateInterval) { clearInterval(spawnStateInterval); spawnStateInterval = null; }
+  if (window._spawnStateInterval) { clearInterval(window._spawnStateInterval); window._spawnStateInterval = null; }
   if (invincibilityTimeout) { clearTimeout(invincibilityTimeout); invincibilityTimeout = null; }
   if (bossDefeatTimeout1) { clearTimeout(bossDefeatTimeout1); bossDefeatTimeout1 = null; }
 };
@@ -2958,7 +2958,6 @@ const startStageCountdown = () => {
 // Pending timeouts that must be cancelled on restart
 let bossDefeatTimeout1 = null
 let invincibilityTimeout = null
-let gameOverShakeInterval = null
 let gameOverTime = 0 // timestamp of game over, prevents instant restart
 let gameStartTime = 0 // timestamp when game started, grace period for collisions
 
