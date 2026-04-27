@@ -98,12 +98,12 @@
             :style="{ background: debugStartStage === -1 ? '#4ecdc4' : '#333', color: '#fff', border: '1px solid #555', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px' }">
             Normal
           </button>
-          <button v-for="(s, i) in STAGES" :key="i" @click="debugStartStage = i; applyStageVisuals(i)"
+          <button v-for="(s, i) in STAGES" :key="i" @click="debugStartStage = i"
             :style="{ background: debugStartStage === i ? '#4ecdc4' : '#333', color: '#fff', border: '1px solid #555', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px' }">
             {{ i + 1 }}. {{ s.name }}
           </button>
         </div>
-        <div style="color:#888;font-size:11px;margin-top:4px">Next game starts at this stage (or click to preview now)</div>
+        <div style="color:#888;font-size:11px;margin-top:4px">Next game starts at this stage</div>
       </div>
       <div class="settings-section">
         <h3>🎨 Skins</h3>
@@ -162,7 +162,7 @@ import { useMic } from './composables/useMic.js'
 import LoadingScreen from './components/LoadingScreen.vue'
 
 // Version - Update this for each release
-const VERSION = 'v5.2.1';
+const VERSION = 'v5.2.5';
 // Extract major.minor for version-aware high score key
 const VERSION_MAJOR_MINOR = VERSION.replace(/^(v\d+\.\d+)\.\d+$/, '$1').replace(/\./g, '_');
 
