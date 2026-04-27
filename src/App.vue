@@ -5027,9 +5027,14 @@ const resetStage = (preserveScore = false, targetStage = -1) => {
     clearTimeout(initialCountdownTimeout);
     initialCountdownTimeout = null;
   }
+  // Cleanup medieval flowers from Stage 2 to prevent pink objects in other stages
+  cleanupMedievalFlowers();
   clock.start(); // CRITICAL: Restart clock to ensure getElapsedTime() works correctly
-  lastSpawnTime = clock.getElapsedTime() - spawnInterval - 0.1; // Subtract extra 0.1s to ensure (time - lastSpawnTime) > spawnInterval is true on first frame
-  console.log('[RESET-STAGE] gameDuration=1.5, countdownLocked=false, lastSpawnTime=', lastSpawnTime, 'clock.elapsedTime=', clock.getElapsedTime());
+  const clockTime = clock.getElapsedTime();
+  lastSpawnTime = clockTime - spawnInterval - 0.1; // Subtract extra 0.1s to ensure (time - lastSpawnTime) > spawnInterval is true on first frame
+  console.log('[RESET-STAGE] gameDuration=1.5, countdownLocked=false, countdownActive=false');
+  console.log('[RESET-STAGE] clockTime=', clockTime, 'lastSpawnTime=', lastSpawnTime, 'spawnInterval=', spawnInterval);
+  console.log('[RESET-STAGE] First frame check: timeSinceLastSpawn will be', (clockTime - lastSpawnTime).toFixed(3), 'vs spawnInterval', spawnInterval);
 
   // Stage
   currentStage.value = targetStage >= 0 ? targetStage : (debugStartStage.value >= 0 ? debugStartStage.value : 0);
