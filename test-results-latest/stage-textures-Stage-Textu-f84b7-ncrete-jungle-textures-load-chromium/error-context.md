@@ -1,0 +1,169 @@
+# Instructions
+
+- Following Playwright test failed.
+- Explain why, be concise, respect Playwright best practices.
+- Provide a snippet of code with the fix, if possible.
+
+# Test info
+
+- Name: stage-textures.spec.ts >> Stage Texture Verification >> Stage 3: Concrete jungle textures load
+- Location: tests/stage-textures.spec.ts:103:3
+
+# Error details
+
+```
+Error: expect(received).toContain(expected) // indexOf
+
+Expected substring: "Cyber"
+Received string:    "STAGE 3: The Concrete Jungle"
+```
+
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - generic:
+    - generic: v5.2.1
+    - generic: "Score: 745"
+    - generic: "High Score: 0"
+    - generic: "STAGE 3: The Concrete Jungle"
+    - generic: 🐛
+    - generic: GOD MODE
+  - generic: ⬅️
+  - generic [ref=e4]:
+    - generic [ref=e5] [cursor=pointer]: 🎤🔴
+    - generic [ref=e6] [cursor=pointer]: 📱
+    - generic [ref=e7] [cursor=pointer]: 🔊
+    - generic [ref=e8] [cursor=pointer]: ⚙️
+  - generic: GO!
+```
+
+# Test source
+
+```ts
+  36  |       return {
+  37  |         color: mesh.material.color.getHex(),
+  38  |         hasMap: !!mesh.material.map
+  39  |       };
+  40  |     });
+  41  |     
+  42  |     expect(roadMaterial).not.toBeNull();
+  43  |     expect(roadMaterial.hasMap).toBe(true); // Should have highway texture
+  44  |     expect(roadMaterial.color).not.toBe(0x888888); // Not cobblestone gray
+  45  |   });
+  46  | 
+  47  |   test('Stage 2: Cobblestone + Fachwerkhaus textures load', async ({ page }) => {
+  48  |     test.setTimeout(90000);
+  49  |     
+  50  |     await page.goto(GAME_URL, { waitUntil: 'domcontentloaded' });
+  51  |     await page.waitForLoadState('networkidle');
+  52  |     await navigateAndDismiss(page);
+  53  |     await page.waitForTimeout(2000);
+  54  |     await focusCanvas(page);
+  55  |     
+  56  |     // Enter debug mode via keyboard (d-e-b-u-g)
+  57  |     for (const key of ['d', 'e', 'b', 'u', 'g']) {
+  58  |       await page.keyboard.press(key);
+  59  |       await page.waitForTimeout(50);
+  60  |     }
+  61  |     await page.waitForTimeout(1000); // Wait for debug mode to activate
+  62  |     
+  63  |     // Verify debug mode is active (check for debug indicator in body)
+  64  |     await page.waitForFunction(() => {
+  65  |       const body = document.querySelector('body');
+  66  |       return body && body.textContent?.includes('🐛');
+  67  |     }, { timeout: 5000 });
+  68  |     
+  69  |     await focusCanvas(page);
+  70  |     
+  71  |     // Select Stage 2 via keyboard
+  72  |     await page.keyboard.press('2');
+  73  |     await page.waitForTimeout(1500); // Let resetStage() process
+  74  |     
+  75  |     // Wait for stage indicator
+  76  |     const stageIndicator = page.locator('#stage-indicator');
+  77  |     const stageText = await stageIndicator.textContent();
+  78  |     console.log('Stage indicator:', stageText);
+  79  |     expect(stageText).toContain('STAGE 2');
+  80  |     expect(stageText).toContain('Medieval');
+  81  |     
+  82  |     // Wait for applyStageVisuals() to set color (immediate, not texture load)
+  83  |     await page.waitForTimeout(2000);
+  84  |     
+  85  |     // Get road material info
+  86  |     const debugInfo = await page.evaluate(() => {
+  87  |       const mesh = window.__getRoadMesh();
+  88  |       if (!mesh || !mesh.material) return null;
+  89  |       return {
+  90  |         color: mesh.material.color.getHex(),
+  91  |         hasMap: !!mesh.material.map
+  92  |       };
+  93  |     });
+  94  |     
+  95  |     console.log('Stage 2 road material:', debugInfo);
+  96  |     await screenshot(page, 'test-results/stage2-cobblestone-texture.png');
+  97  |     
+  98  |     expect(debugInfo).not.toBeNull();
+  99  |     expect(debugInfo.color).toBe(0x888888); // Cobblestone gray
+  100 |     expect(debugInfo.hasMap).toBe(true);
+  101 |   });
+  102 | 
+  103 |   test('Stage 3: Concrete jungle textures load', async ({ page }) => {
+  104 |     test.setTimeout(90000);
+  105 |     
+  106 |     await page.goto(GAME_URL, { waitUntil: 'domcontentloaded' });
+  107 |     await page.waitForLoadState('networkidle');
+  108 |     await navigateAndDismiss(page);
+  109 |     await page.waitForTimeout(2000);
+  110 |     await focusCanvas(page);
+  111 |     
+  112 |     // Enter debug mode via keyboard (d-e-b-u-g)
+  113 |     for (const key of ['d', 'e', 'b', 'u', 'g']) {
+  114 |       await page.keyboard.press(key);
+  115 |       await page.waitForTimeout(50);
+  116 |     }
+  117 |     await page.waitForTimeout(1000);
+  118 |     
+  119 |     // Verify debug mode is active
+  120 |     await page.waitForFunction(() => {
+  121 |       const body = document.querySelector('body');
+  122 |       return body && body.textContent?.includes('🐛');
+  123 |     }, { timeout: 5000 });
+  124 |     
+  125 |     await focusCanvas(page);
+  126 |     
+  127 |     // Select Stage 3 via keyboard
+  128 |     await page.keyboard.press('3');
+  129 |     await page.waitForTimeout(1500);
+  130 |     
+  131 |     // Wait for stage indicator
+  132 |     const stageIndicator = page.locator('#stage-indicator');
+  133 |     const stageText = await stageIndicator.textContent();
+  134 |     console.log('Stage indicator:', stageText);
+  135 |     expect(stageText).toContain('STAGE 3');
+> 136 |     expect(stageText).toContain('Cyber');
+      |                       ^ Error: expect(received).toContain(expected) // indexOf
+  137 |     
+  138 |     // Wait for applyStageVisuals() to set color (immediate)
+  139 |     await page.waitForTimeout(2000);
+  140 |     
+  141 |     // Get road material info
+  142 |     const debugInfo = await page.evaluate(() => {
+  143 |       const mesh = window.__getRoadMesh();
+  144 |       if (!mesh || !mesh.material) return null;
+  145 |       return {
+  146 |         color: mesh.material.color.getHex(),
+  147 |         hasMap: !!mesh.material.map
+  148 |       };
+  149 |     });
+  150 |     
+  151 |     console.log('Stage 3 road material:', debugInfo);
+  152 |     await screenshot(page, 'test-results/stage3-concrete-texture.png');
+  153 |     
+  154 |     expect(debugInfo).not.toBeNull();
+  155 |     expect(debugInfo.color).toBe(0xffffff); // Concrete white
+  156 |     expect(debugInfo.hasMap).toBe(true);
+  157 |   });
+  158 | });
+  159 | 
+```
