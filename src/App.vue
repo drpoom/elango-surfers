@@ -5411,7 +5411,7 @@ onMounted(() => {
       // Attach to tilt button click (user gesture required for iOS permission)
       window.addEventListener('touchstart', () => {
         requestTiltPermission();
-      }, { once: true });
+      }, { passive: true });
       // Also attach to tilt toggle button so user can retry
       const origToggleTilt = toggleTilt;
       toggleTilt = async () => {
