@@ -28,6 +28,7 @@
       <div><strong>TILT:</strong> beta={{ (lastBeta ?? 0).toFixed(1) }} gamma={{ (lastGamma ?? 0).toFixed(1) }} initBeta={{ tiltInitialBeta !== null ? tiltInitialBeta.toFixed(1) : 'null' }} enabled={{ tiltEnabled }}</div>
       <div><strong>MIC:</strong> vol={{ (lastMicVolume ?? 0).toFixed(1) }} ctx={{ audioCtxState }} enabled={{ micEnabledRef }}</div>
       <div><strong>STAGE:</strong> cur={{ currentStage }} debug={{ debugStartStage }} name={{ STAGES[currentStage]?.name || 'N/A' }}</div>
+      <div><strong>SPAWN:</strong> grace={{ (gameDuration < 1.5) }} dur={{ gameDuration?.toFixed(2) || 'N/A' }} sinceLast={{ (Date.now() % 10000 / 1000).toFixed(2) }} int={{ spawnInterval?.toFixed(2) }}</div>
       <div><strong>RENDER:</strong> grassY={{ grassY }} grassRO={{ grassRenderOrder }} grassDW={{ grassDepthWrite }} roadY={{ roadY }} roadRO={{ roadRenderOrder }}</div>
     </div>
     <div id="floating-texts">
@@ -3981,14 +3982,16 @@ const animate = () => {
     obstaclesLen: obstacles.length,
     countdownLocked,
     gameSpeed,
+    willSpawn,
+    clockRunning: clock.running,
+    clockElapsedTime: clock.getElapsedTime()
   });
 
   // Add this ONCE, right after __spawnDebug definition
   if (!window._spawnStateInterval) {
     window._spawnStateInterval = setInterval(() => {
       const debug = window.__spawnDebug();
-      const willSpawn = !debug.spawnGraceActive && debug.timeSinceLastSpawn > debug.spawnInterval && !debug.bonusNoSpawn && !debug.bossActive && !debug.stageTransitioning;
-      console.log('[SPAWN-STATE] willSpawn:', willSpawn, debug);
+      console.log('[SPAWN-STATE] willSpawn:', debug.willSpawn, 'gameDuration:', debug.gameDuration.toFixed(2), 'timeSinceLastSpawn:', debug.timeSinceLastSpawn.toFixed(3), 'spawnInterval:', debug.spawnInterval.toFixed(2));
     }, 1000);
   }
 
