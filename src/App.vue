@@ -3367,6 +3367,9 @@ const animate = () => {
   updateIntercom(delta, isStage3);
   
   if (!gameOver.value && !stageTransitioning.value && !countdownLocked) gameDuration += delta;
+  if (gameDuration < 3 && Math.random() < 0.05) {
+    console.log('[GAME-DURATION] gameDuration=', gameDuration.toFixed(3), 'delta=', delta.toFixed(4), 'stageTransitioning=', stageTransitioning.value, 'countdownLocked=', countdownLocked);
+  }
   dayCycleTime = (dayCycleTime + delta) % DAY_DURATION;
   
   // === STAGE TIME TRACKING ===
@@ -3952,22 +3955,15 @@ const animate = () => {
   const willSpawn = !spawnGraceActive && timeSinceLastSpawn > spawnInterval && !bonusNoSpawn && !bossActive.value && !stageTransitioning.value;
   if (!willSpawn && !countdownLocked) {
     if (!window._spawnLogTimer || Date.now() - window._spawnLogTimer > 1000) {
-      console.log('[SPAWN-DEBUG]', {
-        spawnGraceActive,
-        gameDuration,
-        timeSinceLastSpawn,
-        spawnInterval,
-        willSpawn,
-        bonusNoSpawn,
-        bossActive: bossActive.value,
-        stageTransitioning: stageTransitioning.value,
-        lastSpawnTime,
-        time,
-        obstaclesLen: obstacles.length,
-        countdownLocked,
-        clockRunning: clock.running,
-        clockElapsedTime: clock.getElapsedTime()
-      });
+      console.log('[SPAWN-DEBUG] willSpawn=false, checking why...');
+      console.log('  - spawnGraceActive:', spawnGraceActive, '(gameDuration=', gameDuration, ')');
+      console.log('  - timeSinceLastSpawn:', timeSinceLastSpawn.toFixed(3), '(time=', time.toFixed(3), '- lastSpawnTime=', lastSpawnTime.toFixed(3), ')');
+      console.log('  - spawnInterval:', spawnInterval);
+      console.log('  - bonusNoSpawn:', bonusNoSpawn);
+      console.log('  - bossActive:', bossActive.value);
+      console.log('  - stageTransitioning:', stageTransitioning.value);
+      console.log('  - countdownLocked:', countdownLocked);
+      console.log('  - clock.running:', clock.running);
       window._spawnLogTimer = Date.now();
     }
   }
@@ -5063,6 +5059,7 @@ const resetStage = (preserveScore = false, targetStage = -1) => {
   bossVulnerableOrbs = [];
   stageTransitioning.value = false;
   if (boss) { scene.remove(boss); boss = null; }
+  console.log('[RESET-STAGE] stageTransitioning=false, bossActive=false, bonusNoSpawn=false');
 
   // Player state
   comboCount = 0;
