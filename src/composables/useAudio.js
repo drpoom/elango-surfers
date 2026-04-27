@@ -80,6 +80,42 @@ export function useAudio({ currentStage, STAGES }) {
         sfxCache[key].volume = 0.8;
       }
     }
+    
+    // === PRELOAD BGM FILES DURING LOADING ===
+    // Preload Stage 1 (Highway) BGM so it can play immediately on game start
+    const STAGE1_BGM_FILE = 'assets/elango_main_theme.mp3';
+    const STAGE1_BGM_FALLBACK = 'assets/game_music.ogg';
+    bgmAudio = new Audio(STAGE1_BGM_FILE);
+    bgmAudio.preload = 'auto';
+    bgmAudio.loop = true;
+    bgmAudio.volume = 1;
+    // Fallback loading
+    bgmAudio.onerror = () => {
+      console.warn('Primary Stage 1 BGM failed, trying fallback...');
+      bgmAudio.src = STAGE1_BGM_FALLBACK;
+      bgmAudio.load();
+    };
+    bgmAudio.load(); // Start loading immediately
+    
+    // Preload Medieval BGM (Stage 2)
+    bgmMedievalAudio = new Audio('assets/medieval_music.ogg');
+    bgmMedievalAudio.preload = 'auto';
+    bgmMedievalAudio.loop = true;
+    bgmMedievalAudio.volume = 1;
+    bgmMedievalAudio.load();
+    
+    // Preload Stage 3 (IKEA) BGM and ambient
+    const ikeaBgm = new Audio('assets/bgm-ikea-polka.ogg');
+    ikeaBgm.preload = 'auto';
+    ikeaBgm.loop = true;
+    ikeaBgm.volume = 1;
+    ikeaBgm.load();
+    
+    const ambientHum = new Audio('assets/ambient-conveyor-hum.ogg');
+    ambientHum.preload = 'auto';
+    ambientHum.loop = true;
+    ambientHum.volume = 1;
+    ambientHum.load();
   };
 
   const playSound = (type, pitchMod = 1) => {
@@ -233,13 +269,13 @@ export function useAudio({ currentStage, STAGES }) {
     const STAGE1_BGM_FILE = 'assets/elango_main_theme.mp3'; // Elango Main Theme
     const STAGE1_BGM_FALLBACK = 'assets/game_music.ogg'; // Fallback to original highway theme
 
-    // Highway BGM
+    // Highway BGM - use preloaded audio
     bgmGain = audioCtx.createGain();
     bgmGain.gain.value = isMedievalBGM ? 0 : 0.5;
     bgmGain.connect(audioCtx.destination);
 
     if (!bgmAudio) {
-      // Try primary format (.ogg), fallback to .mp3 if needed
+      // Fallback: create if not preloaded (shouldn't happen)
       bgmAudio = new Audio(STAGE1_BGM_FILE);
       bgmAudio.onerror = () => {
         console.warn('Primary Stage 1 BGM failed, trying fallback...');
@@ -248,6 +284,8 @@ export function useAudio({ currentStage, STAGES }) {
       };
       bgmAudio.loop = true;
       bgmAudio.volume = 1;
+    }
+    if (!bgmSource) {
       bgmSource = audioCtx.createMediaElementSource(bgmAudio);
     }
     bgmSource.connect(bgmGain);
@@ -260,8 +298,9 @@ export function useAudio({ currentStage, STAGES }) {
       });
     }
 
-    // Medieval BGM
+    // Medieval BGM - use preloaded audio
     if (!bgmMedievalAudio) {
+      // Fallback: create if not preloaded
       bgmMedievalAudio = new Audio('assets/medieval_music.ogg');
       bgmMedievalAudio.loop = true;
       bgmMedievalAudio.volume = 1;

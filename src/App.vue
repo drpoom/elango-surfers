@@ -867,8 +867,9 @@ const onLoadingStart = () => {
   initAudio();
   startBGM();
   // Lock game until loading screen fades and countdown completes
-  stageTransitioning.value = true;
+  // Prevents any game input or state changes before countdown
   countdownLocked = true;
+  stageTransitioning.value = true;
   setTimeout(() => {
     showLoadingScreen.value = false;
     // Start countdown AFTER loading screen fades out (400ms)
@@ -2906,7 +2907,7 @@ const BOSS_BASE_HEALTH = 100
 const BOSS_ORB_DAMAGE = 10
 const BOSS_MIN_ORBS = 4
 const BOSS_MAX_ORBS = 7
-const BOSS_CHARGE_SPEED_MULTIPLIER = 1.5
+const BOSS_CHARGE_SPEED_MULTIPLIER = 1.35
 const BOSS_VULNERABLE_DURATION = 3.5
 const BOSS_IDLE_DURATION = 2.5
 
@@ -4550,12 +4551,20 @@ const animate = () => {
   }
   // Scroll cobblestone texture with ground when active
   // (removed duplicate - handled above in Stage 2 block)
-  // Stage 3: scroll concrete road and pavement textures (same direction as Stage 1)
+  // Stage 3: scroll concrete road and pavement textures (same direction as road)
   if (stage3Textures.road) {
     stage3Textures.road.offset.y -= gameSpeed * 0.15;
   }
   if (stage3Textures.pavement) {
     stage3Textures.pavement.offset.y -= gameSpeed * 0.15;
+  }
+  // Stage 3: also scroll grassMesh texture (pavement) to match road direction
+  // grassTileTex is for Stage 1 grass and scrolls opposite; Stage 3 pavement on grassMesh must match road
+  if (currentStage.value === 2 && grassMesh && grassMesh.material.map === stage3Textures.pavement) {
+    // Pavement texture on grassMesh scrolls with road (negative direction)
+    if (grassMesh.material.map) {
+      grassMesh.material.map.offset.y -= gameSpeed * 0.15;
+    }
   }
   
   // === CHARACTER ANIMATION ===
