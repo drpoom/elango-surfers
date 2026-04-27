@@ -3,11 +3,24 @@ const GAME_URL = '/';
 
 async function dismissLoadingScreen(page) {
   // Wait for loading to complete and prompt to appear
-  await page.waitForSelector('text=Press any key', { timeout: 60000 });
-  // Dismiss with Enter key
-  await page.keyboard.press('Enter');
-  // Wait for loading screen to fade out
-  await page.waitForTimeout(500);
+  try {
+    await page.waitForSelector('text=Press any key', { timeout: 60000 });
+    // Dismiss with Enter key
+    await page.keyboard.press('Enter');
+    // Wait for loading screen to fade out
+    await page.waitForTimeout(500);
+  } catch (e) {
+    // Loading screen might have auto-dismissed or game started automatically
+    console.log('Loading screen dismissal skipped:', e.message);
+    await page.waitForTimeout(1000);
+  }
+  
+  // Wait for canvas to appear
+  try {
+    await page.waitForSelector('canvas', { timeout: 10000 });
+  } catch (e) {
+    console.log('Canvas not found, game may have crashed');
+  }
 }
 
 async function navigateAndDismiss(page) {

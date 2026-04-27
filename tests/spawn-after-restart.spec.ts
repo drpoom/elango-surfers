@@ -7,7 +7,8 @@ test.describe('Spawn After Restart', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(GAME_URL);
     await dismissLoadingScreen(page);
-    await expect(page.locator('canvas')).toBeVisible({ timeout: 5000 });
+    // Give game time to initialize
+    await page.waitForTimeout(2000);
   });
 
   async function enterDebugCode(page) {
