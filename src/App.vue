@@ -163,7 +163,7 @@ import { useMic } from './composables/useMic.js'
 import LoadingScreen from './components/LoadingScreen.vue'
 
 // Version - Update this for each release
-const VERSION = 'v5.2.5';
+const VERSION = 'v5.2.11';
 // Extract major.minor for version-aware high score key
 const VERSION_MAJOR_MINOR = VERSION.replace(/^(v\d+\.\d+)\.\d+$/, '$1').replace(/\./g, '_');
 
@@ -5350,9 +5350,14 @@ onMounted(() => {
   window.addEventListener('keydown', handleKeyDown);
   window.addEventListener('touchstart', handleTouchStart, { passive: false });
   window.addEventListener('touchend', handleTouchEnd, { passive: false });
+  // Only prevent default on touchmove for UI elements, not the whole screen
+  // This avoids blocking native scrolling and reduces frame drops
   window.addEventListener('touchmove', (e) => {
     if (e.target.closest('#mute-btn, #tilt-btn, #mic-btn, #settings-btn, #settings-panel')) return;
-    e.preventDefault();
+    // Only prevent default if actively swiping horizontally (gameplay gesture)
+    if (touchStartX !== null && Math.abs(e.touches[0].clientX - touchStartX) > 10) {
+      e.preventDefault();
+    }
   }, { passive: false, capture: true });
   
   // Visibility change (tab/app switch) - pause when hidden
