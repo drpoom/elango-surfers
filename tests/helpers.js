@@ -4,7 +4,7 @@ const GAME_URL = '/';
 async function dismissLoadingScreen(page) {
   // Wait for loading to complete and prompt to appear
   try {
-    await page.waitForSelector('text=Press any key', { timeout: 60000 });
+    await page.locator('text=Press any key / Tap to start').waitFor({ timeout: 15000 });
     // Dismiss with Enter key
     await page.keyboard.press('Enter');
     // Wait for loading screen to fade out

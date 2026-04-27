@@ -6,8 +6,6 @@ test.describe('Stage Texture Verification', () => {
   test('Stage 1: Modern highway textures load', async ({ page }) => {
     test.setTimeout(60000);
     
-    await page.goto(GAME_URL, { waitUntil: 'domcontentloaded' });
-    await page.waitForLoadState('networkidle');
     await navigateAndDismiss(page);
     await page.waitForTimeout(2000);
     
@@ -46,8 +44,6 @@ test.describe('Stage Texture Verification', () => {
   test('Stage 2: Cobblestone + Fachwerkhaus textures load', async ({ page }) => {
     test.setTimeout(90000);
     
-    await page.goto(GAME_URL, { waitUntil: 'domcontentloaded' });
-    await page.waitForLoadState('networkidle');
     await navigateAndDismiss(page);
     await page.waitForTimeout(2000);
     await focusCanvas(page);
@@ -110,8 +106,6 @@ test.describe('Stage Texture Verification', () => {
   test('Stage 3: Concrete jungle textures load', async ({ page }) => {
     test.setTimeout(90000);
     
-    await page.goto(GAME_URL, { waitUntil: 'domcontentloaded' });
-    await page.waitForLoadState('networkidle');
     await navigateAndDismiss(page);
     await page.waitForTimeout(2000);
     await focusCanvas(page);

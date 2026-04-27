@@ -20,8 +20,8 @@ test.describe('Elango Surfers Loading Screen', () => {
     await page.goto(GAME_URL, { waitUntil: 'domcontentloaded' });
     const loadingScreen = page.locator('.loading-screen');
     await expect(loadingScreen).toBeVisible({ timeout: 60000 });
-    // Wait for loading to complete — "Press any key" prompt appears
-    await expect(page.locator('text=Press any key')).toBeVisible({ timeout: 60000 });
+    // Wait for loading to complete — "Press any key / Tap to start" prompt appears
+    await expect(page.locator('text=Press any key / Tap to start')).toBeVisible({ timeout: 60000 });
     await page.screenshot({ path: 'tests/screenshots/loading-progress-complete.png' });
   });
 });

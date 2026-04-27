@@ -47,7 +47,7 @@ test.describe('Texture Loading', () => {
     const loadingText = loadingScreen.locator('text=Loading...');
     await expect(loadingText).toBeVisible({ timeout: 5000 }).catch(() => {
       // If textures loaded too fast, the prompt text should be visible instead
-      const prompt = loadingScreen.locator('text=Press any key');
+      const prompt = loadingScreen.locator('text=Press any key / Tap to start');
       return expect(prompt).toBeVisible({ timeout: 5000 });
     });
 
@@ -67,7 +67,7 @@ test.describe('Texture Loading', () => {
     await page.goto(GAME_URL, { waitUntil: 'domcontentloaded' });
 
     // Wait for loading to complete
-    await expect(page.locator('text=Press any key')).toBeVisible({ timeout: 60000 });
+    await expect(page.locator('text=Press any key / Tap to start')).toBeVisible({ timeout: 60000 });
 
     // Dismiss loading screen
     await page.keyboard.press('Enter');
