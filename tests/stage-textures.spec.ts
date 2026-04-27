@@ -140,7 +140,7 @@ test.describe('Stage Texture Verification', () => {
     const stageText = await stageIndicator.textContent();
     console.log('Stage indicator:', stageText);
     expect(stageText).toContain('STAGE 3');
-    expect(stageText).toContain('Cyber');
+    expect(stageText).toContain('Concrete');
     
     // Wait for applyStageVisuals() to set color (immediate)
     await page.waitForTimeout(2000);

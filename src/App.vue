@@ -5020,6 +5020,7 @@ const resetStage = (preserveScore = false, targetStage = -1) => {
   spawnInterval = 1.2;
   gameDuration = 1.5; // Set to 1.5 to skip spawn grace period (allows immediate spawning)
   countdownLocked = false; // Ensure game is unlocked after a reset
+  countdownActive.value = false;
   clock.start(); // CRITICAL: Restart clock to ensure getElapsedTime() works correctly
   lastSpawnTime = clock.getElapsedTime() - spawnInterval - 0.1; // Subtract extra 0.1s to ensure (time - lastSpawnTime) > spawnInterval is true on first frame
   console.log('[RESET-STAGE] gameDuration=1.5, countdownLocked=false, lastSpawnTime=', lastSpawnTime, 'clock.elapsedTime=', clock.getElapsedTime());
