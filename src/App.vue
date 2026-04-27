@@ -163,7 +163,7 @@ import { useMic } from './composables/useMic.js'
 import LoadingScreen from './components/LoadingScreen.vue'
 
 // Version - Update this for each release
-const VERSION = 'v5.2.16';
+const VERSION = 'v5.2.17';
 // Extract major.minor for version-aware high score key
 const VERSION_MAJOR_MINOR = VERSION.replace(/^(v\d+\.\d+)\.\d+$/, '$1').replace(/\./g, '_');
 
@@ -227,8 +227,8 @@ const toggleSettings = () => {
     showSettings.value = false;
     resumeGame();
   } else {
-    // Opening settings - pause the game
-    if (!gameOver.value && !countdownActive.value) {
+    // Opening settings - pause the game (only if not in countdown/transition)
+    if (!gameOver.value && !countdownActive.value && !countdownLocked && !stageTransitioning.value) {
       pauseGame();
     }
     showSettings.value = true;
@@ -5273,7 +5273,8 @@ const restartGame = () => {
 
 // === PAUSE/RESUME SYSTEM ===
 const pauseGame = () => {
-  if (isPaused.value || gameOver.value || countdownActive.value) return;
+  // Prevent pausing during countdown, stage transitions, or initial loading
+  if (isPaused.value || gameOver.value || countdownActive.value || countdownLocked || stageTransitioning.value) return;
   isPaused.value = true;
   pauseStartTime = clock.getElapsedTime(); // Record pause time
   // Show pause indicator
@@ -5283,6 +5284,12 @@ const pauseGame = () => {
 
 const resumeGame = () => {
   if (!isPaused.value) return;
+  // Don't resume if still in countdown or stage transition
+  if (countdownActive.value || countdownLocked || stageTransitioning.value) {
+    isPaused.value = false; // Clear paused state but don't adjust clock
+    console.log('[RESUME] Aborted - game still in countdown/transition');
+    return;
+  }
   isPaused.value = false;
   // Adjust clock to account for pause duration
   const pauseDuration = clock.getElapsedTime() - pauseStartTime;
@@ -5362,7 +5369,7 @@ onMounted(() => {
     }
     initAudio();
     tryStartBGMFromGesture();
-  }, { once: true, passive: true });
+  }, { passive: true });
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
