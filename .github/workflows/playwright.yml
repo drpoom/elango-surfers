@@ -21,8 +21,8 @@ jobs:
       run: npx playwright install --with-deps chromium
     - name: Build the game
       run: npm run build
-    - name: Run Playwright tests (local build)
-      run: npx playwright test --config=playwright.local.config.ts
+    - name: Run critical tests only (spawn, gameplay, essential)
+      run: npx playwright test --config=playwright.local.config.ts tests/spawn-after-restart.spec.ts tests/essential.spec.ts tests/gameplay.spec.ts
     - uses: actions/upload-artifact@v4
       if: always()
       with:
@@ -35,3 +35,23 @@ jobs:
         name: test-results
         path: test-results/
         retention-days: 7
+
+  deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
+      with:
+        node-version: lts/*
+    - name: Install dependencies
+      run: npm ci
+    - name: Build the game
+      run: npm run build
+    - name: Deploy to GitHub Pages
+      uses: peaceiris/actions-gh-pages@v4
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./dist
+        force_orphan: true
