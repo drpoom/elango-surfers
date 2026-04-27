@@ -163,7 +163,7 @@ import { useMic } from './composables/useMic.js'
 import LoadingScreen from './components/LoadingScreen.vue'
 
 // Version - Update this for each release
-const VERSION = 'v5.2.14';
+const VERSION = 'v5.2.16';
 // Extract major.minor for version-aware high score key
 const VERSION_MAJOR_MINOR = VERSION.replace(/^(v\d+\.\d+)\.\d+$/, '$1').replace(/\./g, '_');
 
@@ -2913,8 +2913,6 @@ const BOSS_IDLE_DURATION = 2.5
 
 // Stage countdown helper function - starts 3-2-1-GO sequence then resumes game
 const startStageCountdown = () => {
-  // SAFETY NET: Clear transitioning flag in case onMounted countdown was bypassed
-  stageTransitioning.value = false;
   countdownLocked = true
   countdownActive.value = true
   // Calibrate mic ambient noise baseline during countdown
