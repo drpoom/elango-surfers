@@ -98,12 +98,12 @@
             :style="{ background: debugStartStage === -1 ? '#4ecdc4' : '#333', color: '#fff', border: '1px solid #555', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px' }">
             Normal
           </button>
-          <button v-for="(s, i) in STAGES" :key="i" @click="debugStartStage = i"
+          <button v-for="(s, i) in STAGES" :key="i" @click="debugStartStage = i; applyStageVisuals(i)"
             :style="{ background: debugStartStage === i ? '#4ecdc4' : '#333', color: '#fff', border: '1px solid #555', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px' }">
             {{ i + 1 }}. {{ s.name }}
           </button>
         </div>
-        <div style="color:#888;font-size:11px;margin-top:4px">Next game starts at this stage</div>
+        <div style="color:#888;font-size:11px;margin-top:4px">Next game starts at this stage (or click to preview now)</div>
       </div>
       <div class="settings-section">
         <h3>🎨 Skins</h3>
@@ -907,7 +907,7 @@ const STAGE_TEXTURES = {
       'assets/tree_pine_clean.webp'
     ],
     buildings: [
-      'assets/stage2/building_fachwerk.webp' // fachwerkhaus (dominant)
+      'assets/building_fachwerk.webp' // fachwerkhaus (dominant)
     ],
     road: 'assets/road_cobblestone.webp',
     sky: ['assets/sky_sunset.webp'],
@@ -983,7 +983,7 @@ const loadFachwerk = (callback) => {
     if (callback) callback(fachwerkTexture);
     return fachwerkTexture;
   }
-  fachwerkTexture = loadTexture('assets/stage2/building_fachwerk.webp', () => {
+  fachwerkTexture = loadTexture('assets/building_fachwerk.webp', () => {
     if (callback) callback(fachwerkTexture);
   });
   return fachwerkTexture;
