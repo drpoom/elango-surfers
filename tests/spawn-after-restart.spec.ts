@@ -20,8 +20,10 @@ test.describe('Spawn After Restart', () => {
   async function assertSpawns(page, stageNum: number) {
     await page.waitForTimeout(5000);
     const counts = await page.evaluate(() => window.__getSpawnCounts());
-    expect(counts.obstacles).toBeGreaterThan(0);
-    expect(counts.coins).toBeGreaterThan(0);
+    const debug = await page.evaluate(() => window.__getSpawnDebug());
+    console.log('Spawn debug:', JSON.stringify(debug, null, 2));
+    expect(counts.obstacles, `No obstacles spawned. Debug: ${JSON.stringify(debug)}`).toBeGreaterThan(0);
+    expect(counts.coins, `No coins spawned. Debug: ${JSON.stringify(debug)}`).toBeGreaterThan(0);
   }
 
   test('Stage 1 - obstacles and coins spawn', async ({ page }) => {
