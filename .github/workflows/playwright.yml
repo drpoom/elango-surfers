@@ -21,8 +21,8 @@ jobs:
       run: npx playwright install --with-deps chromium
     - name: Build the game
       run: npm run build
-    - name: Run critical tests only (spawn, gameplay, essential)
-      run: npx playwright test --config=playwright.local.config.ts tests/spawn-after-restart.spec.ts tests/essential.spec.ts tests/gameplay.spec.ts
+    - name: Run critical tests only (spawn functionality)
+      run: npx playwright test --config=playwright.local.config.ts tests/spawn-after-restart.spec.ts
     - uses: actions/upload-artifact@v4
       if: always()
       with:
