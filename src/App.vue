@@ -183,6 +183,7 @@ const gameOver = ref(false);
 const countdownActive = ref(false);
 const countdownText = ref('');
 let countdownLocked = false; // prevents input during countdown
+let initialCountdownTimeout = null; // Track initial countdown timeout to clear on reset
 const showSettings = ref(false);
 const isPaused = ref(false); // Pause state
 const debugStartStage = ref(-1);
@@ -5021,6 +5022,11 @@ const resetStage = (preserveScore = false, targetStage = -1) => {
   gameDuration = 1.5; // Set to 1.5 to skip spawn grace period (allows immediate spawning)
   countdownLocked = false; // Ensure game is unlocked after a reset
   countdownActive.value = false;
+  // Clear pending initial countdown timeout to prevent it from overwriting spawn state
+  if (initialCountdownTimeout) {
+    clearTimeout(initialCountdownTimeout);
+    initialCountdownTimeout = null;
+  }
   clock.start(); // CRITICAL: Restart clock to ensure getElapsedTime() works correctly
   lastSpawnTime = clock.getElapsedTime() - spawnInterval - 0.1; // Subtract extra 0.1s to ensure (time - lastSpawnTime) > spawnInterval is true on first frame
   console.log('[RESET-STAGE] gameDuration=1.5, countdownLocked=false, lastSpawnTime=', lastSpawnTime, 'clock.elapsedTime=', clock.getElapsedTime());
@@ -5299,7 +5305,7 @@ onMounted(() => {
     } else if (initCount === 0) {
       countdownText.value = 'GO!';
       startBGM(); // Start music on initial GO!
-      setTimeout(() => {
+      initialCountdownTimeout = setTimeout(() => {
         countdownActive.value = false;
         countdownLocked = false;
         gameDuration = 1.5;
