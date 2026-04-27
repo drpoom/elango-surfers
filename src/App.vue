@@ -2913,6 +2913,8 @@ const BOSS_IDLE_DURATION = 2.5
 
 // Stage countdown helper function - starts 3-2-1-GO sequence then resumes game
 const startStageCountdown = () => {
+  // SAFETY NET: Clear transitioning flag in case onMounted countdown was bypassed
+  stageTransitioning.value = false;
   countdownLocked = true
   countdownActive.value = true
   // Calibrate mic ambient noise baseline during countdown
@@ -5314,45 +5316,7 @@ onMounted(() => {
   const saved = localStorage.getItem(`elangoSurfersHighScore_${VERSION_MAJOR_MINOR}`);
   if (saved) highScore.value = parseInt(saved, 10);
   initGame();
-  // Start with countdown on initial load
-  countdownLocked = true;
-  countdownActive.value = true;
-  let initCount = 3;
-  countdownText.value = initCount.toString();
-  const initTick = () => {
-    initCount--;
-    if (initCount > 0) {
-      countdownText.value = initCount.toString();
-      setTimeout(initTick, 1000);
-    } else if (initCount === 0) {
-      countdownText.value = 'GO!';
-      startBGM(); // Start music on initial GO!
-      initialCountdownTimeout = setTimeout(() => {
-        countdownActive.value = false;
-        countdownLocked = false;
-        gameDuration = 1.5;
-        lastSpawnTime = clock.getElapsedTime() - spawnInterval - 0.1; // Subtract extra 0.1s to ensure (time - lastSpawnTime) > spawnInterval is true on first frame
-        // 2-second invincibility after game starts (green shield)
-        isInvincible = true;
-        gameStartTime = Date.now();
-        const oldGrace = player.getObjectByName('shield-aura');
-        if (!oldGrace) {
-          const graceGeo = new THREE.SphereGeometry(1.2, 16, 16);
-          const graceMat = new THREE.MeshToonMaterial({ color: 0x44ff44, transparent: true, opacity: 0.3, side: THREE.DoubleSide });
-          const graceMesh = new THREE.Mesh(graceGeo, graceMat);
-          graceMesh.name = 'shield-aura';
-          player.add(graceMesh);
-        }
-        invincibilityTimeout = setTimeout(() => {
-          isInvincible = false;
-          invincibilityTimeout = null;
-          const shield = player.getObjectByName('shield-aura');
-          if (shield) player.remove(shield);
-        }, 2000);
-      }, 500);
-    }
-  };
-  setTimeout(initTick, 1000);
+  // Countdown handled by LoadingScreen → onLoadingStart
   window.addEventListener('keydown', handleKeyDown);
   window.addEventListener('touchstart', handleTouchStart, { passive: false });
   window.addEventListener('touchend', handleTouchEnd, { passive: false });

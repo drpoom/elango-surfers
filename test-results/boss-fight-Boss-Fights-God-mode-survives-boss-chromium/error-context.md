@@ -12,106 +12,70 @@
 # Error details
 
 ```
-Error: page.goto: Page crashed
-Call log:
-  - navigating to "http://localhost:5173/", waiting until "load"
+Test timeout of 120000ms exceeded while running "beforeEach" hook.
+```
 
+```
+Error: page.waitForTimeout: Target page, context or browser has been closed
 ```
 
 # Test source
 
 ```ts
-  1  | import { test, expect } from '@playwright/test';
-  2  | import { GAME_URL, dismissLoadingScreen, focusCanvas, screenshot } from './helpers';
+  1  | // Use relative URL - Playwright config sets baseURL (local or CI)
+  2  | const GAME_URL = '/';
   3  | 
-  4  | test.describe('Boss Fights', () => {
-  5  |   test.beforeEach(async ({ page }) => {
-  6  |     test.setTimeout(120000);
-> 7  |     await page.goto(GAME_URL);
-     |                ^ Error: page.goto: Page crashed
-  8  |     await dismissLoadingScreen(page);
-  9  |     // Canvas should already exist after dismissLoadingScreen
-  10 |     // Just verify it's visible, don't wait for it to appear
-  11 |     await expect(page.locator('canvas')).toBeVisible({ timeout: 5000 });
-  12 |     await page.waitForTimeout(2000);
-  13 |   });
-  14 | 
-  15 |   async function enterDebugCode(page) {
-  16 |     await focusCanvas(page);
-  17 |     await page.keyboard.press('d');
-  18 |     await page.waitForTimeout(100);
-  19 |     await page.keyboard.press('e');
-  20 |     await page.waitForTimeout(100);
-  21 |     await page.keyboard.press('b');
-  22 |     await page.waitForTimeout(100);
-  23 |     await page.keyboard.press('u');
-  24 |     await page.waitForTimeout(100);
-  25 |     await page.keyboard.press('g');
-  26 |     await page.waitForTimeout(500);
-  27 |   }
-  28 | 
-  29 |   test('Stage 1 Boss', async ({ page }) => {
-  30 |     await enterDebugCode(page);
-  31 |     await focusCanvas(page);
-  32 |     await page.keyboard.press('1');
-  33 |     await page.waitForTimeout(2000);
-  34 |     await focusCanvas(page);
-  35 |     await page.keyboard.press('b');
-  36 |     await page.waitForTimeout(3000);
-  37 |     await screenshot(page, 'tests/screenshots/stage1-boss.png');
-  38 |   });
-  39 | 
-  40 |   test('Stage 2 Boss', async ({ page }) => {
-  41 |     await enterDebugCode(page);
-  42 |     await focusCanvas(page);
-  43 |     await page.keyboard.press('2');
-  44 |     await page.waitForTimeout(2000);
-  45 |     await focusCanvas(page);
-  46 |     await page.keyboard.press('b');
-  47 |     await page.waitForTimeout(3000);
-  48 |     await screenshot(page, 'tests/screenshots/stage2-boss.png');
-  49 |   });
-  50 | 
-  51 |   test('Stage 3 Boss', async ({ page }) => {
-  52 |     await enterDebugCode(page);
-  53 |     await focusCanvas(page);
-  54 |     await page.keyboard.press('3');
-  55 |     await page.waitForTimeout(2000);
-  56 |     await focusCanvas(page);
-  57 |     await page.keyboard.press('b');
-  58 |     await page.waitForTimeout(3000);
-  59 |     await screenshot(page, 'tests/screenshots/stage3-boss.png');
-  60 |   });
-  61 | 
-  62 |   test('God mode survives boss', async ({ page }) => {
-  63 |     await enterDebugCode(page);
-  64 |     await focusCanvas(page);
-  65 |     await page.keyboard.press('g');
-  66 |     await page.waitForTimeout(500);
-  67 |     await focusCanvas(page);
-  68 |     await page.keyboard.press('1');
-  69 |     await page.waitForTimeout(2000);
-  70 |     await focusCanvas(page);
-  71 |     await page.keyboard.press('b');
-  72 |     await page.waitForTimeout(5000);
-  73 |     // Verify no game over screen
-  74 |     const gameOverVisible = await page.locator('text=Game Over').isVisible().catch(() => false);
-  75 |     expect(gameOverVisible).toBe(false);
-  76 |     await screenshot(page, 'tests/screenshots/god-mode-boss.png');
-  77 |   });
-  78 | 
-  79 |   test('Player death by boss', async ({ page }) => {
-  80 |     test.setTimeout(90000);
-  81 |     await enterDebugCode(page);
-  82 |     await focusCanvas(page);
-  83 |     await page.keyboard.press('1');
-  84 |     await page.waitForTimeout(2000);
-  85 |     await focusCanvas(page);
-  86 |     await page.keyboard.press('b');
-  87 |     // Wait up to 10s for game over
-  88 |     await page.waitForTimeout(10000);
-  89 |     await screenshot(page, 'tests/screenshots/player-death-boss.png');
-  90 |   });
-  91 | });
-  92 | 
+  4  | async function dismissLoadingScreen(page) {
+  5  |   // Wait for loading to complete and prompt to appear
+  6  |   try {
+  7  |     await page.locator('text=Press any key / Tap to start').waitFor({ timeout: 15000 });
+  8  |     // Dismiss with Enter key
+  9  |     await page.keyboard.press('Enter');
+  10 |     // Wait for loading screen to fade out
+  11 |     await page.waitForTimeout(500);
+  12 |   } catch (e) {
+  13 |     // Loading screen might have auto-dismissed or game started automatically
+  14 |     console.log('Loading screen dismissal skipped:', e.message);
+> 15 |     await page.waitForTimeout(1000);
+     |                ^ Error: page.waitForTimeout: Target page, context or browser has been closed
+  16 |   }
+  17 |   
+  18 |   // Wait for canvas to appear
+  19 |   try {
+  20 |     await page.waitForSelector('canvas', { timeout: 10000 });
+  21 |   } catch (e) {
+  22 |     console.log('Canvas not found, game may have crashed');
+  23 |   }
+  24 | }
+  25 | 
+  26 | async function navigateAndDismiss(page) {
+  27 |   await page.goto(GAME_URL, { waitUntil: 'domcontentloaded' });
+  28 |   await dismissLoadingScreen(page);
+  29 | }
+  30 | 
+  31 | // Focus the canvas before keyboard input to ensure events are captured
+  32 | // Uses short timeout and ignores errors - focus is best-effort only
+  33 | async function focusCanvas(page) {
+  34 |   try {
+  35 |     await page.waitForSelector('canvas', { timeout: 2000, state: 'visible' });
+  36 |     await page.focus('canvas');
+  37 |     await page.waitForTimeout(100);
+  38 |   } catch (e) {
+  39 |     // Canvas not found or not focusable - skip focus, continue test
+  40 |     console.log('Canvas focus skipped (not found)');
+  41 |   }
+  42 | }
+  43 | 
+  44 | // Take screenshot with timeout to avoid hanging on font loading
+  45 | async function screenshot(page, path) {
+  46 |   try {
+  47 |     await page.screenshot({ path, timeout: 5000 });
+  48 |   } catch (e) {
+  49 |     console.log(`Screenshot failed for ${path}: ${e.message}`);
+  50 |     // Screenshot is non-critical - continue test
+  51 |   }
+  52 | }
+  53 | 
+  54 | export { GAME_URL, dismissLoadingScreen, navigateAndDismiss, focusCanvas, screenshot };
+  55 | 
 ```
