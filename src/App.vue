@@ -568,6 +568,7 @@ let coins = [];
 
 // Expose spawn counts for Playwright tests (outside animate loop)
 window.__getSpawnCounts = () => ({ obstacles: obstacles.length, coins: coins.length });
+window.__getSpawnDebug = () => window.__spawnDebug ? window.__spawnDebug() : { error: 'animate loop not running' };
 window.__getRoadMesh = () => roadMesh;
 let powerups = [];
 let particles = [];
