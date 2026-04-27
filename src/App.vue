@@ -5039,6 +5039,10 @@ const resetStage = (preserveScore = false, targetStage = -1) => {
   gameDuration = 1.5; // Set to 1.5 to skip spawn grace period (allows immediate spawning)
   countdownLocked = false; // Ensure game is unlocked after a reset
   countdownActive.value = false;
+
+  // CRITICAL: Restart the clock AFTER resetting state
+  clock.start();
+  lastSpawnTime = 0; // Reset spawn timer
   stageTransitioning.value = false; // Ensure not stuck in transition
   // Cleanup medieval flowers from Stage 2 to prevent pink objects in other stages
   cleanupMedievalFlowers();
