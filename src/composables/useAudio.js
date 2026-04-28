@@ -394,8 +394,23 @@ export function useAudio({ currentStage, STAGES }) {
       bgmGain = null;
     }
   };
-  
 
+  // Stage 3 intercom random SFX player
+  const updateIntercom = (delta, isStage3) => {
+    if (!isStage3 || !audioInitialized) return;
+    intercomTimer += delta * 1000;
+    if (intercomTimer >= intercomInterval) {
+      intercomTimer = 0;
+      intercomInterval = 20000 + Math.random() * 10000; // 20-30s
+      const clips = sfxCache.intercom;
+      if (clips && clips.length) {
+        const clip = clips[Math.floor(Math.random() * clips.length)];
+        const audio = clip.cloneNode();
+        audio.volume = 0.6;
+        audio.play().catch(() => {});
+      }
+    }
+  };
 
   return {
     playSound,
@@ -407,6 +422,7 @@ export function useAudio({ currentStage, STAGES }) {
     initAudio,
     startStage3Audio,
     stopStage3Audio,
+    updateIntercom,
     get isMuted() { return isMuted; },
     get isBGMPlaying() { return isBGMPlaying; },
     get bgmStarted() { return bgmStarted; },
