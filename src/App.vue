@@ -163,7 +163,7 @@ import { useMic } from './composables/useMic.js'
 import LoadingScreen from './components/LoadingScreen.vue'
 
 // Version - Update this for each release
-const VERSION = 'v5.2.18';
+const VERSION = 'v5.2.19';
 // Extract major.minor for version-aware high score key
 const VERSION_MAJOR_MINOR = VERSION.replace(/^(v\d+\.\d+)\.\d+$/, '$1').replace(/\./g, '_');
 
@@ -5230,6 +5230,7 @@ const startCountdown = () => {
       setTimeout(() => {
         countdownActive.value = false;
         countdownLocked = false;
+        stageTransitioning.value = false;
         gameDuration = 1.5;
         lastSpawnTime = clock.getElapsedTime() - spawnInterval;
         // 2-second invincibility after game starts (green shield)
