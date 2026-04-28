@@ -12,7 +12,7 @@
 # Error details
 
 ```
-Error: page.goto: Target page, context or browser has been closed
+Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5173/
 Call log:
   - navigating to "http://localhost:5173/", waiting until "load"
 
@@ -28,7 +28,7 @@ Call log:
   5  |   test.beforeEach(async ({ page }) => {
   6  |     test.setTimeout(120000);
 > 7  |     await page.goto(GAME_URL);
-     |                ^ Error: page.goto: Target page, context or browser has been closed
+     |                ^ Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5173/
   8  |     await dismissLoadingScreen(page);
   9  |     // Canvas should already exist after dismissLoadingScreen
   10 |     // Just verify it's visible, don't wait for it to appear

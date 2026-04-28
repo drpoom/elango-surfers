@@ -12,19 +12,9 @@
 # Error details
 
 ```
-Test timeout of 120000ms exceeded while running "beforeEach" hook.
-```
-
-```
-Error: expect(locator).toBeVisible() failed
-
-Locator:  locator('canvas')
-Expected: visible
-Received: undefined
-
+Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5173/
 Call log:
-  - Expect "toBeVisible" with timeout 5000ms
-  - waiting for locator('canvas')
+  - navigating to "http://localhost:5173/", waiting until "load"
 
 ```
 
@@ -37,12 +27,12 @@ Call log:
   4  | test.describe('Boss Fights', () => {
   5  |   test.beforeEach(async ({ page }) => {
   6  |     test.setTimeout(120000);
-  7  |     await page.goto(GAME_URL);
+> 7  |     await page.goto(GAME_URL);
+     |                ^ Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:5173/
   8  |     await dismissLoadingScreen(page);
   9  |     // Canvas should already exist after dismissLoadingScreen
   10 |     // Just verify it's visible, don't wait for it to appear
-> 11 |     await expect(page.locator('canvas')).toBeVisible({ timeout: 5000 });
-     |                                          ^ Error: expect(locator).toBeVisible() failed
+  11 |     await expect(page.locator('canvas')).toBeVisible({ timeout: 5000 });
   12 |     await page.waitForTimeout(2000);
   13 |   });
   14 | 

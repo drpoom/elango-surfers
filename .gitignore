@@ -23,3 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 PROJECT.md
+
+# Test artifacts
+test-results/
+tests/screenshots/
+

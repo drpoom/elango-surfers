@@ -1049,6 +1049,9 @@ const loadStage3Textures = () => {
   
   stage3Textures.billboard = textureLoader.load(textureBase + 'billboard.png');
   stage3Textures.billboard.colorSpace = THREE.SRGBColorSpace;
+
+  stage3Textures.metalBeam = textureLoader.load(textureBase + 'obstacle-metal-beam.webp');
+  stage3Textures.metalBeam.colorSpace = THREE.SRGBColorSpace;
 };
 
 // Helper to apply Stage 3 glass/steel facades to buildings
@@ -1404,7 +1407,7 @@ const initGame = () => {
     headGroup.add(crown);
   } else if (currentHat.value === 'helmet') {
     const helmetGeo = new THREE.SphereGeometry(0.35, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
-    const helmetMat = new THREE.MeshToonMaterial({ color: 0x444444, metalness: 0.8, roughness: 0.2 });
+    const helmetMat = new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.8, roughness: 0.2 });
     const helmet = new THREE.Mesh(helmetGeo, helmetMat);
     helmet.position.y = 0.3;
     helmet.castShadow = true;
@@ -2581,6 +2584,34 @@ const spawnObstacle = () => {
       break;
     }
     
+    case 'metalBeam': {
+      // I-beam / H-beam steel girder lying across the road
+      group = new THREE.Group();
+      const beamLength = 3.0;
+      const beamHeight = 0.4;
+      const beamWidth = 0.3;
+      const flangeThick = 0.06;
+      const webThick = 0.05;
+      // Top flange
+      const topFlangeGeo = new THREE.BoxGeometry(beamLength, flangeThick, beamWidth);
+      const beamMat = new THREE.MeshStandardMaterial({ map: stage3Textures.metalBeam, color: 0xaaaaaa, metalness: 0.7, roughness: 0.3 });
+      const topFlange = new THREE.Mesh(topFlangeGeo, beamMat);
+      topFlange.position.y = beamHeight / 2 - flangeThick / 2;
+      group.add(topFlange);
+      // Bottom flange
+      const bottomFlange = new THREE.Mesh(topFlangeGeo, beamMat);
+      bottomFlange.position.y = -(beamHeight / 2 - flangeThick / 2);
+      group.add(bottomFlange);
+      // Web (center vertical)
+      const webGeo = new THREE.BoxGeometry(beamLength, beamHeight - flangeThick * 2, webThick);
+      const web = new THREE.Mesh(webGeo, beamMat);
+      group.add(web);
+      group.rotation.z = Math.PI / 2; // Lay across the road
+      group.position.set(laneX, beamHeight / 2 + 0.05, -50);
+      hitWidth = 2.5;
+      break;
+    }
+
     case 'dumpster': {
       group = new THREE.Group();
       const dumpsterGeo = new THREE.BoxGeometry(1.5, 1.2, 2.0);
@@ -2819,7 +2850,7 @@ const spawnPowerup = () => {
     
     // Main horseshoe body (U-shape) using TorusGeometry bent into a U
     const horseshoeGeo = new THREE.TorusGeometry(0.5, 0.12, 8, 24, Math.PI);
-    const horseshoeMat = new THREE.MeshToonMaterial({ color: 0x888888, metalness: 0.8, roughness: 0.2 });
+    const horseshoeMat = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.8, roughness: 0.2 });
     const horseshoe = new THREE.Mesh(horseshoeGeo, horseshoeMat);
     horseshoe.rotation.z = -Math.PI / 2; // Open end facing forward
     magnetGroup.add(horseshoe);
