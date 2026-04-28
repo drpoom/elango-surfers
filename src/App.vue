@@ -4993,11 +4993,17 @@ const handleKeyDown = (e) => {
   if (gameOver.value) {
     if (showNameEntry.value) return; // Don't restart while entering name
     if (Date.now() - gameOverTime < 1000) return; // Prevent instant restart
+    console.log('[KEYDOWN] Game over detected, starting countdown');
     startCountdown();
     return;
   }
   
-  if (gameOver.value || countdownLocked) return;
+  console.log('[KEYDOWN] Checking locks - gameOver:', gameOver.value, 'countdownLocked:', countdownLocked, 'stageTransitioning:', stageTransitioning.value);
+  if (gameOver.value || countdownLocked) {
+    console.log('[KEYDOWN] BLOCKED - gameOver:', gameOver.value, 'countdownLocked:', countdownLocked);
+    return;
+  }
+  console.log('[KEYDOWN] Processing input:', e.key);
   
   if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
     if (currentLane > 0) currentLane--;
@@ -5202,10 +5208,12 @@ const resetStage = (preserveScore = false, targetStage = -1) => {
 };
 
 const startCountdown = () => {
+  console.log('[COUNTDOWN] Starting countdown...');
   // Reset game state immediately
   restartGame();
   countdownLocked = true;
   countdownActive.value = true;
+  console.log('[COUNTDOWN] countdownLocked=true, countdownActive=true');
   
   // Start tilt calibration on mobile during countdown (3s of sampling)
   if (isMobile && tiltEnabled) {
@@ -5228,9 +5236,11 @@ const startCountdown = () => {
         finishTiltCalibration();
       }
       setTimeout(() => {
+        console.log('[COUNTDOWN] GO! - unlocking game');
         countdownActive.value = false;
         countdownLocked = false;
         stageTransitioning.value = false;
+        console.log('[COUNTDOWN] GO! - countdownLocked=false, stageTransitioning=false');
         gameDuration = 1.5;
         lastSpawnTime = clock.getElapsedTime() - spawnInterval;
         // 2-second invincibility after game starts (green shield)

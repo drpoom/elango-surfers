@@ -1,0 +1,10 @@
+QA APPROVED for commit 250542c
+
+Verified:
+1. ✅ resetStage(false) calls clock.start() (line 5046)
+2. ✅ restartGame() no longer has redundant clock.start() after resetStage() call (line 5269)
+3. ✅ No other clock.start() conflicts in App.vue
+   - Line 1419: clock.start() in initGame() — correct, initial setup
+   - Line 4936: clock.start() in debug stage jump handler — redundant but harmless (no-op on already-running clock)
+
+No clock double-start bugs remain. QA PASSED.
