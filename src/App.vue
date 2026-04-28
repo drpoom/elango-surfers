@@ -163,7 +163,7 @@ import { useMic } from './composables/useMic.js'
 import LoadingScreen from './components/LoadingScreen.vue'
 
 // Version - Update this for each release
-const VERSION = 'v5.2.17';
+const VERSION = 'v5.2.18';
 // Extract major.minor for version-aware high score key
 const VERSION_MAJOR_MINOR = VERSION.replace(/^(v\d+\.\d+)\.\d+$/, '$1').replace(/\./g, '_');
 
@@ -5266,8 +5266,7 @@ const restartGame = () => {
   baseGameSpeed = 0.25;
   speedMultiplier = 1.0;
   gameSpeed = 0.25;
-  resetStage(false); // full reset, score = 0 (already calls applyStageVisuals)
-  clock.start();
+  resetStage(false); // full reset, score = 0 (already calls applyStageVisuals and clock.start())
   playSound('start');
 };
 
