@@ -163,7 +163,7 @@ import { useMic } from './composables/useMic.js'
 import LoadingScreen from './components/LoadingScreen.vue'
 
 // Version - Update this for each release
-const VERSION = 'v5.2.23';
+const VERSION = 'v5.2.24';
 // Extract major.minor for version-aware high score key
 const VERSION_MAJOR_MINOR = VERSION.replace(/^(v\d+\.\d+)\.\d+$/, '$1').replace(/\./g, '_');
 
@@ -5230,47 +5230,48 @@ const startCountdown = () => {
       setTimeout(tick, 1000);
     } else if (count === 0) {
       countdownText.value = 'GO!';
-      console.log('[COUNTDOWN] GO! - calling startBGM');
+      console.log('[COUNTDOWN] GO! - unlocking game FIRST');
+      // UNLOCK GAME IMMEDIATELY - before any audio calls that might fail
+      countdownActive.value = false;
+      countdownLocked = false;
+      stageTransitioning.value = false;
+      gameDuration = 1.5;
+      lastSpawnTime = clock.getElapsedTime() - spawnInterval;
+      isInvincible = true;
+      gameStartTime = Date.now();
+      console.log('[COUNTDOWN] GO! - unlocked: countdownLocked=false, stageTransitioning=false');
+      
+      // Shield aura for invincibility
+      const oldGrace = player.getObjectByName('shield-aura');
+      if (!oldGrace) {
+        const graceGeo = new THREE.SphereGeometry(1.2, 16, 16);
+        const graceMat = new THREE.MeshToonMaterial({ color: 0x44ff44, transparent: true, opacity: 0.3, side: THREE.DoubleSide });
+        const graceMesh = new THREE.Mesh(graceGeo, graceMat);
+        graceMesh.name = 'shield-aura';
+        player.add(graceMesh);
+      }
+      invincibilityTimeout = setTimeout(() => {
+        isInvincible = false;
+        invincibilityTimeout = null;
+        const shield = player.getObjectByName('shield-aura');
+        if (shield) player.remove(shield);
+      }, 2000);
+      
+      // Now try audio - but errors won't block gameplay
       try {
         if (typeof startBGM === 'function') {
-          startBGM(); // Start music on GO!
+          startBGM();
           console.log('[COUNTDOWN] startBGM() succeeded');
         } else {
           console.error('[COUNTDOWN] startBGM is not a function!', typeof startBGM);
         }
       } catch (err) {
-        console.error('[COUNTDOWN] startBGM() threw error:', err);
+        console.error('[COUNTDOWN] startBGM() error (non-fatal):', err);
       }
       // Finish tilt calibration — compute average from countdown samples
       if (isMobile && isCalibrating) {
         finishTiltCalibration();
       }
-      setTimeout(() => {
-        console.log('[COUNTDOWN] GO! - unlocking game');
-        countdownActive.value = false;
-        countdownLocked = false;
-        stageTransitioning.value = false;
-        console.log('[COUNTDOWN] GO! - countdownLocked=false, stageTransitioning=false');
-        gameDuration = 1.5;
-        lastSpawnTime = clock.getElapsedTime() - spawnInterval;
-        // 2-second invincibility after game starts (green shield)
-        isInvincible = true;
-        gameStartTime = Date.now();
-        const oldGrace = player.getObjectByName('shield-aura');
-        if (!oldGrace) {
-          const graceGeo = new THREE.SphereGeometry(1.2, 16, 16);
-          const graceMat = new THREE.MeshToonMaterial({ color: 0x44ff44, transparent: true, opacity: 0.3, side: THREE.DoubleSide });
-          const graceMesh = new THREE.Mesh(graceGeo, graceMat);
-          graceMesh.name = 'shield-aura';
-          player.add(graceMesh);
-        }
-        invincibilityTimeout = setTimeout(() => {
-          isInvincible = false;
-          invincibilityTimeout = null;
-          const shield = player.getObjectByName('shield-aura');
-          if (shield) player.remove(shield);
-        }, 2000);
-      }, 500);
     }
   };
   
