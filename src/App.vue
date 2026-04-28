@@ -163,7 +163,7 @@ import { useMic } from './composables/useMic.js'
 import LoadingScreen from './components/LoadingScreen.vue'
 
 // Version - Update this for each release
-const VERSION = 'v5.2.25';
+const VERSION = 'v5.2.26';
 // Extract major.minor for version-aware high score key
 const VERSION_MAJOR_MINOR = VERSION.replace(/^(v\d+\.\d+)\.\d+$/, '$1').replace(/\./g, '_');
 
@@ -310,7 +310,7 @@ function applyStageVisuals(stageIndex) {
     
     // Set color immediately (visual feedback while texture loads)
     if (roadMesh && roadMesh.material) {
-      roadMesh.material.color.set(0x888888);
+      roadMesh.material.color.set(0xcccccc);
       roadMesh.material.needsUpdate = true;
       console.log('[STAGE-2] Cobblestone color set (immediate)');
     }
@@ -320,6 +320,7 @@ function applyStageVisuals(stageIndex) {
       cobblestoneTexture = loadTexture('assets/road_cobblestone.webp', () => {
         // Texture loaded - apply immediately
         if (roadMesh && cobblestoneTexture && cobblestoneTexture.image) {
+          cobblestoneTexture.repeat.set(1, 10); // Match groundTexture tiling
           cobblestoneTexture.offset.y = groundTexture?.offset.y || 0;
           roadMesh.material.map = cobblestoneTexture;
           roadMesh.material.needsUpdate = true;
@@ -333,6 +334,7 @@ function applyStageVisuals(stageIndex) {
     }
     // Apply cobblestone texture immediately if already cached/loaded
     if (cobblestoneTexture && cobblestoneTexture.image) {
+      cobblestoneTexture.repeat.set(1, 10); // Match groundTexture tiling
       cobblestoneTexture.offset.y = groundTexture?.offset.y || 0;
       roadMesh.material.map = cobblestoneTexture;
       roadMesh.material.needsUpdate = true;
