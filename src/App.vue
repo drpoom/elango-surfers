@@ -86,6 +86,18 @@
       <div class="settings-section" style="border-bottom:1px solid #444;padding-bottom:1rem;margin-bottom:1rem">
         <h3>🎮 Game Settings</h3>
         <label style="color:#fff;font-size:16px;display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px">
+          <input type="checkbox" v-model="gameSettings.soundEnabled" @change="applySoundSetting" style="width:20px;height:20px;cursor:pointer" /> Sound
+        </label>
+        <label style="color:#fff;font-size:16px;display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px">
+          <input type="checkbox" v-model="gameSettings.musicEnabled" @change="applyMusicSetting" style="width:20px;height:20px;cursor:pointer" /> Music
+        </label>
+        <label style="color:#fff;font-size:16px;display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px">
+          <input type="checkbox" v-model="gameSettings.sfxEnabled" @change="applySfxSetting" style="width:20px;height:20px;cursor:pointer" /> SFX
+        </label>
+        <label style="color:#fff;font-size:16px;display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px">
+          <input type="checkbox" v-model="gameSettings.sensorEnabled" @change="applySensorSetting" style="width:20px;height:20px;cursor:pointer" /> Tilt Controls
+        </label>
+        <label style="color:#fff;font-size:16px;display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px">
           <input type="checkbox" v-model="roadCurveEnabled" style="width:20px;height:20px;cursor:pointer" /> Road Curves
         </label>
         <label style="color:#fff;font-size:16px;display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px">
@@ -156,6 +168,7 @@ import { useLeaderboard } from './composables/useLeaderboard.js'
 import { useAchievements } from './composables/useAchievements.js'
 import { useLoadingProgress } from './composables/useLoadingProgress.js'
 import { reduceMotionRef, initScreenEffects, saveScreenEffects } from './composables/useScreenEffects.js'
+import { loadSettings, saveSettings, getDefaultSettings } from './composables/useGameSettings.js'
 import { EARTH_R, DAY_DURATION, jumpStrength, slideDuration, laneWidth, FLY_LIFT, FLY_GRAVITY, FLY_MAX_HEIGHT, MIC_THRESHOLD, MIC_PEAK_THRESHOLD, minSwipeDistance, TILT_THRESHOLD, TILT_LR_THRESHOLD, TILT_LANE_COOLDOWN, CALIBRATION_MAX_SAMPLES } from './gameConstants.js'
 import { STAGES } from './data/stages.js'
 import { useCurve } from './composables/useCurve.js'
@@ -192,6 +205,36 @@ const showSettings = ref(false);
 const isPaused = ref(false); // Pause state
 const debugStartStage = ref(-1);
 const tiltEnabledRef = ref(true);
+let tiltEnabled = true;
+
+// Game settings persistence
+const gameSettings = ref(getDefaultSettings());
+const applySoundSetting = () => {
+  saveSettings(gameSettings.value);
+  if (!gameSettings.value.soundEnabled) {
+    _toggleMute();
+    muteIcon.value = '🔇';
+  } else {
+    _toggleMute();
+    muteIcon.value = '🔊';
+  }
+};
+const applyMusicSetting = () => {
+  saveSettings(gameSettings.value);
+  // Music toggle handled by audio composable
+};
+const applySfxSetting = () => {
+  saveSettings(gameSettings.value);
+  // SFX toggle - future: control individual SFX volume
+};
+const applySensorSetting = () => {
+  saveSettings(gameSettings.value);
+  if (!gameSettings.value.sensorEnabled && tiltEnabled) {
+    toggleTilt();
+  } else if (gameSettings.value.sensorEnabled && !tiltEnabled) {
+    toggleTilt();
+  }
+};
 const muteIcon = ref('🔊');
 
 // Clear ALL pending timeouts and intervals - call on stage reset to prevent stale callbacks
@@ -813,7 +856,6 @@ let touchStartX = 0;
 let touchStartY = 0;
 
 // Tilt/gyro controls
-let tiltEnabled = true;
 let tiltInitialBeta = null; // Calibrate on enable
 let tiltInitialGamma = null; // Calibrate sideways center
 let lastTiltLaneChange = 0;
@@ -1118,6 +1160,17 @@ onMounted(() => {
   loadProgress();
   loadLeaderboard(); // async — loads global + local, non-blocking
   checkAchievements();
+  
+  // Load persisted game settings
+  gameSettings.value = loadSettings();
+  // Apply settings on load
+  if (!gameSettings.value.soundEnabled) {
+    _toggleMute();
+    muteIcon.value = '🔇';
+  }
+  if (!gameSettings.value.sensorEnabled && tiltEnabled) {
+    toggleTilt();
+  }
 });
 
 const saveHighScore = () => {
