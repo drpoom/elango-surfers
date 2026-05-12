@@ -2062,17 +2062,18 @@ const createBackgroundElements = () => {
     const roofGeo = new THREE.BoxGeometry(width + 0.3, 0.3, width + 0.3);
     const roofMat = new THREE.MeshToonMaterial({ color: 0x555555 });
     const roof = new THREE.Mesh(roofGeo, roofMat);
-    roof.position.y = height / 2 + 0.15;
+    roof.position.y = height + 0.15;
     buildingGroup.add(roof);
     
     const bldgZ = -20 - Math.random() * 60;
     buildingGroup.position.set(
       side * (10 + Math.random() * 10),
-      height / 2 + getSurfaceY(bldgZ),
+      getSurfaceY(bldgZ),
       bldgZ
     );
     scene.add(buildingGroup);
-    buildingGroup.baseY = height / 2;
+    buildingGroup.baseY = 0;
+    building.position.y = height / 2;
     buildingGroup.baseX = buildingGroup.position.x; // store for road curve
     // Store initial position for restart
     buildingGroup.userData.initX = buildingGroup.position.x;
