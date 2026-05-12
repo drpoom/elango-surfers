@@ -3532,9 +3532,7 @@ const animate = () => {
   if (stageTime.value >= bossSpawnTime && !bossActive.value && !bossDefeated.value && !stageTransitioning.value) {
     bossWarning.value = false
     bossActive.value = true
-    // Difficulty scaling: boss health increases with game duration
-    const difficultyMultiplier = 1 + (gameDuration / 60) // +100% health per 60 seconds
-    bossHealth.value = Math.min(250, Math.floor(BOSS_BASE_HEALTH * difficultyMultiplier))
+    bossHealth.value = 100
     createFloatingText(`\u26A0\uFE0F ${stage.bossType === 'truck' ? 'ROAD RAGE TRUCK' : 'SKY TERROR DRAGON'} \u26A0\uFE0F`, player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#ff4444')
     playSFX(stage.bossType === 'truck' ? 'truck_honk' : 'dragon_cry', 0.6)
     spawnBoss(stage.bossType)
