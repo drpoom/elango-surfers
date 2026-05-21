@@ -48,11 +48,24 @@ export function useCurve({ roadCurveEnabled, roadCurve }) {
     return roadCurve.value * t * t * 24;
   };
 
+  const getCurveSlope = (z) => {
+    if (!roadCurveEnabled.value) return 0;
+    const depth = Math.max(0, -z);
+    const frontDepth = Math.max(0, -curveFrontZ.value);
+    if (depth <= frontDepth) return 0;
+    const pastFront = depth - frontDepth;
+    // Slope derivative: d/d(depth) of [ roadCurve * (pastFront/80)^2 * 24 ]
+    // = roadCurve * pastFront * 0.0075
+    // Heading angle: -Math.atan(slope)
+    return Math.atan(-0.0075 * roadCurve.value * pastFront);
+  };
+
   return {
     getSurfaceY,
     getSurfaceZ,
     getSurfaceTilt,
     getCurveX,
+    getCurveSlope,
     curveFrontZ,
   };
 }

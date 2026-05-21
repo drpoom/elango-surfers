@@ -108,13 +108,30 @@ body, html {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 2px 0;
-  font-size: 0.85rem;
+  padding: 4px 8px;
+  font-size: 0.9rem;
   border-bottom: 1px solid #333;
 }
-.lb-rank { color: #888; width: 24px; }
-.lb-name { color: #fff; font-weight: bold; flex: 1; text-align: left; margin-left: 4px; }
-.lb-score { color: #ffd700; font-weight: bold; }
+.lb-rank {
+  color: #888;
+  width: 24px;
+  text-align: left;
+}
+.lb-name {
+  color: #fff;
+  font-weight: bold;
+  font-family: 'Courier New', Courier, monospace;
+  width: 3.5ch;
+  display: inline-block;
+  text-align: left;
+  margin-left: 8px;
+}
+.lb-score {
+  color: #ffd700;
+  font-weight: bold;
+  text-align: right;
+  flex: 1;
+}
 #name-entry {
   margin-top: 0.75rem;
 }
