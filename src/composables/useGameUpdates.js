@@ -625,9 +625,12 @@ export function useGameUpdates({
       const dz = player.position.z - proj.position.z;
       const dist = Math.sqrt(dx * dx + dz * dz);
       
-      // Fireball core radius ≈ 0.5, glow ≈ 0.8 — collision at 0.7 matches visible contact
-      const projHitRadius = proj.userData.isBeam ? 1.0 : 0.7;
-      if (dist < projHitRadius && !countdownLocked && !stageTransitioning.value && !gameOver.value) {
+      const projHitRadius = isBeam ? 0.8 : 0.5;
+      const verticalOverlap = isBeam
+        ? (proj.position.y >= player.position.y - 1.2 && proj.position.y <= player.position.y + 1.5)
+        : (proj.position.y >= player.position.y - 0.9 && proj.position.y <= player.position.y + 1.2);
+      
+      if (dist < projHitRadius && verticalOverlap && !countdownLocked && !stageTransitioning.value && !gameOver.value) {
         if (isInvincible || godMode.value) {
           if (!godMode.value) playSound('shield_hit');
           createParticleEffect(proj.position, 0x00bfff, 15);
@@ -697,6 +700,18 @@ export function useGameUpdates({
         scene.userData.nyanCatTime = 0;
         scene.userData.nyanCat.position.x = -30;
       }
+    }
+
+    // Road and grass texture rolling visual effect
+    const roadMesh = scene.getObjectByName('road') || ctx.roadMesh;
+    if (roadMesh && roadMesh.material && roadMesh.material.map) {
+      roadMesh.material.map.offset.y -= (gameSpeed / 20.0);
+      roadMesh.material.map.offset.y %= 1.0;
+    }
+    const grassMesh = ctx.grassMesh;
+    if (grassMesh && grassMesh.material && grassMesh.material.map) {
+      grassMesh.material.map.offset.y -= (gameSpeed / 8.0);
+      grassMesh.material.map.offset.y %= 1.0;
     }
 
     // Camera smoothing

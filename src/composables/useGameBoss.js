@@ -273,16 +273,60 @@ export function useGameBoss({
       createFloatingText('⚠️', new THREE.Vector3(0, 10, -20), '#aaaaaa');
       playSFX('crash_metal', 0.5);
     } else {
-      // Dragon (Stage 2) - fireballs at random lanes, random heights
+      // Dragon (Stage 2) - fireballs at random lanes, random heights, randomized Z-axis, with no overlap
       const allLanes = [0, 1, 2].sort(() => Math.random() - 0.5);
       // Pick 1 or 2 lanes at random (not player-tracking)
       const numFireballs = Math.random() > 0.4 ? 2 : 1;
       const attackLanes = allLanes.slice(0, numFireballs);
 
+      const spawnedPositions = [];
+
       attackLanes.forEach((lane, idx) => {
         const targetX = (lane - 1) * laneWidth;
-        // Random height: low (near ground) to high (over head)
-        const fbY = 0.5 + Math.random() * 3.5;
+        let fbY = 0.5;
+        let spawnZ = ctx.boss.position.z + 2;
+
+        // Try up to 50 times to find a non-overlapping height and Z-depth
+        let found = false;
+        for (let attempt = 0; attempt < 50; attempt++) {
+          fbY = 0.5 + Math.random() * 3.5;
+          // Spawn staggered along Z in front of the boss (e.g. up to 18 units ahead)
+          spawnZ = ctx.boss.position.z + 2 + Math.random() * 18.0;
+
+          let overlap = false;
+          // 1. Check against other fireballs generated in this wave
+          for (const pos of spawnedPositions) {
+            const dx = targetX - pos.x;
+            const dy = fbY - pos.y;
+            const dz = spawnZ - pos.z;
+            const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            if (dist < 2.5) {
+              overlap = true;
+              break;
+            }
+          }
+
+          // 2. Check against already existing active projectiles in scene
+          if (!overlap) {
+            for (const proj of ctx.bossProjectiles) {
+              const dx = targetX - proj.position.x;
+              const dy = fbY - proj.position.y;
+              const dz = spawnZ - proj.position.z;
+              const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+              if (dist < 2.5) {
+                overlap = true;
+                break;
+              }
+            }
+          }
+
+          if (!overlap) {
+            found = true;
+            break;
+          }
+        }
+
+        spawnedPositions.push({ x: targetX, y: fbY, z: spawnZ });
 
         const fbRadius = 0.5;
         const glowRadius = 0.8;
@@ -295,8 +339,6 @@ export function useGameBoss({
         const glowMat = new THREE.MeshBasicMaterial({ color: 0xff2200, transparent: true, opacity: 0.35 });
         fb.add(new THREE.Mesh(glowGeo, glowMat));
 
-        // Spawn just in front of boss so it’s visible from the start
-        const spawnZ = ctx.boss.position.z + 2;
         fb.position.set(targetX, fbY, spawnZ);
         // Store the chosen lane X as final target and Y for update loop
         fb.userData = {
