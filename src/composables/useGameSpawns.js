@@ -1,13 +1,21 @@
 import * as THREE from 'three';
 import { STAGES } from '../data/stages.js';
 
+/**
+ * Game spawns composable — handles obstacle, coin, powerup, and portal spawning.
+ * 
+ * @param {Object} deps
+ * @param {Object} deps.store - Shared reactive game store
+ * @param {number} deps.laneWidth - Lane width constant
+ * @param {Object} deps.stage3Textures - Stage 3 texture references
+ */
 export function useGameSpawns({
-  getCtx,
-  getSurfaceY,
-  currentStage,
+  store,
   laneWidth,
   stage3Textures
 }) {
+  // Functions accessed via store (wired in App.vue after init):
+  // store.getSurfaceY, store.currentStage accessed directly {
   let textureLoader = new THREE.TextureLoader();
   
   // Cache variables for performance
@@ -15,9 +23,8 @@ export function useGameSpawns({
   let sharedCoinMat = null;
 
   const checkOverlap = (x, z, objectType) => {
-    const ctx = getCtx();
-    const obstacles = ctx.obstacles || [];
-    const coins = ctx.coins || [];
+    const obstacles = store.obstacles || [];
+    const coins = store.coins || [];
     
     const OBSTACLE_OVERLAP_RADIUS = 2.5;
     const COIN_OBSTACLE_OVERLAP_RADIUS = 1.8;
@@ -53,7 +60,6 @@ export function useGameSpawns({
   };
 
   const findSafeZ = (lane, baseZ = -50, minDistance = 6) => {
-    const ctx = getCtx();
     let currentZ = baseZ;
     let conflict = true;
     let attempts = 0;
@@ -61,8 +67,8 @@ export function useGameSpawns({
       conflict = false;
       
       // Check obstacles
-      if (ctx.obstacles) {
-        for (const obs of ctx.obstacles) {
+      if (store.obstacles) {
+        for (const obs of store.obstacles) {
           if (obs.mesh) {
             const isWall = obs.obstacleType === 'wall';
             // Walls block every lane EXCEPT the gap lane (obs.lane).
@@ -82,8 +88,8 @@ export function useGameSpawns({
       }
       
       // Check coins
-      if (ctx.coins) {
-        for (const coin of ctx.coins) {
+      if (store.coins) {
+        for (const coin of store.coins) {
           if (coin.mesh && coin.lane === lane) {
             const zDist = Math.abs(currentZ - coin.mesh.position.z);
             if (zDist < minDistance) {
@@ -96,8 +102,8 @@ export function useGameSpawns({
       }
       
       // Check powerups
-      if (ctx.powerups) {
-        for (const pup of ctx.powerups) {
+      if (store.powerups) {
+        for (const pup of store.powerups) {
           if (pup.mesh && pup.lane === lane && !pup.collected) {
             const zDist = Math.abs(currentZ - pup.mesh.position.z);
             if (zDist < minDistance) {
@@ -110,10 +116,10 @@ export function useGameSpawns({
       }
       
       // Check bonus portal
-      if (ctx.bonusPortal && ctx.bonusPortal.mesh && ctx.bonusPortal.lane === lane) {
-        const zDist = Math.abs(currentZ - ctx.bonusPortal.mesh.position.z);
+      if (store.bonusPortal && store.bonusPortal.mesh && store.bonusPortal.lane === lane) {
+        const zDist = Math.abs(currentZ - store.bonusPortal.mesh.position.z);
         if (zDist < minDistance) {
-          currentZ = ctx.bonusPortal.mesh.position.z - minDistance;
+          currentZ = store.bonusPortal.mesh.position.z - minDistance;
           conflict = true;
           break;
         }
@@ -125,14 +131,13 @@ export function useGameSpawns({
   };
 
   const spawnObstacle = (gameDuration) => {
-    const ctx = getCtx();
-    if (ctx.bossWarning || ctx.bossActive) return;
+    if (store.bossWarning || store.bossActive) return;
     const lane = Math.floor(Math.random() * 3);
     const laneX = (lane - 1) * laneWidth;
     const targetZ = findSafeZ(lane, -50, 6.0);
     
     const difficultyMultiplier = Math.min(1 + (gameDuration / 30), 3.5);
-    const stage = STAGES[currentStage.value];
+    const stage = STAGES[store.currentStage];
     const isMedieval = stage.id === 2;
     const isStage3 = stage.id === 3;
     
@@ -626,16 +631,15 @@ export function useGameSpawns({
     
     if (group) {
       group.position.z = targetZ;
-      ctx.scene.add(group);
-      group.position.y += getSurfaceY(targetZ);
-      group.baseY = group.position.y - getSurfaceY(targetZ);
-      ctx.obstacles.push({ mesh: group, lane: obsLane, type: 'ground', obstacleType: obsType, hitWidth });
+      store.scene.add(group);
+      group.position.y += store.getSurfaceY(targetZ);
+      group.baseY = group.position.y - store.getSurfaceY(targetZ);
+      store.obstacles.push({ mesh: group, lane: obsLane, type: 'ground', obstacleType: obsType, hitWidth });
     }
   };
 
   const spawnFloatingObstacle = () => {
-    const ctx = getCtx();
-    if (ctx.bossWarning || ctx.bossActive) return;
+    if (store.bossWarning || store.bossActive) return;
     const lane = Math.floor(Math.random() * 3);
     const laneX = (lane - 1) * laneWidth;
     const targetZ = findSafeZ(lane, -50, 6.0);
@@ -682,15 +686,14 @@ export function useGameSpawns({
     ufoGroup.add(beam);
     
     ufoGroup.position.set(laneX, 2.2, targetZ);
-    ctx.scene.add(ufoGroup);
-    ufoGroup.position.y += getSurfaceY(targetZ);
-    ufoGroup.baseY = ufoGroup.position.y - getSurfaceY(targetZ);
-    ctx.obstacles.push({ mesh: ufoGroup, lane, type: 'floating' });
+    store.scene.add(ufoGroup);
+    ufoGroup.position.y += store.getSurfaceY(targetZ);
+    ufoGroup.baseY = ufoGroup.position.y - store.getSurfaceY(targetZ);
+    store.obstacles.push({ mesh: ufoGroup, lane, type: 'floating' });
   };
 
   const spawnCoin = () => {
-    const ctx = getCtx();
-    if (ctx.bossWarning || ctx.bossActive) return;
+    if (store.bossWarning || store.bossActive) return;
     const lane = Math.floor(Math.random() * 3);
     const laneX = (lane - 1) * laneWidth;
     const targetZ = findSafeZ(lane, -50, 6.0);
@@ -708,12 +711,12 @@ export function useGameSpawns({
     coinObj.castShadow = false;
     coinObj.position.set(laneX, 1, targetZ);
     
-    ctx.scene.add(coinObj);
+    store.scene.add(coinObj);
     const spawnX = coinObj.position.x;
     const spawnZ = coinObj.position.z;
     
     let hasOverlap = false;
-    for (const obs of ctx.obstacles) {
+    for (const obs of store.obstacles) {
       if (obs.mesh && obs.mesh.position) {
         const dx = spawnX - obs.mesh.position.x;
         const dz = spawnZ - obs.mesh.position.z;
@@ -726,18 +729,17 @@ export function useGameSpawns({
     }
     
     if (hasOverlap) {
-      ctx.scene.remove(coinObj);
+      store.scene.remove(coinObj);
       return;
     }
     
-    coinObj.position.y += getSurfaceY(targetZ);
-    coinObj.baseY = coinObj.position.y - getSurfaceY(targetZ);
-    ctx.coins.push({ mesh: coinObj, lane, collected: false });
+    coinObj.position.y += store.getSurfaceY(targetZ);
+    coinObj.baseY = coinObj.position.y - store.getSurfaceY(targetZ);
+    store.coins.push({ mesh: coinObj, lane, collected: false });
   };
 
   const spawnPowerup = () => {
-    const ctx = getCtx();
-    if (ctx.bossWarning || ctx.bossActive) return;
+    if (store.bossWarning || store.bossActive) return;
     const lane = Math.floor(Math.random() * 3);
     const laneX = (lane - 1) * laneWidth;
     const targetZ = findSafeZ(lane, -50, 6.0);
@@ -808,18 +810,17 @@ export function useGameSpawns({
       powerupGroup.add(magnetGroup);
     }
     
-    powerupGroup.position.set(laneX, 1 + getSurfaceY(targetZ), targetZ);
+    powerupGroup.position.set(laneX, 1 + store.getSurfaceY(targetZ), targetZ);
     powerupGroup.userData = { type };
     powerupGroup.baseY = 1;
-    ctx.scene.add(powerupGroup);
-    ctx.powerups.push({ mesh: powerupGroup, lane, type, collected: false });
+    store.scene.add(powerupGroup);
+    store.powerups.push({ mesh: powerupGroup, lane, type, collected: false });
   };
 
   const spawnBonusPortal = (portalType) => {
-    const ctx = getCtx();
-    if (ctx.bossWarning || ctx.bossActive) return;
-    if (ctx.bonusPortalSpawned) return;
-    ctx.bonusPortalSpawned = true;
+    if (store.bossWarning || store.bossActive) return;
+    if (store.bonusPortalSpawned) return;
+    store.bonusPortalSpawned = true;
     
     const lane = Math.floor(Math.random() * 3);
     const laneX = (lane - 1) * laneWidth;
@@ -853,12 +854,11 @@ export function useGameSpawns({
     
     portalGroup.position.set(laneX, 1.5, targetZ);
     portalGroup.userData = { lane };
-    ctx.scene.add(portalGroup);
-    ctx.bonusPortal = { mesh: portalGroup, lane };
+    store.scene.add(portalGroup);
+    store.bonusPortal = { mesh: portalGroup, lane };
   };
 
   const createParticleEffect = (position, color, count = 10) => {
-    const ctx = getCtx();
     const particleGeo = new THREE.SphereGeometry(0.1, 4, 4);
     const particleMat = new THREE.MeshBasicMaterial({ color });
     
@@ -871,13 +871,12 @@ export function useGameSpawns({
         (Math.random() - 0.5) * 0.3
       );
       particle.life = 1.0;
-      ctx.scene.add(particle);
-      ctx.particles.push(particle);
+      store.scene.add(particle);
+      store.particles.push(particle);
     }
   };
 
   const createFloatingText = (text, position, color) => {
-    const ctx = getCtx();
     const canvas = document.createElement('canvas');
     canvas.width = 512;
     canvas.height = 128;
@@ -896,8 +895,8 @@ export function useGameSpawns({
     sprite.position.copy(position);
     sprite.scale.set(4, 1, 1);
     sprite.userData = { life: 2.0, velocity: new THREE.Vector3(0, 0.5, 0) };
-    ctx.scene.add(sprite);
-    ctx.floatingTexts.push(sprite);
+    store.scene.add(sprite);
+    store.floatingTexts.push(sprite);
   };
 
   return {

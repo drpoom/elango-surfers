@@ -1,62 +1,69 @@
 <template>
   <div id="game-container">
+    <!-- Error overlay — shown when render loop crashes -->
+    <div v-if="renderError" id="error-overlay" @click="reloadPage" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.85);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:99999;cursor:pointer;font-family:sans-serif">
+      <div style="font-size:48px;margin-bottom:16px">⚠️</div>
+      <div style="font-size:24px;font-weight:bold;margin-bottom:8px">Something went wrong</div>
+      <div style="font-size:14px;opacity:0.7;margin-bottom:24px">The game encountered an error. Click anywhere to reload.</div>
+      <div style="font-size:12px;opacity:0.5;max-width:400px;text-align:center;word-break:break-all">{{ renderErrorMessage }}</div>
+    </div>
     <LoadingScreen v-if="showLoadingScreen" :version="VERSION" :progress="loadingProgress" :loaded="isLoaded" @start="onLoadingStart" />
     <div id="game-info">
       <div id="version">{{ VERSION }}</div>
-      <div id="score">Score: {{ score }}</div>
-      <div id="highscore">High Score: {{ highScore }}</div>
-      <div id="combo" v-if="comboCount > 1">🔥 x{{ comboCount }}</div>
-      <div id="powerup-indicator" v-if="activePowerup">{{ powerupIcon }} {{ powerupName }} {{ powerupTimeLeft }}s</div>
-      <div id="fly-indicator" v-if="micEnabledRef">&#x1F3A4;&#x2708;ï¸ </div>
-      <div id="stage-indicator" v-if="!gameOver">STAGE {{ currentStage + 1 }}: {{ STAGES[currentStage].name }}</div>
+      <div id="score">Score: {{ store.score }}</div>
+      <div id="highscore">High Score: {{ store.highScore }}</div>
+      <div id="combo" v-if="store.comboCount > 1">🔥 x{{ store.comboCount }}</div>
+      <div id="powerup-indicator" v-if="store.activePowerup">{{ store.powerupIcon }} {{ store.powerupName }} {{ store.powerupTimeLeft }}s</div>
+      <div id="fly-indicator" v-if="store.micEnabledRef">&#x1F3A4;&#x2708;ï¸ </div>
+      <div id="stage-indicator" v-if="!store.gameOver">STAGE {{ store.currentStage + 1 }}: {{ STAGES[store.currentStage].name }}</div>
       <!-- Debug mode indicator -->
-      <div v-if="debugMode" style="position:fixed;top:10px;left:10px;font-size:18px;z-index:10000">🐛</div>
+      <div v-if="store.debugMode" style="position:fixed;top:10px;left:10px;font-size:18px;z-index:10000">🐛</div>
       <!-- God mode indicator -->
-      <div v-if="godMode" style="position:fixed;top:10px;left:40px;font-size:14px;font-weight:bold;color:#ffd700;z-index:10000;text-shadow:0 0 5px #ffd700">GOD MODE</div>
-      <div id="boss-warning" v-if="bossWarning && !bossActive" style="color:#ff4444;font-size:20px;font-weight:bold;animation:pulse 0.5s infinite">
+      <div v-if="store.godMode" style="position:fixed;top:10px;left:40px;font-size:14px;font-weight:bold;color:#ffd700;z-index:10000;text-shadow:0 0 5px #ffd700">GOD MODE</div>
+      <div id="boss-warning" v-if="store.bossWarning && !store.bossActive" style="color:#ff4444;font-size:20px;font-weight:bold;animation:pulse 0.5s infinite">
         ⚠️ BOSS INCOMING! ⚠️
       </div>
-      <div id="boss-bar" v-if="bossActive && !bossDefeated">
+      <div id="boss-bar" v-if="store.bossActive && !store.bossDefeated">
         <div class="boss-label">BOSS</div>
-        <div class="boss-health-track"><div class="boss-health-fill" :style="{ width: bossHealth + '%' }"></div></div>
+        <div class="boss-health-track"><div class="boss-health-fill" :style="{ width: store.bossHealth + '%' }"></div></div>
       </div>
     </div>
     <!-- DEBUG OVERLAY -->
     <div v-if="showDebugOverlay" id="debug-overlay" style="position:absolute;top:60px;right:10px;background:rgba(0,0,0,0.85);color:#0f0;font-family:monospace;font-size:10px;padding:8px;border-radius:4px;max-width:280px;z-index:9999;pointer-events:none">
       <div style="font-weight:bold;margin-bottom:4px;color:#ff0">🐛 DEBUG MODE</div>
-      <div><strong>TOUCH:</strong> start({{ touchStartX }},{{ touchStartY }}) end({{ touchEndX }},{{ touchEndY }}) delta({{ Math.round((touchEndX || 0) - touchStartX) }},{{ Math.round((touchEndY || 0) - touchStartY) }})</div>
-      <div><strong>TILT:</strong> beta={{ (lastBeta ?? 0).toFixed(1) }} gamma={{ (lastGamma ?? 0).toFixed(1) }} initBeta={{ tiltInitialBeta !== null ? tiltInitialBeta.toFixed(1) : 'null' }} enabled={{ tiltEnabled }}</div>
-      <div><strong>MIC:</strong> vol={{ (lastMicVolume ?? 0).toFixed(1) }} enabled={{ micEnabledRef }}</div>
-      <div><strong>STAGE:</strong> cur={{ currentStage }} debug={{ debugStartStage }} name={{ STAGES[currentStage]?.name || 'N/A' }}</div>
-      <div><strong>SPAWN:</strong> grace={{ (gameDuration < 1.5) }} dur={{ gameDuration?.toFixed(2) || 'N/A' }} sinceLast={{ (Date.now() % 10000 / 1000).toFixed(2) }} int={{ spawnInterval?.toFixed(2) }}</div>
+      <div><strong>TOUCH:</strong> start({{ store.touchStartX }},{{ store.touchStartY }}) end({{ store.touchEndX }},{{ store.touchEndY }}) delta({{ Math.round((store.touchEndX || 0) - store.touchStartX) }},{{ Math.round((store.touchEndY || 0) - store.touchStartY) }})</div>
+      <div><strong>TILT:</strong> beta={{ (store.lastBeta ?? 0).toFixed(1) }} gamma={{ (store.lastGamma ?? 0).toFixed(1) }} initBeta={{ store.tiltInitialBeta !== null ? store.tiltInitialBeta.toFixed(1) : 'null' }} enabled={{ store.tiltEnabled }}</div>
+      <div><strong>MIC:</strong> vol={{ (store.lastMicVolume ?? 0).toFixed(1) }} enabled={{ store.micEnabledRef }}</div>
+      <div><strong>STAGE:</strong> cur={{ store.currentStage }} debug={{ debugStartStage }} name={{ STAGES[store.currentStage]?.name || 'N/A' }}</div>
+      <div><strong>SPAWN:</strong> grace={{ (store.gameDuration < 1.5) }} dur={{ store.gameDuration?.toFixed(2) || 'N/A' }} sinceLast={{ (Date.now() % 10000 / 1000).toFixed(2) }} int={{ store.spawnInterval?.toFixed(2) }}</div>
       <div><strong>RENDER:</strong> grassY={{ grassY }} grassRO={{ grassRenderOrder }} grassDW={{ grassDepthWrite }} roadY={{ roadY }} roadRO={{ roadRenderOrder }}</div>
     </div>
     <div id="floating-texts">
-      <div id="near-miss" v-if="nearMissTextRef">{{ nearMissTextRef }}</div>
-      <div id="event-alert" v-if="eventAlertTextRef">{{ eventAlertTextRef }}</div>
-      <div id="bonus-zone" v-if="inBonusZoneRef">&#x1F308; BONUS ZONE! {{ Math.ceil(bonusTimerRef) }}s</div>
-      <div id="showroom-zone" v-if="inShowroomRef" style="color:#ff69b4;font-size:24px;font-weight:bold;text-shadow:0 0 10px #ff69b4">&#x2728; SHOWROOM! x2 SCORE {{ Math.ceil(showroomTimerRef) }}s</div>
+      <div id="near-miss" v-if="store.nearMissTextRef">{{ store.nearMissTextRef }}</div>
+      <div id="event-alert" v-if="store.eventAlertTextRef">{{ store.eventAlertTextRef }}</div>
+      <div id="bonus-zone" v-if="store.inBonusZoneRef">&#x1F308; BONUS ZONE! {{ Math.ceil(store.bonusTimerRef) }}s</div>
+      <div id="showroom-zone" v-if="store.inShowroomRef" style="color:#ff69b4;font-size:24px;font-weight:bold;text-shadow:0 0 10px #ff69b4">&#x2728; SHOWROOM! x2 SCORE {{ Math.ceil(store.showroomTimerRef) }}s</div>
     </div>
-    <div id="curve-indicator" v-if="!gameOver && Math.abs(roadCurve) > 0.15"
-         :style="{ opacity: Math.min(Math.abs(roadCurve) * 1.5, 1) }">
-      {{ roadCurve > 0 ? '➡️' : '⬅️' }}
+    <div id="curve-indicator" v-if="!store.gameOver && Math.abs(store.roadCurve) > 0.15"
+         :style="{ opacity: Math.min(Math.abs(store.roadCurve) * 1.5, 1) }">
+      {{ store.roadCurve > 0 ? '➡️' : '⬅️' }}
     </div>
-    <div id="pause-indicator" v-if="isPaused" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:48px;font-weight:bold;color:#fff;text-shadow:0 0 20px #000;z-index:9999;pointer-events:none">⏸️ PAUSED<br><span style="font-size:18px">Click/Tap/Press any key to resume</span></div>
+    <div id="pause-indicator" v-if="store.isPaused" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:48px;font-weight:bold;color:#fff;text-shadow:0 0 20px #000;z-index:9999;pointer-events:none">⏸️ PAUSED<br><span style="font-size:18px">Click/Tap/Press any key to resume</span></div>
     <div id="top-buttons">
-      <div id="mic-btn" @click="toggleMic">{{ micEnabledRef ? '🎤' : '🎤🔴' }}</div>
-      <div id="tilt-btn" @click="toggleTilt">{{ tiltEnabledRef ? '📱' : '📱🔴' }}</div>
+      <div id="mic-btn" @click="toggleMic">{{ store.micEnabledRef ? '🎤' : '🎤🔴' }}</div>
+      <div id="tilt-btn" @click="toggleTilt">{{ store.tiltEnabledRef ? '📱' : '📱🔴' }}</div>
       <div id="mute-btn" @click="toggleMute">{{ muteIcon }}</div>
       <div id="settings-btn" @click="toggleSettings">⚙️</div>
     </div>
-    <div id="instructions" v-if="score < 1 && !gameOver">A/D ←/→ Move | W/↑ Jump | S/↓ Slide<br>📱 Swipe | Tilt | 🎤 Blow to fly!</div>
+    <div id="instructions" v-if="store.score < 1 && !store.gameOver">A/D ←/→ Move | W/↑ Jump | S/↓ Slide<br>📱 Swipe | Tilt | 🎤 Blow to fly!</div>
     <div id="game-canvas" tabindex="-1"></div>
     <div id="vignette-glow"></div>
     
     <!-- Game Over Panel -->
     <GameOverPanel
-      v-if="gameOver"
-      :score="score"
-      :high-score="highScore"
+      v-if="store.gameOver"
+      :score="store.score"
+      :high-score="store.highScore"
       :leaderboard="leaderboard"
       :sync-status="syncStatus"
       :show-name-entry="showNameEntry"
@@ -65,13 +72,13 @@
       @submit="submitScore"
     />
 
-    <div v-if="countdownActive" id="countdown">{{ countdownText }}</div>
+    <div v-if="store.countdownActive" id="countdown">{{ store.countdownText }}</div>
 
     <!-- Settings Panel -->
     <SettingsPanel
       v-if="showSettings"
       :game-settings="gameSettings"
-      v-model:roadCurveEnabled="roadCurveEnabled"
+      v-model:roadCurveEnabled="store.roadCurveEnabled"
       v-model:reduce-motion="reduceMotionRef"
       v-model:debug-start-stage="debugStartStage"
       v-model:current-skin="currentSkin"
@@ -105,7 +112,7 @@ import { useAchievements } from './composables/useAchievements.js';
 import { useLoadingProgress } from './composables/useLoadingProgress.js';
 import { reduceMotionRef, initScreenEffects, saveScreenEffects } from './composables/useScreenEffects.js';
 import { loadSettings, saveSettings, getDefaultSettings } from './composables/useGameSettings.js';
-import { EARTH_R, DAY_DURATION, jumpStrength, slideDuration, laneWidth, FLY_LIFT, FLY_GRAVITY, FLY_MAX_HEIGHT, MIC_THRESHOLD, MIC_PEAK_THRESHOLD, minSwipeDistance, TILT_THRESHOLD, TILT_LR_THRESHOLD, TILT_LANE_COOLDOWN, CALIBRATION_MAX_SAMPLES } from './gameConstants.js';
+import { EARTH_R, DAY_DURATION, jumpStrength, slideDuration, laneWidth, FLY_LIFT, FLY_GRAVITY, FLY_MAX_HEIGHT, MIC_THRESHOLD, MIC_PEAK_THRESHOLD, minSwipeDistance, TILT_THRESHOLD, TILT_LR_THRESHOLD, TILT_LANE_COOLDOWN, CALIBRATION_MAX_SAMPLES, CAMERA_POS_Y, CAMERA_POS_Z, CAMERA_LOOK_Y, CAMERA_LOOK_Z, CAMERA_LERP, CAMERA_FOV, CAMERA_FOV_RESET, FOG_NEAR, FOG_FAR, FOG_COLOR, BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD, BLOOM_RES_DESKTOP, BLOOM_RES_MOBILE, SHADOW_RES_DESKTOP, SHADOW_RES_MOBILE, SHADOW_CAMERA_NEAR, SHADOW_CAMERA_FAR, AMBIENT_LIGHT_COLOR, AMBIENT_LIGHT_INTENSITY, DIRECTIONAL_LIGHT_COLOR, DIRECTIONAL_LIGHT_INTENSITY, DIRECTIONAL_LIGHT_POS, HEMI_SKY_COLOR, HEMI_GROUND_COLOR, HEMI_LIGHT_INTENSITY, GAME_OVER_TAP_COOLDOWN, SPAWN_GRACE_PERIOD, BOSS_WARNING_TIME, INVINCIBILITY_GRACE, INITIAL_SPAWN_INTERVAL, MIN_SPAWN_INTERVAL, SPAWN_INTERVAL_DECAY, OBSTACLE_SPAWN_CHANCE, FLOATING_OBSTACLE_CHANCE, COIN_SPAWN_BASE_CHANCE, COIN_SPAWN_GROWTH, POWERUP_SPAWN_CHANCE, BOSS_BASE_HEALTH, BOSS_MAX_HEALTH, BOSS_HIT_DAMAGE, BOSS_DEFEAT_DELAY, COUNTDOWN_SECONDS, COUNTDOWN_TICK_MS, STAGE_COUNTDOWN_GO_DELAY, BASE_GAME_SPEEDS, DIFFICULTY_DIVISOR, MAX_DIFFICULTY_MULTIPLIER, BOSS_DIFFICULTY_DIVISOR, CURVE_CHANGE_MIN, CURVE_CHANGE_MAX, CURVE_STRAIGHT_MIN, CURVE_STRAIGHT_MAX, CURVE_INTENSITY_MIN, CURVE_INTENSITY_MAX, CURVE_LERP, CURVE_FRONT_Z_START, CURVE_FRONT_Z_SPEED, GRAVITY } from './gameConstants.js';
 import { STAGES } from './data/stages.js';
 import { useCurve } from './composables/useCurve.js';
 import { useMic } from './composables/useMic.js';
@@ -114,6 +121,8 @@ import GameOverPanel from './components/GameOverPanel.vue';
 import SettingsPanel from './components/SettingsPanel.vue';
 
 import { createPlayer, disposeHierarchy } from './utils/sceneHelpers.js';
+import { attachTestHelpers, detachTestHelpers } from './utils/testHelpers.js';
+import { createTimerTracker } from './utils/timerTracker.js';
 
 import { useGameScene } from './composables/useGameScene.js';
 import { useGameSpawns } from './composables/useGameSpawns.js';
@@ -121,65 +130,47 @@ import { useGameBoss } from './composables/useGameBoss.js';
 import { useGameControls } from './composables/useGameControls.js';
 import { useGameUpdates } from './composables/useGameUpdates.js';
 import { useGameLifecycle } from './composables/useGameLifecycle.js';
+import { useGameStore } from './composables/useGameStore.js';
 // Version - Imported from centralized version.js
 import { VERSION, VERSION_MAJOR_MINOR } from './version.js';
 
+// Initialize centralized game store (replaces ctx bridge)
+const store = useGameStore();
 
-// Score & High Score refs
-const score = ref(0);
+// UI-only refs (not game state, just template display control)
 const showLoadingScreen = ref(true);
-const highScore = ref(0);
-
-// Loading progress tracking
-const { loadingProgress, isLoaded, trackTexture, onTextureLoaded, resetProgress } = useLoadingProgress();
-
-// Game state refs
-const gameOver = ref(false);
-const countdownActive = ref(false);
-const countdownText = ref('');
-let countdownLocked = false; // prevents input during countdown
-let initialCountdownTimeout = null; // Track initial countdown timeout to clear on reset
-let stageCountdownTimeout = null; // Track stage countdown timeout
-let gameOverShakeInterval = null; // Track game over shake interval
-let spawnStateInterval = null; // Track spawn debug interval
 const showSettings = ref(false);
-const isPaused = ref(false); // Pause state
-const debugStartStage = ref(-1);
-const tiltEnabledRef = ref(true);
-let tiltEnabled = true;
-let invincibilityTimeout = null;
-let bossDefeatTimeout1 = null;
-
-// Game settings persistence
-const gameSettings = ref(getDefaultSettings());
-const applySoundSetting = () => { saveSettings(gameSettings.value); const isMuted = _toggleMute(); muteIcon.value = isMuted ? '🔇' : '🔊'; };
-const applyMusicSetting = () => saveSettings(gameSettings.value);
-const applySfxSetting = () => saveSettings(gameSettings.value);
-const applySensorSetting = () => { saveSettings(gameSettings.value); if (gameSettings.value.sensorEnabled !== tiltEnabled) toggleTilt(); };
+const renderError = ref(false);
+const renderErrorMessage = ref('');
+const reloadPage = () => location.reload();
 const muteIcon = ref('🔊');
-
-// Clear ALL pending timeouts and intervals - call on stage reset to prevent stale callbacks
-const clearAllTimers = () => {
-  if (initialCountdownTimeout) { clearTimeout(initialCountdownTimeout); initialCountdownTimeout = null; }
-  if (stageCountdownTimeout) { clearTimeout(stageCountdownTimeout); stageCountdownTimeout = null; }
-  if (debugKeyTimer) { clearTimeout(debugKeyTimer); debugKeyTimer = null; }
-  if (gameOverShakeInterval) { clearInterval(gameOverShakeInterval); gameOverShakeInterval = null; }
-  if (spawnStateInterval) { clearInterval(spawnStateInterval); spawnStateInterval = null; }
-  if (window._spawnStateInterval) { clearInterval(window._spawnStateInterval); window._spawnStateInterval = null; }
-  if (invincibilityTimeout) { clearTimeout(invincibilityTimeout); invincibilityTimeout = null; }
-  if (bossDefeatTimeout1) { clearTimeout(bossDefeatTimeout1); bossDefeatTimeout1 = null; }
-};
-
-// Debug overlay refs
 const showDebugOverlay = ref(false);
-const lastBeta = ref(0);
-const lastGamma = ref(0);
-const lastMicVolume = ref(0);
+const debugStartStage = ref(-1);
+const gameSettings = ref(getDefaultSettings());
+const fovWarpRef = ref(false);
 const grassY = ref(0);
 const grassRenderOrder = ref(0);
 const grassDepthWrite = ref(false);
 const roadY = ref(0);
 const roadRenderOrder = ref(0);
+
+// Apply settings helpers
+const applySoundSetting = () => { saveSettings(gameSettings.value); const isMuted = _toggleMute(); muteIcon.value = isMuted ? '🔇' : '🔊'; };
+const applyMusicSetting = () => saveSettings(gameSettings.value);
+const applySfxSetting = () => saveSettings(gameSettings.value);
+const applySensorSetting = () => { saveSettings(gameSettings.value); if (gameSettings.value.sensorEnabled !== store.tiltEnabled) toggleTilt(); };
+
+// Loading progress tracking
+const { loadingProgress, isLoaded, trackTexture, onTextureLoaded, resetProgress } = useLoadingProgress();
+
+// Timer tracker — replaces manual setTimeout/setInterval tracking
+const timer = createTimerTracker();
+
+// Clear ALL pending timeouts and intervals - call on stage reset to prevent stale callbacks
+const clearAllTimers = () => {
+  timer.clearAll();
+  if (window._spawnStateInterval) { clearInterval(window._spawnStateInterval); window._spawnStateInterval = null; }
+};
 
 const toggleDebug = () => {
   showDebugOverlay.value = !showDebugOverlay.value;
@@ -190,306 +181,45 @@ const toggleSettings = () => {
     showSettings.value = false;
     resumeGame();
   } else {
-    if (!gameOver.value && !countdownActive.value && !countdownLocked && !stageTransitioning.value) {
+    if (!store.gameOver && !store.countdownActive && !store.countdownLocked && !store.stageTransitioning) {
       pauseGame();
     }
     showSettings.value = true;
   }
 };
 
-const fovWarpRef = ref(false);
-const roadCurveEnabled = ref(true);
-
-// Debug mode state
-const debugMode = ref(false);
-const godMode = ref(false);
-let debugKeyBuffer = '';
-let debugKeyTimer = null;
-
-// Stage & road curve state
-const currentStage = ref(0);
-const stageTime = ref(0);
-const bossActive = ref(false);
-const bossHealth = ref(100);
-const bossDefeated = ref(false);
-const bossWarning = ref(false);
-const roadCurve = ref(0);
-const roadCurveTarget = ref(0);
-const stageTransitioning = ref(false);
-const curveChangeTimer = ref(0);
-const nextCurveChange = ref(3);
-
 // Initialize curve composable
-const { getSurfaceY, getSurfaceTilt, getCurveX, getCurveSlope, curveFrontZ } = useCurve({ roadCurveEnabled, roadCurve });
+const { getSurfaceY, getSurfaceTilt, getCurveX, getCurveSlope, curveFrontZ } = useCurve({ roadCurveEnabled: computed(() => store.roadCurveEnabled), roadCurve: computed(() => store.roadCurve) });
 
-// Power-up state
-let activePowerup = null;
-let powerupEndTime = 0;
-let powerupIcon = '';
-let powerupName = '';
-let powerupTimeLeft = ref(0);
-let nearMissTextRef = ref('');
-let nearMissCountRef = ref(0);
-let eventAlertTextRef = ref('');
-let inBonusZoneRef = ref(false);
-let bonusTimerRef = ref(0);
-let scoreMultiplier = 1;
-// Showroom shortcut
-let inShowroom = false;
-let inShowroomRef = ref(false);
-let showroomTimer = 0;
-let showroomTimerRef = ref(0);
-let isShowroomPortal = false;
-let magnetRange = 0;
-let isInvincible = false;
+// Wire curve functions into store for composable access
+store.getSurfaceY = getSurfaceY;
+store.getSurfaceTilt = getSurfaceTilt;
+store.getCurveX = getCurveX;
+store.getCurveSlope = getCurveSlope;
 
-// Day/night cycle
-let dayCycleTime = 0;
-
-let scene, camera, renderer, player, clock;
-let boss = null;
-let obstacles = [];
-let coins = [];
-let powerups = [];
-let particles = [];
-let floatingTexts = [];
-let bossProjectiles = [];
-let bossAttackTimer = 0;
-let bossNextAttack = 2 + Math.random() * 2;
-let bossCharging = false;
-let bossChargeTimer = 0;
-let bossChargeTarget = 0;
-let bossState = 'idle';
-let bossStateTimer = 0;
-let bossVulnerableOrbs = [];
-let buildings = [];
-let trees = [];
-let clouds = [];
-let medievalFlowers = [];
-let composer;
-let groundTexture;
-let roadMesh, grassMesh, leftCurbMesh, rightCurbMesh;
-let roadOrigPositions, grassOrigPositions, leftCurbOrigPositions, rightCurbOrigPositions;
-let grassTileTex = null;
-let skyTextures = {};
-let mountainMesh;
-let textureLoader = new THREE.TextureLoader();
-
-const BOSS_BASE_HEALTH = 100;
-let gameStartTime = 0;
-let gameDuration = 0;
-let lastSpawnTime = 0;
-let spawnInterval = 1.2;
-let comboCount = 0;
-let lastCoinTime = 0;
-let gameOverTime = 0;
-let isCalibrating = false;
-let tiltCalibrationSamples = [];
-let tiltInitialBeta = null;
-let tiltInitialGamma = null;
-let touchStartX = null;
-let touchStartY = null;
-let touchEndX = null;
-let touchEndY = null;
-let currentLane = 1;
-let isJumping = false;
-let jumpVelocity = 0;
-let isSliding = false;
-let slideTimer = 0;
-let isSlippery = false;
-let slipperyTimer = 0;
-let slideVelocity = 0;
-const gravity = 0.015;
-let isFlying = false;
-let flyVelocity = 0;
-let baseGameSpeed = 0.25;
-let speedMultiplier = 1.0;
-let gameSpeed = 0.25;
-let difficultyMultiplier = 1.0;
-let pauseStartTime = 0;
-let lastLaneChangeTime = 0;
-let targetLaneX = 0;
-let nearMissCount = 0;
-let nearMissTimer = 0;
-let inBonusZone = false;
-let bonusTimer = 0;
-let eventTimer = 0;
-let activeEvent = null;
-let eventDuration = 0;
-let fogDensity = 0;
-let edgeGlowIntensity = 0;
-let bonusPortal = null;
-let bonusPortalSpawned = false;
-let bonusNoSpawn = false;
-let bonusCoins = [];
-let fovWarpEnabled = false;
-let cameraShakeTimer = 0;
-let cameraShakeIntensity = 0;
-let savedSubstageState = null;
-let originalRoadMaterial = null;
-let originalGroundTexture = null;
-let originalGroundColor = null;
-
-// Expose spawn counts for Playwright tests
-window.__getSpawnCounts = () => ({ obstacles: obstacles.length, coins: coins.length });
-window.__getSpawnDebug = () => ({
-  obstacles: obstacles.length,
-  coins: coins.length,
-  gameDuration,
-  gameOver: gameOver.value,
-  isPaused: isPaused.value
-});
-window.__getRoadMesh = () => roadMesh;
-
-// Context Bridge
-const ctx = {
-  get scene() { return scene; }, set scene(v) { scene = v; },
-  get player() { return player; }, set player(v) { player = v; },
-  get boss() { return boss; }, set boss(v) { boss = v; },
-  get buildings() { return buildings; }, set buildings(v) { buildings = v; },
-  get medievalFlowers() { return medievalFlowers; }, set medievalFlowers(v) { medievalFlowers = v; },
-  get roadMesh() { return roadMesh; }, set roadMesh(v) { roadMesh = v; },
-  get grassMesh() { return grassMesh; }, set grassMesh(v) { grassMesh = v; },
-  get trees() { return trees; }, set trees(v) { trees = v; },
-  get groundTexture() { return groundTexture; }, set groundTexture(v) { groundTexture = v; },
-  get roadOrigPositions() { return roadOrigPositions; }, set roadOrigPositions(v) { roadOrigPositions = v; },
-  get grassTileTex() { return grassTileTex; }, set grassTileTex(v) { grassTileTex = v; },
-  get grassOrigPositions() { return grassOrigPositions; }, set grassOrigPositions(v) { grassOrigPositions = v; },
-  get leftCurbMesh() { return leftCurbMesh; }, set leftCurbMesh(v) { leftCurbMesh = v; },
-  get leftCurbOrigPositions() { return leftCurbOrigPositions; }, set leftCurbOrigPositions(v) { leftCurbOrigPositions = v; },
-  get rightCurbMesh() { return rightCurbMesh; }, set rightCurbMesh(v) { rightCurbMesh = v; },
-  get rightCurbOrigPositions() { return rightCurbOrigPositions; }, set rightCurbOrigPositions(v) { rightCurbOrigPositions = v; },
-  get clouds() { return clouds; }, set clouds(v) { clouds = v; },
-  get obstacles() { return obstacles; }, set obstacles(v) { obstacles = v; },
-  get coins() { return coins; }, set coins(v) { coins = v; },
-  get powerups() { return powerups; }, set powerups(v) { powerups = v; },
-  get bonusPortal() { return bonusPortal; }, set bonusPortal(v) { bonusPortal = v; },
-  get particles() { return particles; }, set particles(v) { particles = v; },
-  get floatingTexts() { return floatingTexts; }, set floatingTexts(v) { floatingTexts = v; },
-  get bossProjectiles() { return bossProjectiles; }, set bossProjectiles(v) { bossProjectiles = v; },
-  get bossAttackTimer() { return bossAttackTimer; }, set bossAttackTimer(v) { bossAttackTimer = v; },
-  get bossNextAttack() { return bossNextAttack; }, set bossNextAttack(v) { bossNextAttack = v; },
-  get bossCharging() { return bossCharging; }, set bossCharging(v) { bossCharging = v; },
-  get bossChargeTimer() { return bossChargeTimer; }, set bossChargeTimer(v) { bossChargeTimer = v; },
-  get bossState() { return bossState; }, set bossState(v) { bossState = v; },
-  get bossStateTimer() { return bossStateTimer; }, set bossStateTimer(v) { bossStateTimer = v; },
-  get bossVulnerableOrbs() { return bossVulnerableOrbs; }, set bossVulnerableOrbs(v) { bossVulnerableOrbs = v; },
-  get bossChargeTarget() { return bossChargeTarget; }, set bossChargeTarget(v) { bossChargeTarget = v; },
-  get currentLane() { return currentLane; }, set currentLane(v) { currentLane = v; },
-  get isJumping() { return isJumping; }, set isJumping(v) { isJumping = v; },
-  get jumpVelocity() { return jumpVelocity; }, set jumpVelocity(v) { jumpVelocity = v; },
-  get isSliding() { return isSliding; }, set isSliding(v) { isSliding = v; },
-  get slideTimer() { return slideTimer; }, set slideTimer(v) { slideTimer = v; },
-  get isFlying() { return isFlying; }, set isFlying(v) { isFlying = v; },
-  get flyVelocity() { return flyVelocity; }, set flyVelocity(v) { flyVelocity = v; },
-  get isSlippery() { return isSlippery; }, set isSlippery(v) { isSlippery = v; },
-  get slipperyTimer() { return slipperyTimer; }, set slipperyTimer(v) { slipperyTimer = v; },
-  get slideVelocity() { return slideVelocity; }, set slideVelocity(v) { slideVelocity = v; },
-  get tiltEnabled() { return tiltEnabled; }, set tiltEnabled(v) { tiltEnabled = v; },
-  get tiltInitialBeta() { return tiltInitialBeta; }, set tiltInitialBeta(v) { tiltInitialBeta = v; },
-  get tiltInitialGamma() { return tiltInitialGamma; }, set tiltInitialGamma(v) { tiltInitialGamma = v; },
-  get isCalibrating() { return isCalibrating; }, set isCalibrating(v) { isCalibrating = v; },
-  get tiltCalibrationSamples() { return tiltCalibrationSamples; }, set tiltCalibrationSamples(v) { tiltCalibrationSamples = v; },
-  get touchStartX() { return touchStartX; }, set touchStartX(v) { touchStartX = v; },
-  get touchStartY() { return touchStartY; }, set touchStartY(v) { touchStartY = v; },
-  get touchEndX() { return touchEndX; }, set touchEndX(v) { touchEndX = v; },
-  get touchEndY() { return touchEndY; }, set touchEndY(v) { touchEndY = v; },
-  get debugKeyBuffer() { return debugKeyBuffer; }, set debugKeyBuffer(v) { debugKeyBuffer = v; },
-  get debugKeyTimer() { return debugKeyTimer; }, set debugKeyTimer(v) { debugKeyTimer = v; },
-  get countdownLocked() { return countdownLocked; }, set countdownLocked(v) { countdownLocked = v; },
-  get gameOverTime() { return gameOverTime; }, set gameOverTime(v) { gameOverTime = v; },
-  get lastLaneChangeTime() { return lastLaneChangeTime; }, set lastLaneChangeTime(v) { lastLaneChangeTime = v; },
-  get score() { return score.value; }, set score(v) { score.value = v; },
-  get gameOver() { return gameOver.value; }, set gameOver(v) { gameOver.value = v; },
-  get countdownActive() { return countdownActive.value; }, set countdownActive(v) { countdownActive.value = v; },
-  get countdownText() { return countdownText.value; }, set countdownText(v) { countdownText.value = v; },
-  get isPaused() { return isPaused.value; }, set isPaused(v) { isPaused.value = v; },
-  get debugMode() { return debugMode.value; }, set debugMode(v) { debugMode.value = v; },
-  get godMode() { return godMode.value; }, set godMode(v) { godMode.value = v; },
-  get showNameEntry() { return showNameEntry.value; }, set showNameEntry(v) { showNameEntry.value = v; },
-  get playerName() { return playerName.value; }, set playerName(v) { playerName.value = v; },
-  get micEnabledRef() { return micEnabledRef.value; }, set micEnabledRef(v) { micEnabledRef.value = v; },
-  get tiltEnabledRef() { return tiltEnabledRef.value; }, set tiltEnabledRef(v) { tiltEnabledRef.value = v; },
-  get lastBeta() { return lastBeta.value; }, set lastBeta(v) { lastBeta.value = v; },
-  get lastGamma() { return lastGamma.value; }, set lastGamma(v) { lastGamma.value = v; },
-  get lastMicVolume() { return lastMicVolume.value; }, set lastMicVolume(v) { lastMicVolume.value = v; },
-  get speedMultiplier() { return speedMultiplier; }, set speedMultiplier(v) { speedMultiplier = v; },
-  get isInvincible() { return isInvincible; }, set isInvincible(v) { isInvincible = v; },
-  get magnetRange() { return magnetRange; }, set magnetRange(v) { magnetRange = v; },
-  get baseGameSpeed() { return baseGameSpeed; }, set baseGameSpeed(v) { baseGameSpeed = v; },
-  get gameSpeed() { return gameSpeed; }, set gameSpeed(v) { gameSpeed = v; },
-  get difficultyMultiplier() { return difficultyMultiplier; }, set difficultyMultiplier(v) { difficultyMultiplier = v; },
-  get gameDuration() { return gameDuration; }, set gameDuration(v) { gameDuration = v; },
-  get stageTime() { return stageTime.value; }, set stageTime(v) { stageTime.value = v; },
-  get currentStage() { return currentStage.value; }, set currentStage(v) { currentStage.value = v; },
-  get dayCycleTime() { return dayCycleTime; }, set dayCycleTime(v) { dayCycleTime = v; },
-  get roadCurve() { return roadCurve.value; }, set roadCurve(v) { roadCurve.value = v; },
-  get roadCurveTarget() { return roadCurveTarget.value; }, set roadCurveTarget(v) { roadCurveTarget.value = v; },
-  get curveChangeTimer() { return curveChangeTimer.value; }, set curveChangeTimer(v) { curveChangeTimer.value = v; },
-  get nextCurveChange() { return nextCurveChange.value; }, set nextCurveChange(v) { nextCurveChange.value = v; },
-  get camera() { return camera; }, set camera(v) { camera = v; },
-  get clock() { return clock; }, set clock(v) { clock = v; },
-  get composer() { return composer; }, set composer(v) { composer = v; },
-  get renderer() { return renderer; }, set renderer(v) { renderer = v; },
-  get bossActive() { return bossActive.value; }, set bossActive(v) { bossActive.value = v; },
-  get bossDefeated() { return bossDefeated.value; }, set bossDefeated(v) { bossDefeated.value = v; },
-  get bossHealth() { return bossHealth.value; }, set bossHealth(v) { bossHealth.value = v; },
-  get bossWarning() { return bossWarning.value; }, set bossWarning(v) { bossWarning.value = v; },
-  get stageTransitioning() { return stageTransitioning.value; }, set stageTransitioning(v) { stageTransitioning.value = v; },
-  get comboCount() { return comboCount; }, set comboCount(v) { comboCount = v; },
-  get lastCoinTime() { return lastCoinTime; }, set lastCoinTime(v) { lastCoinTime = v; },
-  get scoreMultiplier() { return scoreMultiplier; }, set scoreMultiplier(v) { scoreMultiplier = v; },
-  get powerupEndTime() { return powerupEndTime; }, set powerupEndTime(v) { powerupEndTime = v; },
-  get powerupIcon() { return powerupIcon; }, set powerupIcon(v) { powerupIcon = v; },
-  get powerupName() { return powerupName; }, set powerupName(v) { powerupName = v; },
-  get powerupTimeLeft() { return powerupTimeLeft.value; }, set powerupTimeLeft(v) { powerupTimeLeft.value = v; },
-  get activePowerup() { return activePowerup; }, set activePowerup(v) { activePowerup = v; },
-  get lastSpawnTime() { return lastSpawnTime; }, set lastSpawnTime(v) { lastSpawnTime = v; },
-  get spawnInterval() { return spawnInterval; }, set spawnInterval(v) { spawnInterval = v; },
-  get curveFrontZ() { return curveFrontZ.value; }, set curveFrontZ(v) { curveFrontZ.value = v; },
-  get nearMissTextRef() { return nearMissTextRef.value; }, set nearMissTextRef(v) { nearMissTextRef.value = v; },
-  get nearMissCountRef() { return nearMissCountRef.value; }, set nearMissCountRef(v) { nearMissCountRef.value = v; },
-  get eventAlertTextRef() { return eventAlertTextRef.value; }, set eventAlertTextRef(v) { eventAlertTextRef.value = v; },
-  get inBonusZoneRef() { return inBonusZoneRef.value; }, set inBonusZoneRef(v) { inBonusZoneRef.value = v; },
-  get bonusTimerRef() { return bonusTimerRef.value; }, set bonusTimerRef(v) { bonusTimerRef.value = v; },
-  get inBonusZone() { return inBonusZone; }, set inBonusZone(v) { inBonusZone = v; },
-  get bonusTimer() { return bonusTimer; }, set bonusTimer(v) { bonusTimer = v; },
-  get bonusNoSpawn() { return bonusNoSpawn; }, set bonusNoSpawn(v) { bonusNoSpawn = v; },
-  get bonusCoins() { return bonusCoins; }, set bonusCoins(v) { bonusCoins = v; },
-  get bonusPortalSpawned() { return bonusPortalSpawned; }, set bonusPortalSpawned(v) { bonusPortalSpawned = v; },
-  enterBonusZone() { if (gameLifecycle) gameLifecycle.enterBonusZone(); },
-  exitBonusZone() { if (gameLifecycle) gameLifecycle.exitBonusZone(); },
-  get cameraShakeTimer() { return cameraShakeTimer; }, set cameraShakeTimer(v) { cameraShakeTimer = v; },
-  get cameraShakeIntensity() { return cameraShakeIntensity; }, set cameraShakeIntensity(v) { cameraShakeIntensity = v; },
-  get savedSubstageState() { return savedSubstageState; }, set savedSubstageState(v) { savedSubstageState = v; },
-  get originalRoadMaterial() { return originalRoadMaterial; }, set originalRoadMaterial(v) { originalRoadMaterial = v; },
-  get originalGroundTexture() { return originalGroundTexture; }, set originalGroundTexture(v) { originalGroundTexture = v; },
-  get originalGroundColor() { return originalGroundColor; }, set originalGroundColor(v) { originalGroundColor = v; },
-  get bossDefeatTimeout1() { return bossDefeatTimeout1; }, set bossDefeatTimeout1(v) { bossDefeatTimeout1 = v; },
-  get invincibilityTimeout() { return invincibilityTimeout; }, set invincibilityTimeout(v) { invincibilityTimeout = v; },
-  get gameOverShakeInterval() { return gameOverShakeInterval; }, set gameOverShakeInterval(v) { gameOverShakeInterval = v; },
-  activatePowerup(type) { activatePowerup(type); },
-  deactivatePowerup() { deactivatePowerup(); },
-  triggerGameOver(shake) { triggerGameOver(shake); },
-  saveHighScore() { saveHighScore(); }
-};
-const getCtx = () => ctx;
-
-const saveHighScore = () => gameLifecycle.saveHighScore();
-const activatePowerup = (type) => gameLifecycle.activatePowerup(type);
-const deactivatePowerup = () => gameLifecycle.deactivatePowerup();
-const triggerGameOver = (shakeIntensity = 0.5) => gameLifecycle.triggerGameOver(shakeIntensity);
-
-// stable wrapper functions
-const createFloatingText = (text, position, color) => {
-  if (gameSpawns) gameSpawns.createFloatingText(text, position, color);
-};
-const createParticleEffect = (position, color, count) => {
-  if (gameSpawns) gameSpawns.createParticleEffect(position, color, count);
-};
+// Expose spawn counts for Playwright tests (namespaced, dev-only)
+attachTestHelpers({
+  getSpawnCounts: () => ({ obstacles: store.obstacles.length, coins: store.coins.length }),
+  getSpawnDebug: () => ({
+    obstacles: store.obstacles.length,
+    coins: store.coins.length,
+    gameDuration: store.gameDuration,
+    gameOver: store.gameOver,
+    isPaused: store.isPaused
+  }),
+  getRoadMesh: () => store.roadMesh,
+}, store);
 
 // Initialize audio composable
-const { playSound, playSFX, startBGM, stopBGM, switchBGMTrack, toggleMute: _toggleMute, initAudio, isBGMPlaying, bgmStarted, startStage3Audio, stopStage3Audio, updateIntercom } = useAudio({ currentStage, STAGES });
+const { playSound, playSFX, startBGM, stopBGM, switchBGMTrack, toggleMute: _toggleMute, initAudio, isBGMPlaying, bgmStarted, startStage3Audio, stopStage3Audio, updateIntercom } = useAudio({ currentStage: computed(() => store.currentStage), STAGES });
+
+// Wire audio functions into store for composable access
+store.playSound = playSound;
+store.playSFX = playSFX;
+store.startBGM = startBGM;
+store.stopBGM = stopBGM;
+store.switchBGMTrack = switchBGMTrack;
+store.initAudio = initAudio;
 
 const tryStartBGMFromGesture = () => {
   initAudio();
@@ -497,6 +227,7 @@ const tryStartBGMFromGesture = () => {
     startBGM();
   }
 };
+store.tryStartBGMFromGesture = tryStartBGMFromGesture;
 
 // Initialize achievement composable
 const {
@@ -504,137 +235,105 @@ const {
   unlockedHats, currentHat, loadProgress, saveProgress, checkAchievements
 } = useAchievements({
   playSound,
-  createFloatingText: (text, pos, col) => createFloatingText(text, pos, col),
-  getPlayer: () => player
+  createFloatingText: (text, pos, col) => store.createFloatingText(text, pos, col),
+  getPlayer: () => store.player
 });
 
 // Initialize Three.js game scene composable
 const gameScene = useGameScene({
-  getCtx,
-  getSurfaceY,
-  getCurveX,
-  currentStage,
-  roadCurveEnabled,
-  roadCurve,
+  store,
   currentSkin,
   currentHat,
   trackTexture,
   onTextureLoaded,
-  switchBGMTrack,
   gameStats,
   checkAchievements
 });
 
 // Initialize Spawns composable
 const gameSpawns = useGameSpawns({
-  getCtx,
-  getSurfaceY,
-  currentStage,
+  store,
   laneWidth,
   stage3Textures: gameScene.stage3Textures
 });
 
+// Wire spawn functions into store for composable access
+store.createFloatingText = (text, position, color) => {
+  if (gameSpawns) gameSpawns.createFloatingText(text, position, color);
+};
+store.createParticleEffect = (position, color, count) => {
+  if (gameSpawns) gameSpawns.createParticleEffect(position, color, count);
+};
+
 // Initialize Boss fight composable
 const gameBoss = useGameBoss({
-  getCtx,
-  currentStage,
-  laneWidth,
-  currentLane: computed(() => currentLane),
-  playSFX,
-  createFloatingText,
-  playSound,
-  switchBGMTrack
+  store,
+  laneWidth
 });
 
 // Initialize game updates composable
 const gameUpdates = useGameUpdates({
-  getCtx,
-  getSurfaceY,
-  getSurfaceTilt,
-  getCurveX,
-  getCurveSlope,
-  playSound: (...args) => playSound(...args),
-  createFloatingText: (...args) => createFloatingText(...args),
-  createParticleEffect: (...args) => createParticleEffect(...args),
-  deactivatePowerup: (...args) => deactivatePowerup(...args),
-  activatePowerup: (...args) => activatePowerup(...args),
-  triggerGameOver: (...args) => triggerGameOver(...args),
-  startStageCountdown: (...args) => startStageCountdown(...args),
+  store,
   gameScene,
-  gameBoss,
-  STAGES
+  gameBoss
 });
 
 // Initialize game lifecycle composable
 const gameLifecycle = useGameLifecycle({
-  getCtx,
-  playSound: (...args) => playSound(...args),
-  playSFX: (...args) => playSFX(...args),
-  startBGM: (...args) => startBGM(...args),
-  stopBGM: (...args) => stopBGM(...args),
-  switchBGMTrack: (...args) => switchBGMTrack(...args),
-  initAudio: (...args) => initAudio(...args),
-  tryStartBGMFromGesture: (...args) => tryStartBGMFromGesture(...args),
+  store,
   gameScene,
   gameSpawns,
   gameBoss,
-  STAGES,
-  BOSS_BASE_HEALTH,
-  VERSION_MAJOR_MINOR,
-  loadProgress: (...args) => loadProgress(...args),
-  saveProgress: (...args) => saveProgress(...args),
-  checkAchievements: (...args) => checkAchievements(...args),
-  achievements,
-  isHighScore: (...args) => isHighScore(...args),
-  getSurfaceY,
-  startTiltCalibration: (...args) => startTiltCalibration(...args),
-  finishTiltCalibration: (...args) => finishTiltCalibration(...args),
-  startCalibration: (...args) => startCalibration(...args),
-  clearAllTimers: (...args) => clearAllTimers(...args),
   debugStartStage,
-  createFloatingText: (...args) => createFloatingText(...args),
-  createParticleEffect: (...args) => createParticleEffect(...args)
+  achievements,
+  loadProgress,
+  saveProgress,
+  checkAchievements
 });
 
+// Wire lifecycle functions into store for composable access
+store.triggerGameOver = (shakeIntensity = 0.5) => gameLifecycle.triggerGameOver(shakeIntensity);
+store.startCountdown = () => gameLifecycle.startCountdown();
+store.startStageCountdown = () => gameLifecycle.startStageCountdown();
+store.deactivatePowerup = () => gameLifecycle.deactivatePowerup();
+store.activatePowerup = (type) => gameLifecycle.activatePowerup(type);
+store.pauseGame = () => gameLifecycle.pauseGame();
+store.resumeGame = () => gameLifecycle.resumeGame();
+store.saveHighScore = () => gameLifecycle.saveHighScore();
+
 // Initialize leaderboard composable
-const { leaderboard, playerName, showNameEntry, isHighScore, submitScore, loadLeaderboard, syncStatus } = useLeaderboard({ VERSION, score, highScore });
+const { leaderboard, playerName, showNameEntry, isHighScore, submitScore, loadLeaderboard, syncStatus } = useLeaderboard({ VERSION, score: computed(() => store.score), highScore: computed(() => store.highScore) });
+
+// Wire isHighScore into store for composable access
+store.isHighScore = isHighScore;
 
 // Mic input integration
 const { micEnabledRef, initMic, toggleMic: _toggleMic, getMicVolume, cleanupMic, startCalibration } = useMic();
-const toggleMic = () => _toggleMic(() => { isFlying = false; });
+const toggleMic = () => _toggleMic(() => { store.isFlying = false; });
 const toggleMute = () => {
   const isMuted = _toggleMute();
   muteIcon.value = isMuted ? '🔇' : '🔊';
 };
 
+// Wire mic function into store for composable access
+store.getMicVolume = getMicVolume;
+store.startCalibration = startCalibration;
+
 const gameControls = useGameControls({
-  getCtx,
-  getSurfaceY,
-  getSurfaceTilt,
-  getCurveX,
-  getCurveSlope,
-  getMicVolume,
-  playSound: (...args) => playSound(...args),
-  triggerGameOver: (...args) => triggerGameOver(...args),
-  startCountdown: (...args) => startCountdown(...args),
-  createFloatingText: (...args) => createFloatingText(...args),
-  initAudio: (...args) => initAudio(...args),
-  tryStartBGMFromGesture: (...args) => tryStartBGMFromGesture(...args),
-  pauseGame: (...args) => pauseGame(...args),
-  resumeGame: (...args) => resumeGame(...args),
-  toggleSettings: (...args) => toggleSettings(...args),
+  store,
+  toggleSettings,
   gameSpawns
 });
 
 const onLoadingStart = () => {
   initAudio();
   startBGM();
-  countdownLocked = true;
-  stageTransitioning.value = true;
-  setTimeout(() => {
+  store.countdownLocked = true;
+  store.stageTransitioning = true;
+  timer.setTimeout(() => {
     showLoadingScreen.value = false;
-    setTimeout(() => {
-      if (!gameOver.value && !countdownActive.value) {
+    timer.setTimeout(() => {
+      if (!store.gameOver && !store.countdownActive) {
         startStageCountdown();
       }
     }, 400);
@@ -642,10 +341,10 @@ const onLoadingStart = () => {
 };
 
 const toggleFovWarp = () => {
-  fovWarpEnabled = fovWarpRef.value;
-  if (!fovWarpEnabled) {
-    camera.fov = 60;
-    camera.updateProjectionMatrix();
+  store.fovWarpEnabled = fovWarpRef.value;
+  if (!store.fovWarpEnabled) {
+    store.camera.fov = CAMERA_FOV_RESET;
+    store.camera.updateProjectionMatrix();
   }
 };
 
@@ -659,151 +358,164 @@ const handleTouchStart = (e) => gameControls.handleTouchStart(e);
 const handleTouchEnd = (e) => gameControls.handleTouchEnd(e);
 const handleDeviceOrientation = (e) => gameControls.handleDeviceOrientation(e);
 const handleKeyDown = (e) => gameControls.handleKeyDown(e);
-const updatePhysics = (delta) => gameControls.updatePhysics(delta, gameSpeed);
+const updatePhysics = (delta) => gameControls.updatePhysics(delta, store.gameSpeed);
+
+// Wire control/mic/timer functions into store for composable access
+store.startTiltCalibration = startTiltCalibration;
+store.finishTiltCalibration = finishTiltCalibration;
+store.clearAllTimers = clearAllTimers;
 
 const animate = () => {
-  requestAnimationFrame(animate);
+  try {
+    requestAnimationFrame(animate);
 
-  if (showLoadingScreen.value) {
-    clock.getDelta();
-    return;
-  }
-
-  if (isPaused.value) {
-    clock.getDelta();
-    composer.render();
-    return;
-  }
-
-  if (gameOver.value) {
-    if (activePowerup) {
-      powerupTimeLeft.value = Math.max(0, Math.ceil((powerupEndTime - Date.now()) / 1000));
-      if (powerupTimeLeft.value <= 0) deactivatePowerup();
+    if (showLoadingScreen.value) {
+      store.clock.getDelta();
+      return;
     }
-    camera.lookAt(0, 1, -8);
-    composer.render();
-    return;
-  }
 
-  if (countdownLocked) {
-    clock.getDelta();
-    camera.lookAt(0, 1, -8);
-    composer.render();
-    return;
-  }
-
-  const realDelta = clock.getDelta();
-  const delta = realDelta;
-  const time = clock.getElapsedTime();
-  
-  if (showDebugOverlay.value) {
-    if (roadMesh) {
-      roadY.value = roadMesh.position.y;
-      roadRenderOrder.value = roadMesh.renderOrder;
+    if (store.isPaused) {
+      store.clock.getDelta();
+      store.composer.render();
+      return;
     }
-    if (grassMesh) {
-      grassY.value = grassMesh.position.y;
-      grassRenderOrder.value = grassMesh.renderOrder;
-      grassDepthWrite.value = grassMesh.material.depthWrite;
-    }
-  }
-  
-  const stage = STAGES[currentStage.value];
-  const isStage3 = stage.id === 3;
-  
-  updateIntercom(delta, isStage3);
-  
-  if (!gameOver.value && !stageTransitioning.value && !countdownLocked) {
-    gameDuration += delta;
-    stageTime.value += realDelta;
-  }
-  
-  dayCycleTime = (dayCycleTime + delta) % DAY_DURATION;
 
-  // Curves logic
-  if (!bossActive.value && roadCurveEnabled.value) {
-    curveChangeTimer.value += realDelta;
-    if (curveChangeTimer.value >= nextCurveChange.value) {
-      if (Math.abs(roadCurveTarget.value) < 0.1) {
-        roadCurveTarget.value = (Math.random() > 0.5 ? 1 : -1) * (1.2 + Math.random() * 0.6);
-        curveFrontZ.value = -80;
-        nextCurveChange.value = 2.5 + Math.random() * 1.5;
-      } else {
-        roadCurveTarget.value = 0;
-        nextCurveChange.value = 5 + Math.random() * 5;
+    if (store.gameOver) {
+      if (store.activePowerup) {
+        store.powerupTimeLeft = Math.max(0, Math.ceil((store.powerupEndTime - Date.now()) / 1000));
+        if (store.powerupTimeLeft <= 0) store.deactivatePowerup();
       }
-      curveChangeTimer.value = 0;
+      store.camera.lookAt(0, CAMERA_LOOK_Y, CAMERA_LOOK_Z);
+      store.composer.render();
+      return;
     }
-  }
-  
-  if (curveFrontZ.value < 0) {
-    curveFrontZ.value += realDelta * 25;
-    if (curveFrontZ.value > 0) curveFrontZ.value = 0;
-  }
-  roadCurve.value += (roadCurveTarget.value - roadCurve.value) * 0.03;
 
-  // Speed scaling
-  difficultyMultiplier = Math.min(1 + (gameDuration / 60), 3.5);
-  const stageBaseSpeeds = [0.25, 0.32, 0.40];
-  baseGameSpeed = stageBaseSpeeds[currentStage.value] || 0.25;
-  gameSpeed = baseGameSpeed * difficultyMultiplier * speedMultiplier;
-
-  // Powerup updates
-  if (activePowerup) {
-    powerupTimeLeft.value = Math.max(0, Math.ceil((powerupEndTime - Date.now()) / 1000));
-    if (powerupTimeLeft.value <= 0) deactivatePowerup();
-  }
-
-  // Stage Transitions
-  const currentStageDuration = stage.stageDuration || 30;
-  if (stageTime.value >= currentStageDuration - 5 && stageTime.value < currentStageDuration && !bossActive.value && !bossDefeated.value && !stageTransitioning.value) {
-    if (!bossWarning.value) {
-      bossWarning.value = true;
+    if (store.countdownLocked) {
+      gameLifecycle.tickCountdown();
+      store.clock.getDelta();
+      store.camera.lookAt(0, CAMERA_LOOK_Y, CAMERA_LOOK_Z);
+      store.composer.render();
+      return;
     }
-  }
-  if (stageTime.value >= currentStageDuration && !bossActive.value && !bossDefeated.value && !stageTransitioning.value) {
-    bossActive.value = true;
-    bossHealth.value = Math.min(250, Math.floor(BOSS_BASE_HEALTH * difficultyMultiplier));
-    bossWarning.value = false;
-    
-    // Spawn appropriate boss
-    if (stage.id === 1) gameBoss.spawnBoss('truck');
-    else if (stage.id === 2) gameBoss.spawnBoss('dragon');
-    else if (stage.id === 3) gameBoss.spawnBoss('giantMeatball');
-    
-    createFloatingText('BOSS FIGHT!', new THREE.Vector3(0, 3, -10), '#ff0000');
-    playSound('boss_theme');
-  }
 
-  // Update Scene environmental curvatures and cycles
-  gameScene.updateRoadCurve(delta, getCurveX, time);
-  gameScene.updateDayNightCycle(delta);
-
-  // Spawning logic
-  if (!bossActive.value && !gameOver.value && !stageTransitioning.value && !countdownLocked && gameDuration > 1.5) {
-    spawnInterval = (Math.max(0.35, 1.2 - (gameDuration / 80)) / STAGES[currentStage.value].difficultyMultiplier) / 1.5;
-    if (time - lastSpawnTime >= spawnInterval) {
-      if (Math.random() < 0.7) {
-        if (Math.random() < 0.3) gameSpawns.spawnFloatingObstacle(gameDuration);
-        else gameSpawns.spawnObstacle(gameDuration);
+    const realDelta = store.clock.getDelta();
+    const delta = realDelta;
+    const time = store.clock.getElapsedTime();
+    
+    if (showDebugOverlay.value) {
+      if (store.roadMesh) {
+        roadY.value = store.roadMesh.position.y;
+        roadRenderOrder.value = store.roadMesh.renderOrder;
       }
-      if (Math.random() < 0.5 + (gameDuration / 120)) gameSpawns.spawnCoin(gameDuration);
-      if (Math.random() < 0.05) gameSpawns.spawnPowerup(gameDuration);
-      lastSpawnTime = time;
+      if (store.grassMesh) {
+        grassY.value = store.grassMesh.position.y;
+        grassRenderOrder.value = store.grassMesh.renderOrder;
+        grassDepthWrite.value = store.grassMesh.material.depthWrite;
+      }
     }
+    
+    const stage = STAGES[store.currentStage];
+    const isStage3 = stage.id === 3;
+    
+    updateIntercom(delta, isStage3);
+    
+    if (!store.gameOver && !store.stageTransitioning && !store.countdownLocked) {
+      store.gameDuration += delta;
+      store.stageTime += realDelta;
+    }
+    
+    store.dayCycleTime = (store.dayCycleTime + delta) % DAY_DURATION;
+
+    // Curves logic
+    if (!store.bossActive && store.roadCurveEnabled) {
+      store.curveChangeTimer += realDelta;
+      if (store.curveChangeTimer >= store.nextCurveChange) {
+        if (Math.abs(store.roadCurveTarget) < 0.1) {
+          store.roadCurveTarget = (Math.random() > 0.5 ? 1 : -1) * (CURVE_INTENSITY_MIN + Math.random() * (CURVE_INTENSITY_MAX - CURVE_INTENSITY_MIN));
+          curveFrontZ.value = CURVE_FRONT_Z_START;
+          store.nextCurveChange = CURVE_CHANGE_MIN + Math.random() * (CURVE_CHANGE_MAX - CURVE_CHANGE_MIN);
+        } else {
+          store.roadCurveTarget = 0;
+          store.nextCurveChange = CURVE_STRAIGHT_MIN + Math.random() * (CURVE_STRAIGHT_MAX - CURVE_STRAIGHT_MIN);
+        }
+        store.curveChangeTimer = 0;
+      }
+    }
+    
+    if (curveFrontZ.value < 0) {
+      curveFrontZ.value += realDelta * CURVE_FRONT_Z_SPEED;
+      if (curveFrontZ.value > 0) curveFrontZ.value = 0;
+    }
+    store.roadCurve += (store.roadCurveTarget - store.roadCurve) * CURVE_LERP;
+
+    // Speed scaling
+    store.difficultyMultiplier = Math.min(1 + (store.gameDuration / DIFFICULTY_DIVISOR), MAX_DIFFICULTY_MULTIPLIER);
+    store.baseGameSpeed = BASE_GAME_SPEEDS[store.currentStage] || BASE_GAME_SPEEDS[0];
+    store.gameSpeed = store.baseGameSpeed * store.difficultyMultiplier * store.speedMultiplier;
+
+    // Powerup updates
+    if (store.activePowerup) {
+      store.powerupTimeLeft = Math.max(0, Math.ceil((store.powerupEndTime - Date.now()) / 1000));
+      if (store.powerupTimeLeft <= 0) store.deactivatePowerup();
+    }
+
+    // Stage Transitions
+    const currentStageDuration = stage.stageDuration || 30;
+    if (store.stageTime >= currentStageDuration - BOSS_WARNING_TIME && store.stageTime < currentStageDuration && !store.bossActive && !store.bossDefeated && !store.stageTransitioning) {
+      if (!store.bossWarning) {
+        store.bossWarning = true;
+      }
+    }
+    if (store.stageTime >= currentStageDuration && !store.bossActive && !store.bossDefeated && !store.stageTransitioning) {
+      store.bossActive = true;
+      store.bossHealth = Math.min(BOSS_MAX_HEALTH, Math.floor(BOSS_BASE_HEALTH * store.difficultyMultiplier));
+      store.bossWarning = false;
+      
+      // Spawn appropriate boss
+      if (stage.id === 1) gameBoss.spawnBoss('truck');
+      else if (stage.id === 2) gameBoss.spawnBoss('dragon');
+      else if (stage.id === 3) gameBoss.spawnBoss('giantMeatball');
+      
+      store.createFloatingText('BOSS FIGHT!', new THREE.Vector3(0, 3, -10), '#ff0000');
+      playSound('boss_theme');
+    }
+
+    // Update Scene environmental curvatures and cycles
+    gameScene.updateRoadCurve(delta, getCurveX, time);
+    gameScene.updateDayNightCycle(delta);
+
+    // Spawning logic
+    if (!store.bossActive && !store.gameOver && !store.stageTransitioning && !store.countdownLocked && store.gameDuration > SPAWN_GRACE_PERIOD) {
+      store.spawnInterval = (Math.max(MIN_SPAWN_INTERVAL, INITIAL_SPAWN_INTERVAL - (store.gameDuration / SPAWN_INTERVAL_DECAY)) / STAGES[store.currentStage].difficultyMultiplier) / 1.5;
+      if (time - store.lastSpawnTime >= store.spawnInterval) {
+        if (Math.random() < OBSTACLE_SPAWN_CHANCE) {
+          if (Math.random() < FLOATING_OBSTACLE_CHANCE) gameSpawns.spawnFloatingObstacle(store.gameDuration);
+          else gameSpawns.spawnObstacle(store.gameDuration);
+        }
+        if (Math.random() < COIN_SPAWN_BASE_CHANCE + (store.gameDuration / COIN_SPAWN_GROWTH)) gameSpawns.spawnCoin(store.gameDuration);
+        if (Math.random() < POWERUP_SPAWN_CHANCE) gameSpawns.spawnPowerup(store.gameDuration);
+        store.lastSpawnTime = time;
+      }
+    }
+
+    // Update player physics
+    updatePhysics(delta);
+
+    // Entity movements & collision loops
+    gameUpdates.updateEntities(delta, time);
+
+    store.camera.position.x += (0 - store.camera.position.x) * CAMERA_LERP;
+    store.camera.position.y += (CAMERA_POS_Y - store.camera.position.y) * CAMERA_LERP;
+    store.camera.position.z += (CAMERA_POS_Z - store.camera.position.z) * CAMERA_LERP;
+    store.camera.lookAt(0, CAMERA_LOOK_Y, CAMERA_LOOK_Z);
+    store.composer.render();
+  } catch (err) {
+    console.error('Render loop error:', err);
+    renderError.value = true;
+    renderErrorMessage.value = err?.message || String(err);
+    // Still request next frame so the error overlay can render
+    requestAnimationFrame(animate);
   }
-
-  // Update player physics
-  updatePhysics(delta);
-
-  // Entity movements & collision loops
-  gameUpdates.updateEntities(delta, time);
-
-  camera.position.x += (0 - camera.position.x) * 0.05;
-  camera.position.y += (6 - camera.position.y) * 0.05;
-  camera.position.z += (12 - camera.position.z) * 0.05;
-  camera.lookAt(0, 1, -8);
-  composer.render();
 };
 
 const resetStage = (preserveScore = false, targetStage = -1) => gameLifecycle.resetStage(preserveScore, targetStage);
@@ -815,60 +527,60 @@ const handleVisibilityChange = () => gameLifecycle.handleVisibilityChange();
 
 const initGame = () => {
   gameScene.preloadStageTextures(1);
-  disposeHierarchy(trees, scene);
-  disposeHierarchy(buildings, scene);
+  disposeHierarchy(store.trees, store.scene);
+  disposeHierarchy(store.buildings, store.scene);
   
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x87ceeb);
-  scene.fog = new THREE.Fog(0x87ceeb, 20, 80);
+  store.scene = new THREE.Scene();
+  store.scene.background = new THREE.Color(FOG_COLOR);
+  store.scene.fog = new THREE.Fog(FOG_COLOR, FOG_NEAR, FOG_FAR);
 
   gameScene.initSceneTextures('assets/sky_sunny.webp', 'assets/sky_sunset.webp', 'assets/sky_night.webp', 'assets/mountains.webp');
 
-  camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-  camera.position.set(0, 6, 12);
-  camera.lookAt(0, 0, -5);
+  store.camera = new THREE.PerspectiveCamera(CAMERA_FOV, window.innerWidth / window.innerHeight, 0.1, 1000);
+  store.camera.position.set(0, CAMERA_POS_Y, CAMERA_POS_Z);
+  store.camera.lookAt(0, 0, -5);
 
-  renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  store.renderer = new THREE.WebGLRenderer({ antialias: true });
+  store.renderer.setSize(window.innerWidth, window.innerHeight);
   const isMobileLocal = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-  renderer.shadowMap.enabled = !isMobileLocal;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.setPixelRatio(isMobileLocal ? 1 : Math.min(window.devicePixelRatio, 2));
+  store.renderer.shadowMap.enabled = !isMobileLocal;
+  store.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  store.renderer.setPixelRatio(isMobileLocal ? 1 : Math.min(window.devicePixelRatio, 2));
   
   const canvasContainer = document.getElementById('game-canvas');
   if (canvasContainer) {
     canvasContainer.innerHTML = '';
-    canvasContainer.appendChild(renderer.domElement);
+    canvasContainer.appendChild(store.renderer.domElement);
   }
 
-  composer = new EffectComposer(renderer);
-  const renderPass = new RenderPass(scene, camera);
-  composer.addPass(renderPass);
+  store.composer = new EffectComposer(store.renderer);
+  const renderPass = new RenderPass(store.scene, store.camera);
+  store.composer.addPass(renderPass);
   
-  const bloomRes = isMobileLocal ? 0.5 : 0.75;
+  const bloomRes = isMobileLocal ? BLOOM_RES_MOBILE : BLOOM_RES_DESKTOP;
   const bloomPass = new UnrealBloomPass(
     new THREE.Vector2(window.innerWidth * bloomRes, window.innerHeight * bloomRes),
-    0.35,
-    0.4,
-    0.85
+    BLOOM_STRENGTH,
+    BLOOM_RADIUS,
+    BLOOM_THRESHOLD
   );
-  composer.addPass(bloomPass);
+  store.composer.addPass(bloomPass);
 
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
-  scene.add(ambientLight);
+  const ambientLight = new THREE.AmbientLight(AMBIENT_LIGHT_COLOR, AMBIENT_LIGHT_INTENSITY);
+  store.scene.add(ambientLight);
   
-  const directionalLight = new THREE.DirectionalLight(0xffd700, 1.0);
-  directionalLight.position.set(10, 15, 10);
+  const directionalLight = new THREE.DirectionalLight(DIRECTIONAL_LIGHT_COLOR, DIRECTIONAL_LIGHT_INTENSITY);
+  directionalLight.position.set(DIRECTIONAL_LIGHT_POS.x, DIRECTIONAL_LIGHT_POS.y, DIRECTIONAL_LIGHT_POS.z);
   directionalLight.castShadow = true;
-  const shadowRes = isMobileLocal ? 512 : 1024;
+  const shadowRes = isMobileLocal ? SHADOW_RES_MOBILE : SHADOW_RES_DESKTOP;
   directionalLight.shadow.mapSize.width = shadowRes;
   directionalLight.shadow.mapSize.height = shadowRes;
-  directionalLight.shadow.camera.near = 0.5;
-  directionalLight.shadow.camera.far = 50;
-  scene.add(directionalLight);
+  directionalLight.shadow.camera.near = SHADOW_CAMERA_NEAR;
+  directionalLight.shadow.camera.far = SHADOW_CAMERA_FAR;
+  store.scene.add(directionalLight);
   
-  const hemiLight = new THREE.HemisphereLight(0x87ceeb, 0x8bc34a, 0.4);
-  scene.add(hemiLight);
+  const hemiLight = new THREE.HemisphereLight(HEMI_SKY_COLOR, HEMI_GROUND_COLOR, HEMI_LIGHT_INTENSITY);
+  store.scene.add(hemiLight);
 
   gameScene.createGround();
   gameScene.createLaneMarkers();
@@ -876,19 +588,19 @@ const initGame = () => {
   gameScene.createBackgroundElements();
 
   const playerGroup = createPlayer(currentSkin.value, currentHat.value);
-  player = playerGroup;
-  player.position.set(0, 0.5, 0);
-  player.rotation.y = Math.PI;
-  scene.add(player);
+  store.player = playerGroup;
+  store.player.position.set(0, 0.5, 0);
+  store.player.rotation.y = Math.PI;
+  store.scene.add(store.player);
   
-  clock = new THREE.Clock();
-  clock.start();
+  store.clock = new THREE.Clock();
+  store.clock.start();
   animate();
 };
 
 onMounted(() => {
   const saved = localStorage.getItem(`elangoSurfersHighScore_${VERSION_MAJOR_MINOR}`);
-  if (saved) highScore.value = parseInt(saved, 10);
+  if (saved) store.highScore = parseInt(saved, 10);
   initScreenEffects();
   loadProgress();
   loadLeaderboard();
@@ -899,7 +611,7 @@ onMounted(() => {
     _toggleMute();
     muteIcon.value = '🔇';
   }
-  if (!gameSettings.value.sensorEnabled && tiltEnabled) {
+  if (!gameSettings.value.sensorEnabled && store.tiltEnabled) {
     toggleTilt();
   }
   
@@ -911,8 +623,9 @@ onMounted(() => {
 onUnmounted(() => {
   document.removeEventListener('visibilitychange', handleVisibilityChange);
   cleanupMic();
-  if (composer) composer.dispose();
+  if (store.composer) store.composer.dispose();
   stopBGM();
+  detachTestHelpers();
 });
 </script>
 

@@ -1,31 +1,34 @@
 import * as THREE from 'three';
 
+/**
+ * Game boss composable — handles boss spawning, attacks, and defeat.
+ * 
+ * @param {Object} deps
+ * @param {Object} deps.store - Shared reactive game store
+ * @param {number} deps.laneWidth - Lane width constant
+ */
 export function useGameBoss({
-  getCtx,
-  currentStage,
-  laneWidth,
-  currentLane,
-  playSFX,
-  createFloatingText,
-  playSound,
-  switchBGMTrack
+  store,
+  laneWidth
 }) {
+  // Functions accessed via store (wired in App.vue after init):
+  // store.playSFX, store.createFloatingText, store.playSound, store.switchBGMTrack
+  // store.currentStage, store.currentLane accessed directly {
   let textureLoader = new THREE.TextureLoader();
 
   const spawnBoss = (bossType) => {
-    const ctx = getCtx();
-    if (ctx.boss) {
-      ctx.scene.remove(ctx.boss);
-      ctx.boss = null;
+    if (store.boss) {
+      store.scene.remove(store.boss);
+      store.boss = null;
     }
-    ctx.bossProjectiles = [];
-    ctx.bossAttackTimer = 0;
-    ctx.bossNextAttack = 2 + Math.random() * 2;
-    ctx.bossCharging = false;
-    ctx.bossChargeTimer = 0;
-    ctx.bossState = 'idle';
-    ctx.bossStateTimer = 0;
-    ctx.bossVulnerableOrbs = [];
+    store.bossProjectiles = [];
+    store.bossAttackTimer = 0;
+    store.bossNextAttack = 2 + Math.random() * 2;
+    store.bossCharging = false;
+    store.bossChargeTimer = 0;
+    store.bossState = 'idle';
+    store.bossStateTimer = 0;
+    store.bossVulnerableOrbs = [];
     
     const group = new THREE.Group();
     group.name = 'boss';
@@ -122,7 +125,7 @@ export function useGameBoss({
       }
       group.userData.tentacles = tentacles;
     } else {
-      const isStage2Dragon = (currentStage.value === 1);
+      const isStage2Dragon = (store.currentStage === 1);
       const dragonColor = isStage2Dragon ? 0xff3300 : 0x9933ff;
       const dragonEmissive = isStage2Dragon ? 0xaa2200 : 0x4400aa;
       const dragonColorDark = isStage2Dragon ? 0xaa2200 : 0x6622aa;
@@ -225,23 +228,22 @@ export function useGameBoss({
     // Place boss at its stage-appropriate far idle position so it doesn't pop in
     let initialZ = -60; // All bosses idle at -60
     group.position.set(0, bossType === 'truck' ? 0 : 5, initialZ);
-    ctx.scene.add(group);
-    ctx.boss = group;
+    store.scene.add(group);
+    store.boss = group;
   };
 
   const spawnBossProjectile = (type) => {
-    const ctx = getCtx();
     if (type === 'truck') {
-      ctx.bossCharging = true;
-      ctx.bossChargeTimer = 0;
-      ctx.bossChargeTarget = -5;
-      playSFX('truck_rev');
-      if (ctx.boss) {
-        ctx.boss.userData = ctx.boss.userData || {};
-        ctx.boss.userData.chargeTargetX = ctx.player.position.x;
-        ctx.boss.userData.chargeStartX = ctx.boss.position.x;
-        ctx.boss.userData.chargeStartZ = ctx.boss.position.z;
-        ctx.boss.userData.chargeMissTriggered = false;
+      store.bossCharging = true;
+      store.bossChargeTimer = 0;
+      store.bossChargeTarget = -5;
+      store.playSFX('truck_rev');
+      if (store.boss) {
+        store.boss.userData = store.boss.userData || {};
+        store.boss.userData.chargeTargetX = store.player.position.x;
+        store.boss.userData.chargeStartX = store.boss.position.x;
+        store.boss.userData.chargeStartZ = store.boss.position.z;
+        store.boss.userData.chargeMissTriggered = false;
       }
     } else if (type === 'giantMeatball') {
       const numBeams = 4 + Math.floor(Math.random() * 3);
@@ -267,11 +269,11 @@ export function useGameBoss({
           rotationSpeed: 0.15 + Math.random() * 0.2,
           isBeam: true
         };
-        ctx.scene.add(beam);
-        ctx.bossProjectiles.push(beam);
+        store.scene.add(beam);
+        store.bossProjectiles.push(beam);
       });
-      createFloatingText('⚠️', new THREE.Vector3(0, 10, -20), '#aaaaaa');
-      playSFX('crash_metal', 0.5);
+      store.createFloatingText('⚠️', new THREE.Vector3(0, 10, -20), '#aaaaaa');
+      store.playSFX('crash_metal', 0.5);
     } else {
       // Dragon (Stage 2) - fireballs at random lanes, random heights, randomized Z-axis, with no overlap
       const allLanes = [0, 1, 2].sort(() => Math.random() - 0.5);
@@ -284,14 +286,14 @@ export function useGameBoss({
       attackLanes.forEach((lane, idx) => {
         const targetX = (lane - 1) * laneWidth;
         let fbY = 0.5;
-        let spawnZ = ctx.boss.position.z + 2;
+        let spawnZ = store.boss.position.z + 2;
 
         // Try up to 50 times to find a non-overlapping height and Z-depth
         let found = false;
         for (let attempt = 0; attempt < 50; attempt++) {
           fbY = 0.5 + Math.random() * 3.5;
           // Spawn staggered along Z in front of the boss (e.g. up to 18 units ahead)
-          spawnZ = ctx.boss.position.z + 2 + Math.random() * 18.0;
+          spawnZ = store.boss.position.z + 2 + Math.random() * 18.0;
 
           let overlap = false;
           // 1. Check against other fireballs generated in this wave
@@ -308,7 +310,7 @@ export function useGameBoss({
 
           // 2. Check against already existing active projectiles in scene
           if (!overlap) {
-            for (const proj of ctx.bossProjectiles) {
+            for (const proj of store.bossProjectiles) {
               const dx = targetX - proj.position.x;
               const dy = fbY - proj.position.y;
               const dz = spawnZ - proj.position.z;
@@ -349,11 +351,11 @@ export function useGameBoss({
           delay: idx * 0.1,
           isFireball: true
         };
-        ctx.scene.add(fb);
-        ctx.bossProjectiles.push(fb);
+        store.scene.add(fb);
+        store.bossProjectiles.push(fb);
       });
-      createFloatingText('🔥', new THREE.Vector3((attackLanes[0] - 1) * laneWidth, 2, -5), '#ff6600');
-      playSFX('fire_shoot', 0.5);
+      store.createFloatingText('🔥', new THREE.Vector3((attackLanes[0] - 1) * laneWidth, 2, -5), '#ff6600');
+      store.playSFX('fire_shoot', 0.5);
     }
   };
 

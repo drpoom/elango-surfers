@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { STAGES } from '../data/stages.js';
-import { EARTH_R, DAY_DURATION, laneWidth } from '../gameConstants.js';
+import { EARTH_R, DAY_DURATION, laneWidth, FOG_COLOR, FOG_NEAR, FOG_FAR } from '../gameConstants.js';
 import { 
   createClouds as _createClouds, 
   createStars as _createStars, 
@@ -8,21 +8,30 @@ import {
   cleanupMedievalFlowers as _cleanupMedievalFlowers 
 } from '../utils/sceneHelpers.js';
 
+/**
+ * Game scene composable — handles scene creation, textures, day/night cycle, visual effects.
+ * 
+ * @param {Object} deps
+ * @param {Object} deps.store - Shared reactive game store
+ * @param {Function} deps.trackTexture - Track texture loading function
+ * @param {Function} deps.onTextureLoaded - Texture loaded callback
+ * @param {Ref} deps.currentSkin - Current skin ref (from useAchievements)
+ * @param {Ref} deps.currentHat - Current hat ref (from useAchievements)
+ * @param {Object} deps.gameStats - Game stats object (from useAchievements)
+ * @param {Function} deps.checkAchievements - Check achievements function
+ */
 export function useGameScene({
-  getCtx,
-  getSurfaceY,
-  getCurveX,
-  currentStage,
-  roadCurveEnabled,
-  roadCurve,
-  currentSkin,
-  currentHat,
+  store,
   trackTexture,
   onTextureLoaded,
-  switchBGMTrack,
+  currentSkin,
+  currentHat,
   gameStats,
   checkAchievements
 }) {
+  // Functions accessed via store (wired in App.vue after init):
+  // store.getSurfaceY, store.getCurveX, store.switchBGMTrack
+  // store.currentStage, store.roadCurveEnabled, store.roadCurve accessed directly {
   let buildingTextures = [];
   let buildingDominantColors = [];
   let cobblestoneTexture = null;
@@ -123,8 +132,7 @@ export function useGameScene({
   };
 
   const applyFachwerkToBuildings = () => {
-    const ctx = getCtx();
-    const buildings = ctx.buildings;
+    const buildings = store.buildings;
     if (!buildings.length || !fachwerkTexture) return;
     buildings.forEach(b => {
       const mesh = b.children.find(c => c.isMesh);
@@ -158,8 +166,7 @@ export function useGameScene({
   };
 
   const applyStage3FacadeToBuildings = () => {
-    const ctx = getCtx();
-    const buildings = ctx.buildings;
+    const buildings = store.buildings;
     if (!buildings.length || !stage3Textures.building) return;
     buildings.forEach((b, i) => {
       const mesh = b.children.find(c => c.isMesh);
@@ -176,8 +183,7 @@ export function useGameScene({
   };
 
   const cleanupBackgroundElements = () => {
-    const ctx = getCtx();
-    if (!ctx) return;
+    if (!store) return;
     
     const disposeNode = (node) => {
       if (node.geometry) {
@@ -192,39 +198,36 @@ export function useGameScene({
       }
     };
 
-    if (ctx.trees) {
-      ctx.trees.forEach(t => {
+    if (store.trees) {
+      store.trees.forEach(t => {
         t.traverse(disposeNode);
-        ctx.scene.remove(t);
+        store.scene.remove(t);
       });
-      ctx.trees.length = 0;
+      store.trees.length = 0;
     }
 
-    if (ctx.buildings) {
-      ctx.buildings.forEach(b => {
+    if (store.buildings) {
+      store.buildings.forEach(b => {
         b.traverse(disposeNode);
-        ctx.scene.remove(b);
+        store.scene.remove(b);
       });
-      ctx.buildings.length = 0;
+      store.buildings.length = 0;
     }
   };
 
   const createMedievalFlowers = () => {
-    const ctx = getCtx();
-    _createMedievalFlowers(ctx.scene, ctx.medievalFlowers);
+    _createMedievalFlowers(store.scene, store.medievalFlowers);
   };
 
   const cleanupMedievalFlowers = () => {
-    const ctx = getCtx();
-    _cleanupMedievalFlowers(ctx.medievalFlowers);
+    _cleanupMedievalFlowers(store.medievalFlowers);
   };
 
   const applyStageVisuals = (stageIndex) => {
-    const ctx = getCtx();
     const stage = STAGES[stageIndex];
-    const roadMesh = ctx.roadMesh;
-    const grassMesh = ctx.grassMesh;
-    const scene = ctx.scene;
+    const roadMesh = store.roadMesh;
+    const grassMesh = store.grassMesh;
+    const scene = store.scene;
     
     if (!roadMesh) return;
     
@@ -264,7 +267,7 @@ export function useGameScene({
         grassMesh.material.needsUpdate = true;
       }
       if (scene && scene.fog) { scene.fog.color.set(0x4a5568); scene.background = new THREE.Color(0x4a5568); }
-      switchBGMTrack('medieval');
+      store.switchBGMTrack('medieval');
 
     } else if (stage.id === 3) {
       preloadStageTextures(3);
@@ -293,7 +296,7 @@ export function useGameScene({
 
       if (scene && scene.fog) { scene.fog.color.set(0x8a9a9a); scene.background = new THREE.Color(0x8a9a9a); }
       loadStage3Textures();
-      switchBGMTrack('highway');
+      store.switchBGMTrack('highway');
 
     } else {
       // Stage 1
@@ -307,13 +310,12 @@ export function useGameScene({
         grassMesh.material.color.set(0x8bc34a);
         grassMesh.material.needsUpdate = true;
       }
-      if (scene && scene.fog) { scene.fog.color.set(0x87ceeb); scene.background = new THREE.Color(0x87ceeb); }
-      switchBGMTrack('highway');
+      if (scene && scene.fog) { scene.fog.color.set(FOG_COLOR); scene.background = new THREE.Color(FOG_COLOR); }
+      store.switchBGMTrack('highway');
     }
   };
 
   const createGround = () => {
-    const ctx = getCtx();
     const canvas = document.createElement('canvas');
     canvas.width = 512;
     canvas.height = 1024;
@@ -351,14 +353,14 @@ export function useGameScene({
     groundTexture.wrapS = THREE.RepeatWrapping;
     groundTexture.wrapT = THREE.RepeatWrapping;
     groundTexture.repeat.set(1, 10);
-    ctx.groundTexture = groundTexture;
+    store.groundTexture = groundTexture;
     
     const groundGeo = new THREE.PlaneGeometry(15, 200, 1, 60);
     const gPos = groundGeo.attributes.position;
     for (let i = 0; i < gPos.count; i++) {
       const py = gPos.getY(i);
       const worldZ = -py - 50;
-      const yOffset = getSurfaceY(worldZ);
+      const yOffset = store.getSurfaceY(worldZ);
       gPos.setZ(i, gPos.getZ(i) + yOffset);
     }
     gPos.needsUpdate = true;
@@ -372,11 +374,11 @@ export function useGameScene({
     ground.position.set(0, 0, -50);
     ground.receiveShadow = false;
     ground.name = 'road';
-    ctx.scene.add(ground);
-    ctx.roadMesh = ground;
+    store.scene.add(ground);
+    store.roadMesh = ground;
     
-    ctx.roadOrigPositions = new Float32Array(gPos.array.length);
-    ctx.roadOrigPositions.set(gPos.array);
+    store.roadOrigPositions = new Float32Array(gPos.array.length);
+    store.roadOrigPositions.set(gPos.array);
     
     trackTexture();
     grassTileTex = textureLoader.load('assets/grass_tile.webp', () => {
@@ -386,14 +388,14 @@ export function useGameScene({
     grassTileTex.wrapT = THREE.RepeatWrapping;
     grassTileTex.repeat.set(10, 25);
     grassTileTex.colorSpace = THREE.SRGBColorSpace;
-    ctx.grassTileTex = grassTileTex;
+    store.grassTileTex = grassTileTex;
 
     const grassGeo = new THREE.PlaneGeometry(80, 200, 1, 60);
     const gPosG = grassGeo.attributes.position;
     for (let i = 0; i < gPosG.count; i++) {
       const py = gPosG.getY(i);
       const worldZ = -py - 50;
-      const yOffset = getSurfaceY(worldZ);
+      const yOffset = store.getSurfaceY(worldZ);
       gPosG.setZ(i, gPosG.getZ(i) + yOffset);
     }
     gPosG.needsUpdate = true;
@@ -406,11 +408,11 @@ export function useGameScene({
     grass.rotation.x = -Math.PI / 2;
     grass.position.set(0, -0.1, -50);
     grass.receiveShadow = false;
-    ctx.scene.add(grass);
-    ctx.grassMesh = grass;
+    store.scene.add(grass);
+    store.grassMesh = grass;
     
-    ctx.grassOrigPositions = new Float32Array(gPosG.array.length);
-    ctx.grassOrigPositions.set(gPosG.array);
+    store.grassOrigPositions = new Float32Array(gPosG.array.length);
+    store.grassOrigPositions.set(gPosG.array);
     
     const curbGeo = new THREE.BoxGeometry(0.3, 0.15, 200, 1, 1, 60);
     const curbMat = new THREE.MeshToonMaterial({ color: 0xcccccc });
@@ -418,7 +420,7 @@ export function useGameScene({
     for (let i = 0; i < curbPos.count; i++) {
       const cz = curbPos.getZ(i);
       const worldZ = cz - 50;
-      curbPos.setY(i, curbPos.getY(i) + getSurfaceY(worldZ));
+      curbPos.setY(i, curbPos.getY(i) + store.getSurfaceY(worldZ));
     }
     curbPos.needsUpdate = true;
     curbGeo.computeVertexNormals();
@@ -426,20 +428,20 @@ export function useGameScene({
     const leftCurb = new THREE.Mesh(curbGeo, curbMat);
     leftCurb.position.set(-7.5, 0.07, -50);
     leftCurb.receiveShadow = false;
-    ctx.scene.add(leftCurb);
-    ctx.leftCurbMesh = leftCurb;
+    store.scene.add(leftCurb);
+    store.leftCurbMesh = leftCurb;
     
-    ctx.leftCurbOrigPositions = new Float32Array(curbPos.array.length);
-    ctx.leftCurbOrigPositions.set(curbPos.array);
+    store.leftCurbOrigPositions = new Float32Array(curbPos.array.length);
+    store.leftCurbOrigPositions.set(curbPos.array);
     
     const rightCurb = new THREE.Mesh(curbGeo.clone(), curbMat.clone());
     rightCurb.position.set(7.5, 0.07, -50);
     rightCurb.receiveShadow = false;
-    ctx.scene.add(rightCurb);
-    ctx.rightCurbMesh = rightCurb;
+    store.scene.add(rightCurb);
+    store.rightCurbMesh = rightCurb;
     
-    ctx.rightCurbOrigPositions = new Float32Array(curbPos.array.length);
-    ctx.rightCurbOrigPositions.set(curbPos.array);
+    store.rightCurbOrigPositions = new Float32Array(curbPos.array.length);
+    store.rightCurbOrigPositions.set(curbPos.array);
   };
 
   const createLaneMarkers = () => {
@@ -447,12 +449,10 @@ export function useGameScene({
   };
 
   const createClouds = () => {
-    const ctx = getCtx();
-    _createClouds(ctx.scene, ctx.clouds);
+    _createClouds(store.scene, store.clouds);
   };
 
   const createBackgroundElements = () => {
-    const ctx = getCtx();
     trackTexture();
     buildingTextures = [
       textureLoader.load('assets/building_pink.webp', () => onTextureLoaded()),
@@ -471,8 +471,8 @@ export function useGameScene({
     trackTexture();
     const treePineTex = textureLoader.load('assets/tree_pine_clean.webp', () => onTextureLoaded());
     
-    const isStage3 = currentStage.value === 2;
-    const isStage2 = currentStage.value === 1;
+    const isStage3 = store.currentStage === 2;
+    const isStage2 = store.currentStage === 1;
 
     // Load Stage 2 Fachwerk / Stage 3 building textures if needed
     if (isStage2 && !fachwerkTexture) {
@@ -520,14 +520,14 @@ export function useGameScene({
         // group sits at ground level; mesh interior is offset up by height/2
         tree.position.set(
           baseX,
-          getSurfaceY(treeZ),
+          store.getSurfaceY(treeZ),
           treeZ
         );
         tree.userData.initX = baseX;
         tree.userData.initZ = treeZ;
         tree.userData.initBaseX = baseX;
-        ctx.scene.add(tree);
-        ctx.trees.push(tree);
+        store.scene.add(tree);
+        store.trees.push(tree);
       } else {
         // Stages 1 and 2 trees
         const isPine = Math.random() > 0.5;
@@ -552,14 +552,14 @@ export function useGameScene({
         tree.baseX = baseX;
         tree.position.set(
           baseX,
-          treeBaseY + getSurfaceY(treeZ),
+          treeBaseY + store.getSurfaceY(treeZ),
           treeZ
         );
         tree.userData.initX = baseX;
         tree.userData.initZ = treeZ;
         tree.userData.initBaseX = baseX;
-        ctx.scene.add(tree);
-        ctx.trees.push(tree);
+        store.scene.add(tree);
+        store.trees.push(tree);
       }
     }
     
@@ -622,49 +622,47 @@ export function useGameScene({
       const baseX = side * (14.5 + Math.random() * 8.5);
       buildingGroup.position.set(
         baseX,
-        getSurfaceY(bldgZ),
+        store.getSurfaceY(bldgZ),
         bldgZ
       );
-      ctx.scene.add(buildingGroup);
+      store.scene.add(buildingGroup);
       buildingGroup.baseY = 0;
       building.position.y = height / 2;
       buildingGroup.baseX = baseX;
       buildingGroup.userData.initX = baseX;
       buildingGroup.userData.initZ = bldgZ;
       buildingGroup.userData.initBaseX = baseX;
-      ctx.buildings.push(buildingGroup);
+      store.buildings.push(buildingGroup);
     }
   };
 
   const createStars = () => {
-    const ctx = getCtx();
-    _createStars(ctx.scene);
+    _createStars(store.scene);
   };
 
   const updateRoadCurve = () => {
-    const ctx = getCtx();
-    const roadMesh = ctx.roadMesh;
-    const grassMesh = ctx.grassMesh;
+    const roadMesh = store.roadMesh;
+    const grassMesh = store.grassMesh;
     
-    if (roadMesh && ctx.roadOrigPositions) {
+    if (roadMesh && store.roadOrigPositions) {
       const pos = roadMesh.geometry.attributes.position;
       for (let i = 0; i < pos.count; i++) {
-        const origY = ctx.roadOrigPositions[i * 3 + 1];
+        const origY = store.roadOrigPositions[i * 3 + 1];
         const worldZ = -origY - 50;
-        const curveX = getCurveX(worldZ);
-        pos.setX(i, ctx.roadOrigPositions[i * 3] + curveX);
+        const curveX = store.getCurveX(worldZ);
+        pos.setX(i, store.roadOrigPositions[i * 3] + curveX);
       }
       pos.needsUpdate = true;
       roadMesh.geometry.computeVertexNormals();
     }
     
-    if (grassMesh && ctx.grassOrigPositions) {
+    if (grassMesh && store.grassOrigPositions) {
       const pos = grassMesh.geometry.attributes.position;
       for (let i = 0; i < pos.count; i++) {
-        const origY = ctx.grassOrigPositions[i * 3 + 1];
+        const origY = store.grassOrigPositions[i * 3 + 1];
         const worldZ = -origY - 50;
-        const curveX = getCurveX(worldZ);
-        pos.setX(i, ctx.grassOrigPositions[i * 3] + curveX);
+        const curveX = store.getCurveX(worldZ);
+        pos.setX(i, store.grassOrigPositions[i * 3] + curveX);
       }
       pos.needsUpdate = true;
       grassMesh.geometry.computeVertexNormals();
@@ -676,20 +674,19 @@ export function useGameScene({
       for (let i = 0; i < pos.count; i++) {
         const origZ = origPos[i * 3 + 2];
         const worldZ = origZ - 50;
-        const curveX = getCurveX(worldZ);
+        const curveX = store.getCurveX(worldZ);
         pos.setX(i, origPos[i * 3] + curveX);
       }
       pos.needsUpdate = true;
       mesh.geometry.computeVertexNormals();
     };
-    applyCurbCurve(ctx.leftCurbMesh, ctx.leftCurbOrigPositions);
-    applyCurbCurve(ctx.rightCurbMesh, ctx.rightCurbOrigPositions);
+    applyCurbCurve(store.leftCurbMesh, store.leftCurbOrigPositions);
+    applyCurbCurve(store.rightCurbMesh, store.rightCurbOrigPositions);
   };
 
   const updateDayNightCycle = (delta) => {
-    const ctx = getCtx();
-    const scene = ctx.scene;
-    const dayCycleTime = ctx.dayCycleTime;
+    const scene = store.scene;
+    const dayCycleTime = store.dayCycleTime;
     const cycleProgress = dayCycleTime / DAY_DURATION;
     const dayColor = new THREE.Color(0x87ceeb);
     const sunsetColor = new THREE.Color(0xff7f50);
@@ -779,7 +776,6 @@ export function useGameScene({
   };
 
   const initSceneTextures = (sunnyUrl, sunsetUrl, nightUrl, mtUrl) => {
-    const ctx = getCtx();
     const skyUrls = { sunny: sunnyUrl, sunset: sunsetUrl, night: nightUrl };
     
     Object.keys(skyUrls).forEach(key => {
@@ -800,17 +796,17 @@ export function useGameScene({
         side: THREE.DoubleSide
       });
       mountainMesh = new THREE.Mesh(mtGeo, mtMat);
-      mountainMesh.position.set(0, 4 + getSurfaceY(-90), -90);
+      mountainMesh.position.set(0, 4 + store.getSurfaceY(-90), -90);
       mountainMesh.renderOrder = -2;
-      ctx.scene.add(mountainMesh);
+      store.scene.add(mountainMesh);
       
       const mt2 = new THREE.Mesh(mtGeo.clone(), mtMat.clone());
       mt2.material.opacity = 0.5;
       mt2.material.transparent = true;
-      mt2.position.set(0, 5 + getSurfaceY(-120), -120);
+      mt2.position.set(0, 5 + store.getSurfaceY(-120), -120);
       mt2.scale.set(2.0, 1.5, 1);
       mt2.renderOrder = -3;
-      ctx.scene.add(mt2);
+      store.scene.add(mt2);
       onTextureLoaded();
     });
   };

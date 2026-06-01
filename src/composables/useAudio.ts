@@ -1,5 +1,5 @@
 /**
- * useAudio — Game audio composable (SFX + BGM)
+ * useAudio.ts — Game audio composable (SFX + BGM)
  * 
  * Extracted from App.vue for AI-friendly incremental refactoring.
  * Dependencies: STAGES array, currentStage ref (passed in)
@@ -7,36 +7,58 @@
  * Usage: const { playSound, startBGM, stopBGM, switchBGMTrack, toggleMute, initAudio, isMuted, isBGMPlaying } = useAudio({ currentStage, STAGES })
  */
 
-export function useAudio({ currentStage, STAGES }) {
-  let audioCtx = null;
-  let isMuted = false;
-  let audioInitialized = false;
-  let bgmAudio = null;
-  let bgmGain = null;
-  let bgmSource = null;
-  let bgmMedievalAudio = null;
-  let bgmMedievalSource = null;
-  let bgmMedievalGain = null;
-  let isBGMPlaying = false;
-  let isMedievalBGM = false;
-  let bgmInterval = null;
+import type { Ref } from 'vue';
+import type { StageConfig } from '../data/stages';
+
+export interface UseAudioParams {
+  currentStage: Ref<number>;
+  STAGES: StageConfig[];
+}
+
+export interface UseAudioReturn {
+  playSound: (type: string, pitchMod?: number) => void;
+  playSFX: (name: string, volume?: number) => void;
+  startBGM: () => boolean;
+  stopBGM: () => void;
+  switchBGMTrack: (track: string) => void;
+  toggleMute: () => boolean;
+  initAudio: () => void;
+  startStage3Audio: () => void;
+  stopStage3Audio: () => void;
+  updateIntercom: (delta: number, isStage3: boolean) => void;
+  readonly isMuted: boolean;
+  readonly isBGMPlaying: boolean;
+  readonly bgmStarted: boolean;
+}
+
+export function useAudio({ currentStage, STAGES }: UseAudioParams): UseAudioReturn {
+  let audioCtx: AudioContext | null = null;
+  let isMuted: boolean = false;
+  let audioInitialized: boolean = false;
+  let bgmAudio: HTMLAudioElement | null = null;
+  let bgmGain: GainNode | null = null;
+  let bgmSource: MediaElementAudioSourceNode | null = null;
+  let bgmMedievalAudio: HTMLAudioElement | null = null;
+  let bgmMedievalSource: MediaElementAudioSourceNode | null = null;
+  let bgmMedievalGain: GainNode | null = null;
+  let isBGMPlaying: boolean = false;
+  let isMedievalBGM: boolean = false;
+  let bgmInterval: number | null = null;
 
   // SFX cache: preloaded Audio objects
-  const sfxCache = {};
-  const SFX_FILES = {
+  const sfxCache: Record<string, HTMLAudioElement | HTMLAudioElement[]> = {};
+  const SFX_FILES: Record<string, string | string[]> = {
     truck_honk: 'assets/sfx_truck_honk.ogg',
     dragon_cry: 'assets/sfx_dragon_cry.ogg',
     truck_rev: 'assets/sfx_truck_rev.ogg',
     fire_shoot: 'assets/sfx_fire_shoot.ogg',
     stage_clear: 'assets/sfx_stage_clear.ogg',
-    // Stage 3 SFX
     crash_wood: 'assets/sfx-crash-wood.ogg',
     crash_glass: 'assets/sfx-crash-glass.ogg',
     crash_metal: 'assets/sfx-crash-metal.ogg',
     assembly: 'assets/sfx-assembly.ogg',
     portal_whoosh: 'assets/sfx-portal-whoosh.ogg',
     cash_register: 'assets/sfx-cash-register.ogg',
-    // Intercom clips (loaded as array)
     intercom: [
       'assets/sfx-intercom-1.ogg',
       'assets/sfx-intercom-2.ogg',
@@ -45,24 +67,19 @@ export function useAudio({ currentStage, STAGES }) {
       'assets/sfx-intercom-5.ogg',
     ],
   };
-  
 
-  
-  // Intercom randomizer state
-  let intercomTimer = 0;
-  let intercomInterval = 25000; // 25 seconds average
+  let intercomTimer: number = 0;
+  let intercomInterval: number = 25000;
 
-  const initAudio = () => {
+  const initAudio = (): void => {
     if (audioInitialized) return;
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
     audioInitialized = true;
     if (audioCtx.state === 'suspended') {
       audioCtx.resume().catch(err => console.log('Audio resume failed:', err));
     }
-    // Preload SFX files
     for (const [key, path] of Object.entries(SFX_FILES)) {
       if (Array.isArray(path)) {
-        // Intercom clips - preload as array
         sfxCache[key] = path.map(p => {
           const audio = new Audio(p);
           audio.preload = 'auto';
@@ -70,44 +87,38 @@ export function useAudio({ currentStage, STAGES }) {
           return audio;
         });
       } else {
-        sfxCache[key] = new Audio(path);
-        sfxCache[key].preload = 'auto';
-        sfxCache[key].volume = 0.8;
+        const audio = new Audio(path);
+        audio.preload = 'auto';
+        audio.volume = 0.8;
+        sfxCache[key] = audio;
       }
     }
-    
-    // === PRELOAD BGM FILES DURING LOADING ===
-    // Preload Stage 1 (Highway) BGM so it can play immediately on game start
+
     const STAGE1_BGM_FILE = 'assets/elango_main_theme.mp3';
     const STAGE1_BGM_FALLBACK = 'assets/game_music.ogg';
     bgmAudio = new Audio(STAGE1_BGM_FILE);
     bgmAudio.preload = 'auto';
     bgmAudio.loop = true;
     bgmAudio.volume = 1;
-    // Fallback loading
     bgmAudio.onerror = () => {
       console.warn('Primary Stage 1 BGM failed, trying fallback...');
-      bgmAudio.src = STAGE1_BGM_FALLBACK;
-      bgmAudio.load();
+      if (bgmAudio) {
+        bgmAudio.src = STAGE1_BGM_FALLBACK;
+        bgmAudio.load();
+      }
     };
-    bgmAudio.load(); // Start loading immediately
-    
-    // Preload Medieval BGM (Stage 2) - using Elango main theme for now
-    // Original: assets/medieval_music.ogg (commented out, keep structure for future stage-specific BGM)
+    bgmAudio.load();
+
     bgmMedievalAudio = new Audio('assets/elango_main_theme.mp3');
     bgmMedievalAudio.preload = 'auto';
     bgmMedievalAudio.loop = true;
     bgmMedievalAudio.volume = 1;
     bgmMedievalAudio.load();
-    
-
   };
 
-  const playSound = (type, pitchMod = 1) => {
+  const playSound = (type: string, pitchMod: number = 1): void => {
     if (isMuted) return;
-    if (!audioCtx) {
-      initAudio();
-    }
+    if (!audioCtx) initAudio();
     if (!audioCtx || audioCtx.state === 'suspended') {
       if (audioCtx) audioCtx.resume();
       return;
@@ -217,7 +228,7 @@ export function useAudio({ currentStage, STAGES }) {
     }
   };
 
-  const toggleMute = () => {
+  const toggleMute = (): boolean => {
     isMuted = !isMuted;
     if (audioCtx) {
       if (isMuted) {
@@ -232,19 +243,18 @@ export function useAudio({ currentStage, STAGES }) {
     return isMuted;
   };
 
-  const getCurrentBGMTrack = () => {
+  const getCurrentBGMTrack = (): string => {
     const stage = STAGES[currentStage.value];
-    return (stage && stage.roadTexture === 'cobblestone') ? 'medieval' : 'highway';
+    return (stage && stage.roadType === 'cobblestone') ? 'medieval' : 'highway';
   };
 
-  let bgmStarted = false; // track whether BGM has ever started successfully
+  let bgmStarted: boolean = false;
 
-  const startBGM = () => {
+  const startBGM = (): boolean => {
     if (isMuted) return false;
     if (!audioCtx) initAudio();
-    if (!audioCtx) return;
+    if (!audioCtx) return false;
     if (audioCtx.state === 'suspended') {
-      // Must resume from a user gesture — return false so caller can retry
       audioCtx.resume();
       if (!bgmStarted) return false;
     }
@@ -254,27 +264,21 @@ export function useAudio({ currentStage, STAGES }) {
     const track = getCurrentBGMTrack();
     isMedievalBGM = (track === 'medieval');
 
-    // ============================================
-    // STAGE 1 BGM - ELANGO MAIN THEME
-    // ============================================
-    // Primary BGM: elango_main_theme.mp3 (user-provided main theme)
-    // Fallback: game_music.ogg (original highway theme)
-    // ============================================
-    const STAGE1_BGM_FILE = 'assets/elango_main_theme.mp3'; // Elango Main Theme
-    const STAGE1_BGM_FALLBACK = 'assets/game_music.ogg'; // Fallback to original highway theme
+    const STAGE1_BGM_FILE = 'assets/elango_main_theme.mp3';
+    const STAGE1_BGM_FALLBACK = 'assets/game_music.ogg';
 
-    // Highway BGM - use preloaded audio
     bgmGain = audioCtx.createGain();
     bgmGain.gain.value = isMedievalBGM ? 0 : 0.5;
     bgmGain.connect(audioCtx.destination);
 
     if (!bgmAudio) {
-      // Fallback: create if not preloaded (shouldn't happen)
       bgmAudio = new Audio(STAGE1_BGM_FILE);
       bgmAudio.onerror = () => {
         console.warn('Primary Stage 1 BGM failed, trying fallback...');
-        bgmAudio.src = STAGE1_BGM_FALLBACK;
-        bgmAudio.load();
+        if (bgmAudio) {
+          bgmAudio.src = STAGE1_BGM_FALLBACK;
+          bgmAudio.load();
+        }
       };
       bgmAudio.loop = true;
       bgmAudio.volume = 1;
@@ -288,14 +292,10 @@ export function useAudio({ currentStage, STAGES }) {
     if (highwayPromise) {
       highwayPromise.then(() => { bgmStarted = true; }).catch(e => {
         console.warn('Highway BGM play failed:', e);
-        return false;
       });
     }
 
-    // Medieval BGM - use preloaded audio (Elango main theme for all stages)
     if (!bgmMedievalAudio) {
-      // Fallback: create if not preloaded
-      // Original: assets/medieval_music.ogg (kept for future stage-specific BGM)
       bgmMedievalAudio = new Audio('assets/elango_main_theme.mp3');
       bgmMedievalAudio.loop = true;
       bgmMedievalAudio.volume = 1;
@@ -312,14 +312,13 @@ export function useAudio({ currentStage, STAGES }) {
     if (medievalPromise) {
       medievalPromise.then(() => { bgmStarted = true; }).catch(e => {
         console.warn('Medieval BGM play failed:', e);
-        return false;
       });
     }
 
     return true;
   };
 
-  const switchBGMTrack = (track) => {
+  const switchBGMTrack = (track: string): void => {
     if (!audioCtx || !isBGMPlaying) return;
     const toMedieval = (track === 'medieval');
     if (toMedieval === isMedievalBGM) return;
@@ -329,7 +328,7 @@ export function useAudio({ currentStage, STAGES }) {
     if (bgmMedievalGain) bgmMedievalGain.gain.linearRampToValueAtTime(toMedieval ? 0.5 : 0, fadeTime);
   };
 
-  const stopBGM = () => {
+  const stopBGM = (): void => {
     isBGMPlaying = false;
     bgmStarted = false;
     isMedievalBGM = false;
@@ -349,32 +348,29 @@ export function useAudio({ currentStage, STAGES }) {
       try { bgmMedievalGain.disconnect(); } catch(e) {}
       bgmMedievalGain = null;
     }
-    if (bgmInterval) {
+    if (bgmInterval !== null) {
       clearTimeout(bgmInterval);
       bgmInterval = null;
     }
   };
 
-  const playSFX = (name, volume = 0.8) => {
+  const playSFX = (name: string, volume: number = 0.8): void => {
     if (isMuted) return;
     if (!audioCtx) initAudio();
     if (!audioCtx) return;
     if (audioCtx.state === 'suspended') audioCtx.resume();
     const audio = sfxCache[name];
     if (!audio) return;
-    // Clone to allow overlapping plays (e.g. multiple fireballs)
-    const clone = audio.cloneNode();
+    const clone = (audio as HTMLAudioElement).cloneNode() as HTMLAudioElement;
     clone.volume = volume;
     clone.play().catch(() => {});
   };
-  
-  // Stage 3: Use Elango main theme (same as Stage 1)
-  const startStage3Audio = () => {
+
+  const startStage3Audio = (): void => {
     if (!audioCtx) initAudio();
     if (!audioCtx || isMuted) return;
     if (audioCtx.state === 'suspended') audioCtx.resume();
-    
-    // Use Elango main theme (same as Stage 1)
+
     if (!bgmAudio) {
       bgmAudio = new Audio('assets/elango_main_theme.mp3');
       bgmAudio.loop = true;
@@ -392,8 +388,8 @@ export function useAudio({ currentStage, STAGES }) {
     bgmAudio.currentTime = 0;
     bgmAudio.play().catch(e => console.warn('Stage 3 BGM play failed:', e));
   };
-  
-  const stopStage3Audio = () => {
+
+  const stopStage3Audio = (): void => {
     if (bgmAudio) {
       bgmAudio.pause();
       bgmAudio.currentTime = 0;
@@ -404,17 +400,16 @@ export function useAudio({ currentStage, STAGES }) {
     }
   };
 
-  // Stage 3 intercom random SFX player
-  const updateIntercom = (delta, isStage3) => {
+  const updateIntercom = (delta: number, isStage3: boolean): void => {
     if (!isStage3 || !audioInitialized) return;
     intercomTimer += delta * 1000;
     if (intercomTimer >= intercomInterval) {
       intercomTimer = 0;
-      intercomInterval = 20000 + Math.random() * 10000; // 20-30s
+      intercomInterval = 20000 + Math.random() * 10000;
       const clips = sfxCache.intercom;
-      if (clips && clips.length) {
+      if (Array.isArray(clips) && clips.length) {
         const clip = clips[Math.floor(Math.random() * clips.length)];
-        const audio = clip.cloneNode();
+        const audio = clip.cloneNode() as HTMLAudioElement;
         audio.volume = 0.6;
         audio.play().catch(() => {});
       }

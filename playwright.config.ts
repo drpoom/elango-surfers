@@ -5,7 +5,7 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: 8,
+  workers: 2,
   reporter: [
     ['list'],
   ],
@@ -23,8 +23,14 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
+  webServer: {
+    command: 'npm run dev',
+    url: 'http://localhost:5173/',
+    reuseExistingServer: true,
+    timeout: 30000,
+  },
   outputDir: 'test-results/',
-  timeout: 60000,
+  timeout: 30000,
   expect: {
     toHaveScreenshot: {
       maxDiffPixels: 100, // Allow small differences

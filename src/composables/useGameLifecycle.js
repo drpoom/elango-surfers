@@ -1,58 +1,66 @@
 import * as THREE from 'three';
+import { CAMERA_POS_Y, CAMERA_POS_Z, FOG_NEAR, FOG_FAR, BOSS_BASE_HEALTH, BOSS_DEFEAT_DELAY, BOSS_HIT_DAMAGE, INVINCIBILITY_GRACE, COUNTDOWN_SECONDS, COUNTDOWN_TICK_MS, STAGE_COUNTDOWN_GO_DELAY, INITIAL_SPAWN_INTERVAL, SPAWN_GRACE_PERIOD, GAME_OVER_SHAKE_INTERVAL, GAME_OVER_SHAKE_DURATION } from '../gameConstants.js';
+import { STAGES } from '../data/stages.js';
+import { VERSION_MAJOR_MINOR } from '../version.js';
+import { createTimerTracker } from '../utils/timerTracker.js';
 
+/**
+ * Game lifecycle composable — handles game over, reset, countdown, powerups, bonus zones.
+ * 
+ * @param {Object} deps
+ * @param {Object} deps.store - Shared reactive game store
+ * @param {Object} deps.gameScene - Game scene composable
+ * @param {Object} deps.gameSpawns - Game spawns composable
+ * @param {Object} deps.gameBoss - Game boss composable
+ * @param {Ref} deps.debugStartStage - Debug start stage ref
+ * @param {Ref} deps.achievements - Achievements ref
+ * @param {Function} deps.loadProgress - Load game progress
+ * @param {Function} deps.saveProgress - Save game progress
+ * @param {Function} deps.checkAchievements - Check achievements
+ */
 export function useGameLifecycle({
-  getCtx,
-  playSound,
-  playSFX,
-  startBGM,
-  stopBGM,
-  switchBGMTrack,
-  initAudio,
-  tryStartBGMFromGesture,
+  store,
   gameScene,
   gameSpawns,
   gameBoss,
-  STAGES,
-  BOSS_BASE_HEALTH,
-  VERSION_MAJOR_MINOR,
+  debugStartStage,
+  achievements,
   loadProgress,
   saveProgress,
-  checkAchievements,
-  achievements,
-  isHighScore,
-  getSurfaceY,
-  startTiltCalibration,
-  finishTiltCalibration,
-  startCalibration,
-  clearAllTimers,
-  debugStartStage,
-  createFloatingText,
-  createParticleEffect
+  checkAchievements
 }) {
+  // Functions accessed via store (wired in App.vue after init):
+  // store.playSound, store.playSFX, store.startBGM, store.stopBGM,
+  // store.switchBGMTrack, store.initAudio, store.tryStartBGMFromGesture,
+  // store.createFloatingText, store.createParticleEffect, store.getSurfaceY,
+  // store.isHighScore, store.startTiltCalibration, store.finishTiltCalibration,
+  // store.startCalibration, store.clearAllTimers
+
+  // Local timer tracker for this composable's setTimeout/setInterval calls
+  const timer = createTimerTracker();
+
   const saveHighScore = () => {
-    const ctx = getCtx();
-    if (ctx.score > ctx.highScore) {
-      ctx.highScore = ctx.score;
-      localStorage.setItem(`elangoSurfersHighScore_${VERSION_MAJOR_MINOR}`, ctx.highScore.toString());
+    if (store.score > store.highScore) {
+      store.highScore = store.score;
+      localStorage.setItem(`elangoSurfersHighScore_${VERSION_MAJOR_MINOR}`, store.highScore.toString());
     }
   };
 
   const activatePowerup = (type) => {
-    const ctx = getCtx();
-    if (ctx.activePowerup) {
+    if (store.activePowerup) {
       deactivatePowerup();
     }
-    ctx.activePowerup = type;
+    store.activePowerup = type;
     const now = Date.now();
     
     if (type === 'shield') {
-      ctx.powerupEndTime = now + 10000;
-      ctx.powerupIcon = '🛡️';
-      ctx.powerupName = 'Shield';
-      ctx.isInvincible = true;
+      store.powerupEndTime = now + 10000;
+      store.powerupIcon = '🛡️';
+      store.powerupName = 'Shield';
+      store.isInvincible = true;
       
-      const oldShield = ctx.player.getObjectByName('shield-aura');
-      if (oldShield) ctx.player.remove(oldShield);
+      const oldShield = store.player.getObjectByName('shield-aura');
+      if (oldShield) store.player.remove(oldShield);
       const shieldGeo = new THREE.SphereGeometry(1.2, 16, 16);
       const shieldMat = new THREE.MeshToonMaterial({ 
         color: 0x00bfff, 
@@ -62,432 +70,349 @@ export function useGameLifecycle({
       });
       const shieldMesh = new THREE.Mesh(shieldGeo, shieldMat);
       shieldMesh.name = 'shield-aura';
-      ctx.player.add(shieldMesh);
+      store.player.add(shieldMesh);
       
     } else if (type === 'coldDrink') {
-      ctx.powerupEndTime = now + 5000;
-      ctx.powerupIcon = '🥤';
-      ctx.powerupName = 'Cold Drink';
-      ctx.speedMultiplier = 0.6;
+      store.powerupEndTime = now + 5000;
+      store.powerupIcon = '🥤';
+      store.powerupName = 'Cold Drink';
+      store.speedMultiplier = 0.6;
       
     } else if (type === 'magnet') {
-      ctx.powerupEndTime = now + 15000;
-      ctx.powerupIcon = '🧲';
-      ctx.powerupName = 'Magnet';
-      ctx.magnetRange = 5;
+      store.powerupEndTime = now + 15000;
+      store.powerupIcon = '🧲';
+      store.powerupName = 'Magnet';
+      store.magnetRange = 5;
     }
   };
 
   const deactivatePowerup = () => {
-    const ctx = getCtx();
-    if (ctx.activePowerup === 'shield') {
-      ctx.isInvincible = false;
-      const shield = ctx.player.getObjectByName('shield-aura');
-      if (shield) ctx.player.remove(shield);
-    } else if (ctx.activePowerup === 'coldDrink') {
-      ctx.speedMultiplier = 1.0;
-    } else if (ctx.activePowerup === 'magnet') {
-      ctx.magnetRange = 0;
+    if (store.activePowerup === 'shield') {
+      store.isInvincible = false;
+      const shield = store.player.getObjectByName('shield-aura');
+      if (shield) store.player.remove(shield);
+    } else if (store.activePowerup === 'coldDrink') {
+      store.speedMultiplier = 1.0;
+    } else if (store.activePowerup === 'magnet') {
+      store.magnetRange = 0;
     }
     
-    ctx.activePowerup = null;
-    ctx.powerupTimeLeft = 0;
+    store.activePowerup = null;
+    store.powerupTimeLeft = 0;
   };
 
   const triggerGameOver = (shakeIntensity = 0.5) => {
-    const ctx = getCtx();
-    if (ctx.gameOver) return;
-    ctx.gameOver = true;
-    ctx.gameOverTime = Date.now();
+    if (store.gameOver) return;
+    store.gameOver = true;
+    store.gameOverTime = Date.now();
     
-    if (ctx.bonusPortal) { ctx.scene.remove(ctx.bonusPortal.mesh); ctx.bonusPortal = null; }
-    ctx.inBonusZone = false;
-    ctx.inBonusZoneRef = false;
-    ctx.bonusTimer = 0;
-    ctx.bonusTimerRef = 0;
-    ctx.inShowroom = false;
-    ctx.inShowroomRef = false;
-    ctx.showroomTimer = 0;
-    ctx.showroomTimerRef = 0;
-    ctx.isShowroomPortal = false;
-    ctx.bonusNoSpawn = false;
-    ctx.bonusCoins.forEach(bc => ctx.scene.remove(bc.mesh));
-    ctx.bonusCoins = [];
-    ctx.scene.userData.bonusEnvActive = false;
-    if (ctx.scene.userData.nyanCat) {
-      ctx.scene.remove(ctx.scene.userData.nyanCat);
-      ctx.scene.userData.nyanCat = null;
-      ctx.scene.userData.nyanCatTime = 0;
+    if (store.bonusPortal) { store.scene.remove(store.bonusPortal.mesh); store.bonusPortal = null; }
+    store.inBonusZone = false;
+    store.inBonusZoneRef = false;
+    store.bonusTimer = 0;
+    store.bonusTimerRef = 0;
+    store.inShowroom = false;
+    store.inShowroomRef = false;
+    store.showroomTimer = 0;
+    store.showroomTimerRef = 0;
+    store.isShowroomPortal = false;
+    store.bonusNoSpawn = false;
+    store.bonusCoins.forEach(bc => store.scene.remove(bc.mesh));
+    store.bonusCoins = [];
+    store.scene.userData.bonusEnvActive = false;
+    if (store.scene.userData.nyanCat) {
+      store.scene.remove(store.scene.userData.nyanCat);
+      store.scene.userData.nyanCat = null;
+      store.scene.userData.nyanCatTime = 0;
     }
     
-    const roadGO = ctx.scene.getObjectByName('road');
-    if (roadGO && ctx.originalRoadMaterial) {
+    const roadGO = store.scene.getObjectByName('road');
+    if (roadGO && store.originalRoadMaterial) {
       roadGO.material.dispose();
-      roadGO.material = ctx.originalRoadMaterial;
-      ctx.originalRoadMaterial = null;
+      roadGO.material = store.originalRoadMaterial;
+      store.originalRoadMaterial = null;
     }
     
-    if (ctx.savedSubstageState) {
-      ctx.savedSubstageState.obstacles.forEach(obs => ctx.scene.remove(obs.mesh));
-      ctx.savedSubstageState.coins.forEach(coin => ctx.scene.remove(coin.mesh));
-      ctx.savedSubstageState = null;
+    if (store.savedSubstageState) {
+      store.savedSubstageState.obstacles.forEach(obs => store.scene.remove(obs.mesh));
+      store.savedSubstageState.coins.forEach(coin => store.scene.remove(coin.mesh));
+      store.savedSubstageState = null;
     }
     
-    ctx.buildings.forEach(b => { b.visible = true; });
-    ctx.trees.forEach(t => { t.visible = true; });
+    store.buildings.forEach(b => { b.visible = true; });
+    store.trees.forEach(t => { t.visible = true; });
     
-    ctx.obstacles.forEach(obs => {
+    store.obstacles.forEach(obs => {
       obs.mesh.traverse(c => { if (c.geometry) c.geometry.dispose(); });
-      ctx.scene.remove(obs.mesh);
+      store.scene.remove(obs.mesh);
     });
-    ctx.obstacles.length = 0;
-    ctx.coins.forEach(coin => ctx.scene.remove(coin.mesh));
-    ctx.coins.length = 0;
-    ctx.powerups.forEach(pw => ctx.scene.remove(pw.mesh));
-    ctx.powerups.length = 0;
-    ctx.bossProjectiles.forEach(fb => ctx.scene.remove(fb));
-    ctx.bossProjectiles.length = 0;
+    store.obstacles.length = 0;
+    store.coins.forEach(coin => store.scene.remove(coin.mesh));
+    store.coins.length = 0;
+    store.powerups.forEach(pw => store.scene.remove(pw.mesh));
+    store.powerups.length = 0;
+    store.bossProjectiles.forEach(fb => store.scene.remove(fb));
+    store.bossProjectiles.length = 0;
     
-    ctx.bossVulnerableOrbs.forEach(orb => ctx.scene.remove(orb.mesh));
-    ctx.bossVulnerableOrbs.length = 0;
-    ctx.particles.forEach(p => ctx.scene.remove(p));
-    ctx.particles.length = 0;
-    ctx.floatingTexts.forEach(t => ctx.scene.remove(t));
-    ctx.floatingTexts.length = 0;
-    if (ctx.boss) { ctx.scene.remove(ctx.boss); ctx.boss = null; }
+    store.bossVulnerableOrbs.forEach(orb => store.scene.remove(orb.mesh));
+    store.bossVulnerableOrbs.length = 0;
+    store.particles.forEach(p => store.scene.remove(p));
+    store.particles.length = 0;
+    store.floatingTexts.forEach(t => store.scene.remove(t));
+    store.floatingTexts.length = 0;
+    if (store.boss) { store.scene.remove(store.boss); store.boss = null; }
     
-    if (ctx.bossDefeatTimeout1) { clearTimeout(ctx.bossDefeatTimeout1); ctx.bossDefeatTimeout1 = null; }
-    ctx.bossDefeated = false;
-    ctx.bossCharging = false;
-    ctx.bossState = 'idle';
-    ctx.bossStateTimer = 0;
+    if (store.bossDefeatTimeout1) { clearTimeout(store.bossDefeatTimeout1); store.bossDefeatTimeout1 = null; }
+    store.bossDefeated = false;
+    store.bossCharging = false;
+    store.bossState = 'idle';
+    store.bossStateTimer = 0;
 
     saveHighScore();
-    const gameStats = ctx.gameStats || { maxScore: 0, maxTime: 0, bestRun: 0 };
-    if (ctx.score > gameStats.maxScore) gameStats.maxScore = ctx.score;
-    if (ctx.gameDuration > gameStats.maxTime) gameStats.maxTime = ctx.gameDuration;
-    if (ctx.score > gameStats.bestRun) gameStats.bestRun = ctx.score;
+    const gameStats = store.gameStats || { maxScore: 0, maxTime: 0, bestRun: 0 };
+    if (store.score > gameStats.maxScore) gameStats.maxScore = store.score;
+    if (store.gameDuration > gameStats.maxTime) gameStats.maxTime = store.gameDuration;
+    if (store.score > gameStats.bestRun) gameStats.bestRun = store.score;
     saveProgress();
     
-    playSound('crash');
-    createParticleEffect(ctx.player.position, 0xff0000, 30);
-    ctx.comboCount = 0;
+    store.playSound('crash');
+    store.createParticleEffect(store.player.position, 0xff0000, 30);
+    store.comboCount = 0;
 
-    const originalPos = ctx.camera.position.clone();
+    const originalPos = store.camera.position.clone();
     let shakeTime = 0;
-    ctx.gameOverShakeInterval = setInterval(() => {
+    const shakeId = timer.setInterval(() => {
       shakeTime += 0.05;
-      if (shakeTime > 0.5) {
-        ctx.camera.position.copy(originalPos);
-        clearInterval(ctx.gameOverShakeInterval);
-        ctx.gameOverShakeInterval = null;
+      if (shakeTime > GAME_OVER_SHAKE_DURATION) {
+        store.camera.position.copy(originalPos);
+        timer.clearInterval(shakeId);
         return;
       }
-      ctx.camera.position.x = originalPos.x + (Math.random() - 0.5) * shakeIntensity * (1 - shakeTime * 2);
-      ctx.camera.position.y = originalPos.y + (Math.random() - 0.5) * shakeIntensity * (1 - shakeTime * 2);
-    }, 30);
+      store.camera.position.x = originalPos.x + (Math.random() - 0.5) * shakeIntensity * (1 - shakeTime * 2);
+      store.camera.position.y = originalPos.y + (Math.random() - 0.5) * shakeIntensity * (1 - shakeTime * 2);
+    }, GAME_OVER_SHAKE_INTERVAL);
     
-    ctx.showNameEntry = isHighScore.value;
+    store.showNameEntry = store.isHighScore.value;
   };
 
   const resetStage = (preserveScore = false, targetStage = -1) => {
-    const ctx = getCtx();
-    clearAllTimers();
-    ctx.clock.stop();
+    store.clearAllTimers();
+    store.clock.stop();
 
-    if (!preserveScore) ctx.score = 0;
-    ctx.gameOver = false;
-    ctx.showNameEntry = false;
-    ctx.playerName = '';
-    ctx.currentLane = 1;
-    ctx.isJumping = false;
-    ctx.jumpVelocity = 0;
-    ctx.isSliding = false;
-    ctx.slideTimer = 0;
-    ctx.isFlying = false;
-    ctx.flyVelocity = 0;
+    if (!preserveScore) store.score = 0;
+    store.gameOver = false;
+    store.showNameEntry = false;
+    store.playerName = '';
+    store.currentLane = 1;
+    store.isJumping = false;
+    store.jumpVelocity = 0;
+    store.isSliding = false;
+    store.slideTimer = 0;
+    store.isFlying = false;
+    store.flyVelocity = 0;
 
-    ctx.gameSpeed = 0.25;
-    ctx.spawnInterval = 1.2;
-    ctx.gameDuration = 1.5;
-    ctx.countdownLocked = false;
-    ctx.countdownActive = false;
+    store.gameSpeed = 0.25;
+    store.spawnInterval = INITIAL_SPAWN_INTERVAL;
+    store.gameDuration = SPAWN_GRACE_PERIOD;
+    store.countdownLocked = false;
+    store.countdownActive = false;
 
-    ctx.clock.start();
-    ctx.lastSpawnTime = 0;
-    ctx.stageTransitioning = false;
+    store.clock.start();
+    store.lastSpawnTime = 0;
+    store.stageTransitioning = false;
     gameScene.createStars(); // custom cleanup
     
-    ctx.currentStage = targetStage >= 0 ? targetStage : (debugStartStage.value >= 0 ? debugStartStage.value : 0);
-    ctx.stageTime = targetStage >= 0 ? 0 : (debugStartStage.value >= 0 ? Math.max(0, STAGES[debugStartStage.value].stageDuration - 20) : 0);
-    gameScene.applyStageVisuals(ctx.currentStage);
+    store.currentStage = targetStage >= 0 ? targetStage : (debugStartStage.value >= 0 ? debugStartStage.value : 0);
+    store.stageTime = targetStage >= 0 ? 0 : (debugStartStage.value >= 0 ? Math.max(0, STAGES[debugStartStage.value].stageDuration - 20) : 0);
+    gameScene.applyStageVisuals(store.currentStage);
 
-    ctx.roadCurve = 0;
-    ctx.roadCurveTarget = 0;
-    ctx.curveChangeTimer = 0;
-    ctx.nextCurveChange = 3;
-    ctx.curveFrontZ = 0;
+    store.roadCurve = 0;
+    store.roadCurveTarget = 0;
+    store.curveChangeTimer = 0;
+    store.nextCurveChange = 3;
+    store.curveFrontZ = 0;
 
-    ctx.bossWarning = false;
-    ctx.bossActive = false;
-    ctx.bossDefeated = false;
-    ctx.bossHealth = BOSS_BASE_HEALTH;
-    ctx.bossCharging = false;
-    ctx.bossChargeTimer = 0;
-    ctx.bossChargeTarget = 0;
-    ctx.bossAttackTimer = 0;
-    ctx.bossNextAttack = 3;
-    ctx.bossState = 'idle';
-    ctx.bossStateTimer = 0;
-    ctx.bossVulnerableOrbs = [];
+    store.bossWarning = false;
+    store.bossActive = false;
+    store.bossDefeated = false;
+    store.bossHealth = BOSS_BASE_HEALTH;
+    store.bossCharging = false;
+    store.bossChargeTimer = 0;
+    store.bossChargeTarget = 0;
+    store.bossAttackTimer = 0;
+    store.bossNextAttack = 3;
+    store.bossState = 'idle';
+    store.bossStateTimer = 0;
+    store.bossVulnerableOrbs = [];
     
-    if (ctx.boss) { ctx.scene.remove(ctx.boss); ctx.boss = null; }
+    if (store.boss) { store.scene.remove(store.boss); store.boss = null; }
 
-    ctx.comboCount = 0;
-    ctx.lastCoinTime = 0;
-    ctx.scoreMultiplier = 1;
-    ctx.magnetRange = 0;
-    ctx.isInvincible = false;
-    ctx.activePowerup = null;
-    ctx.powerupEndTime = 0;
-    ctx.powerupIcon = '';
-    ctx.powerupName = '';
-    ctx.powerupTimeLeft = 0;
+    store.comboCount = 0;
+    store.lastCoinTime = 0;
+    store.scoreMultiplier = 1;
+    store.magnetRange = 0;
+    store.isInvincible = false;
+    store.activePowerup = null;
+    store.powerupEndTime = 0;
+    store.powerupIcon = '';
+    store.powerupName = '';
+    store.powerupTimeLeft = 0;
     
-    const shieldAura = ctx.player.getObjectByName('shield-aura');
-    if (shieldAura) ctx.player.remove(shieldAura);
+    const shieldAura = store.player.getObjectByName('shield-aura');
+    if (shieldAura) store.player.remove(shieldAura);
 
-    ctx.cameraShakeTimer = 0;
-    ctx.cameraShakeIntensity = 0;
-    ctx.camera.position.set(0, 6, 12);
+    store.cameraShakeTimer = 0;
+    store.cameraShakeIntensity = 0;
+    store.camera.position.set(0, CAMERA_POS_Y, CAMERA_POS_Z);
 
-    ctx.dayCycleTime = 0;
-    ctx.nearMissTimer = 0;
-    ctx.nearMissCount = 0;
-    ctx.nearMissTextRef = '';
-    ctx.nearMissCountRef = 0;
+    store.dayCycleTime = 0;
+    store.nearMissTimer = 0;
+    store.nearMissCount = 0;
+    store.nearMissTextRef = '';
+    store.nearMissCountRef = 0;
 
-    ctx.eventTimer = 0;
-    ctx.activeEvent = null;
-    ctx.eventDuration = 0;
-    ctx.fogDensity = 0;
-    ctx.scene.fog.near = 20;
-    ctx.scene.fog.far = 80;
-    ctx.edgeGlowIntensity = 0;
+    store.eventTimer = 0;
+    store.activeEvent = null;
+    store.eventDuration = 0;
+    store.fogDensity = 0;
+    store.scene.fog.near = FOG_NEAR;
+    store.scene.fog.far = FOG_FAR;
+    store.edgeGlowIntensity = 0;
     
     const vignetteEl = document.getElementById('vignette-glow');
     if (vignetteEl) vignetteEl.style.opacity = '0';
 
-    ctx.bonusPortal = null;
-    ctx.bonusPortalSpawned = false;
-    ctx.inBonusZone = false;
-    ctx.bonusTimer = 0;
-    ctx.inBonusZoneRef = false;
-    ctx.bonusTimerRef = 0;
-    ctx.bonusNoSpawn = false;
-    ctx.bonusCoins.forEach(bc => ctx.scene.remove(bc.mesh));
-    ctx.bonusCoins = [];
+    store.bonusPortal = null;
+    store.bonusPortalSpawned = false;
+    store.inBonusZone = false;
+    store.bonusTimer = 0;
+    store.inBonusZoneRef = false;
+    store.bonusTimerRef = 0;
+    store.bonusNoSpawn = false;
+    store.bonusCoins.forEach(bc => store.scene.remove(bc.mesh));
+    store.bonusCoins = [];
     
-    if (ctx.originalRoadMaterial) {
-      const roadCheck = ctx.scene.getObjectByName('road');
+    if (store.originalRoadMaterial) {
+      const roadCheck = store.scene.getObjectByName('road');
       if (roadCheck) {
-        if (roadCheck.material !== ctx.originalRoadMaterial && roadCheck.material) {
+        if (roadCheck.material !== store.originalRoadMaterial && roadCheck.material) {
           roadCheck.material.dispose();
         }
-        roadCheck.material = ctx.originalRoadMaterial;
-        if (ctx.originalGroundTexture) {
-          roadCheck.material.map = ctx.originalGroundTexture;
-          roadCheck.material.color.set(ctx.originalGroundColor);
+        roadCheck.material = store.originalRoadMaterial;
+        if (store.originalGroundTexture) {
+          roadCheck.material.map = store.originalGroundTexture;
+          roadCheck.material.color.set(store.originalGroundColor);
           roadCheck.material.needsUpdate = true;
         }
-        ctx.originalRoadMaterial = null;
+        store.originalRoadMaterial = null;
       }
     }
     
-    if (ctx.savedSubstageState) {
-      ctx.savedSubstageState.obstacles.forEach(obs => ctx.scene.remove(obs.mesh));
-      ctx.savedSubstageState.coins.forEach(coin => ctx.scene.remove(coin.mesh));
-      ctx.savedSubstageState = null;
+    if (store.savedSubstageState) {
+      store.savedSubstageState.obstacles.forEach(obs => store.scene.remove(obs.mesh));
+      store.savedSubstageState.coins.forEach(coin => store.scene.remove(coin.mesh));
+      store.savedSubstageState = null;
     }
 
-    ctx.obstacles.forEach(obs => {
+    store.obstacles.forEach(obs => {
       obs.mesh.traverse(c => { if (c.geometry) c.geometry.dispose(); });
-      ctx.scene.remove(obs.mesh);
+      store.scene.remove(obs.mesh);
     });
-    ctx.obstacles.length = 0;
+    store.obstacles.length = 0;
     
-    ctx.coins.forEach(coin => ctx.scene.remove(coin.mesh));
-    ctx.coins.length = 0;
+    store.coins.forEach(coin => store.scene.remove(coin.mesh));
+    store.coins.length = 0;
     
-    ctx.powerups.forEach(pw => ctx.scene.remove(pw.mesh));
-    ctx.powerups.length = 0;
+    store.powerups.forEach(pw => store.scene.remove(pw.mesh));
+    store.powerups.length = 0;
     
-    ctx.bossProjectiles.forEach(fb => ctx.scene.remove(fb));
-    ctx.bossProjectiles.length = 0;
+    store.bossProjectiles.forEach(fb => store.scene.remove(fb));
+    store.bossProjectiles.length = 0;
     
-    ctx.particles.forEach(p => ctx.scene.remove(p));
-    ctx.particles.length = 0;
+    store.particles.forEach(p => store.scene.remove(p));
+    store.particles.length = 0;
     
-    ctx.floatingTexts.forEach(t => ctx.scene.remove(t));
-    ctx.floatingTexts.length = 0;
+    store.floatingTexts.forEach(t => store.scene.remove(t));
+    store.floatingTexts.length = 0;
     achievements.value = [];
 
-    ctx.player.position.set(0, 0.5, 0);
-    ctx.player.scale.y = 1.0;
+    store.player.position.set(0, 0.5, 0);
+    store.player.scale.y = 1.0;
     
-    const starsObj = ctx.scene.getObjectByName('stars');
-    if (starsObj) ctx.scene.remove(starsObj);
-    ctx.scene.userData.starsCreated = false;
+    const starsObj = store.scene.getObjectByName('stars');
+    if (starsObj) store.scene.remove(starsObj);
+    store.scene.userData.starsCreated = false;
 
-    ctx.buildings.forEach(b => {
+    store.buildings.forEach(b => {
       b.visible = true;
       if (b.userData.initZ !== undefined) {
         b.position.z = b.userData.initZ;
         b.position.x = b.userData.initX;
-        b.position.y = b.baseY + getSurfaceY(b.userData.initZ);
+        b.position.y = b.baseY + store.getSurfaceY(b.userData.initZ);
         b.baseX = b.userData.initBaseX;
       }
     });
     
-    ctx.trees.forEach(t => {
+    store.trees.forEach(t => {
       t.visible = true;
       if (t.userData.initZ !== undefined) {
         t.position.z = t.userData.initZ;
         t.position.x = t.userData.initX;
-        t.position.y = t.baseY + getSurfaceY(t.userData.initZ);
+        t.position.y = t.baseY + store.getSurfaceY(t.userData.initZ);
         t.baseX = t.userData.initBaseX;
       }
     });
     
-    ctx.eventAlertTextRef = '';
+    store.eventAlertTextRef = '';
   };
 
   const startCountdown = () => {
-    const ctx = getCtx();
     console.log('[COUNTDOWN] Starting countdown...');
     resetStage(false);
-    ctx.countdownLocked = true;
-    ctx.countdownActive = true;
+    store.countdownLocked = true;
+    store.countdownActive = true;
     
     const isMobileLocal = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    if (isMobileLocal && ctx.tiltEnabled) {
-      startTiltCalibration();
+    if (isMobileLocal && store.tiltEnabled) {
+      store.startTiltCalibration();
     }
     
-    let count = 3;
-    ctx.countdownText = count.toString();
-    
-    const tick = () => {
-      count--;
-      if (count > 0) {
-        ctx.countdownText = count.toString();
-        setTimeout(tick, 1000);
-      } else if (count === 0) {
-        ctx.countdownText = 'GO!';
-        ctx.countdownActive = false;
-        ctx.countdownLocked = false;
-        ctx.stageTransitioning = false;
-        ctx.gameDuration = 1.5;
-        ctx.lastSpawnTime = ctx.clock.getElapsedTime() - ctx.spawnInterval;
-        ctx.isInvincible = true;
-        ctx.gameStartTime = Date.now();
-        
-        const oldGrace = ctx.player.getObjectByName('shield-aura');
-        if (!oldGrace) {
-          const graceGeo = new THREE.SphereGeometry(1.2, 16, 16);
-          const graceMat = new THREE.MeshToonMaterial({ color: 0x44ff44, transparent: true, opacity: 0.3, side: THREE.DoubleSide });
-          const graceMesh = new THREE.Mesh(graceGeo, graceMat);
-          graceMesh.name = 'shield-aura';
-          ctx.player.add(graceMesh);
-        }
-        
-        ctx.invincibilityTimeout = setTimeout(() => {
-          ctx.isInvincible = false;
-          ctx.invincibilityTimeout = null;
-          const shieldObj = ctx.player.getObjectByName('shield-aura');
-          if (shieldObj) ctx.player.remove(shieldObj);
-        }, 2000);
-        
-        try {
-          startBGM();
-        } catch (err) {
-          console.error('[COUNTDOWN] startBGM() error:', err);
-        }
-        
-        if (isMobileLocal && ctx.isCalibrating) {
-          finishTiltCalibration();
-        }
-      }
-    };
-    
-    setTimeout(tick, 1000);
+    let count = COUNTDOWN_SECONDS;
+    store.countdownText = count.toString();
+    store._countdownNextTick = Date.now() + COUNTDOWN_TICK_MS;
+    store._countdownCount = count;
+    store._countdownType = 'start';
   };
 
   const startStageCountdown = () => {
-    const ctx = getCtx();
-    ctx.countdownLocked = true;
-    ctx.countdownActive = true;
-    if (ctx.micEnabledRef) {
-      startCalibration();
+    store.countdownLocked = true;
+    store.countdownActive = true;
+    if (store.micEnabledRef) {
+      store.startCalibration();
     }
-    let count = 3;
-    ctx.countdownText = count.toString();
-    
-    const stageTick = () => {
-      count--;
-      if (count > 0) {
-        ctx.countdownText = count.toString();
-        setTimeout(stageTick, 1000);
-      } else if (count === 0) {
-        ctx.countdownText = 'GO!';
-        playSound('start');
-        ctx.isInvincible = true;
-        ctx.gameStartTime = Date.now();
-        setTimeout(() => {
-          ctx.countdownActive = false;
-          ctx.countdownLocked = false;
-          ctx.stageTransitioning = false;
-          ctx.gameDuration = 1.5;
-          ctx.lastSpawnTime = ctx.clock.getElapsedTime() - ctx.spawnInterval;
-          ctx.bossWarning = false;
-          ctx.bonusPortalSpawned = false; // Allow one rainbow gate per stage
-          
-          const graceGeo = new THREE.SphereGeometry(1.2, 16, 16);
-          const graceMat = new THREE.MeshToonMaterial({ color: 0x44ff44, transparent: true, opacity: 0.3, side: THREE.DoubleSide });
-          const graceMesh = new THREE.Mesh(graceGeo, graceMat);
-          graceMesh.name = 'shield-aura';
-          ctx.player.add(graceMesh);
-          
-          ctx.invincibilityTimeout = setTimeout(() => {
-            ctx.isInvincible = false;
-            ctx.invincibilityTimeout = null;
-            const shieldObj = ctx.player.getObjectByName('shield-aura');
-            if (shieldObj) ctx.player.remove(shieldObj);
-          }, 2000);
-        }, 500);
-      }
-    };
-    setTimeout(stageTick, 1000);
+    let count = COUNTDOWN_SECONDS;
+    store.countdownText = count.toString();
+    store._countdownNextTick = Date.now() + COUNTDOWN_TICK_MS;
+    store._countdownCount = count;
+    store._countdownType = 'stage';
   };
 
   const pauseGame = () => {
-    const ctx = getCtx();
-    if (ctx.isPaused || ctx.gameOver || ctx.countdownActive || ctx.countdownLocked || ctx.stageTransitioning) return;
-    ctx.isPaused = true;
-    ctx.pauseStartTime = ctx.clock.getElapsedTime();
-    createFloatingText('⏸️ PAUSED', ctx.player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#ffffff');
+    if (store.isPaused || store.gameOver || store.countdownActive || store.countdownLocked || store.stageTransitioning) return;
+    store.isPaused = true;
+    store.pauseStartTime = store.clock.getElapsedTime();
+    store.createFloatingText('⏸️ PAUSED', store.player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#ffffff');
   };
 
   const resumeGame = () => {
-    const ctx = getCtx();
-    if (!ctx.isPaused) return;
-    if (ctx.countdownActive || ctx.countdownLocked || ctx.stageTransitioning) {
-      ctx.isPaused = false;
+    if (!store.isPaused) return;
+    if (store.countdownActive || store.countdownLocked || store.stageTransitioning) {
+      store.isPaused = false;
       return;
     }
-    ctx.isPaused = false;
-    const pauseDuration = ctx.clock.getElapsedTime() - ctx.pauseStartTime;
-    ctx.clock.elapsedTime -= pauseDuration;
+    store.isPaused = false;
+    const pauseDuration = store.clock.getElapsedTime() - store.pauseStartTime;
+    store.clock.elapsedTime -= pauseDuration;
   };
 
   const handleVisibilityChange = () => {
@@ -497,18 +422,17 @@ export function useGameLifecycle({
   };
 
   const enterBonusZone = () => {
-    const ctx = getCtx();
-    if (ctx.inBonusZone) return;
+    if (store.inBonusZone) return;
     
-    ctx.inBonusZone = true;
-    ctx.inBonusZoneRef = true;
-    ctx.bonusTimer = 10;
-    ctx.bonusTimerRef = 10;
+    store.inBonusZone = true;
+    store.inBonusZoneRef = true;
+    store.bonusTimer = 10;
+    store.bonusTimerRef = 10;
     
     // Save original road material if not already saved
-    if (ctx.roadMesh && ctx.roadMesh.material) {
-      if (!ctx.originalRoadMaterial) {
-        ctx.originalRoadMaterial = ctx.roadMesh.material;
+    if (store.roadMesh && store.roadMesh.material) {
+      if (!store.originalRoadMaterial) {
+        store.originalRoadMaterial = store.roadMesh.material;
       }
       // Create a beautiful neon pink basic material
       const bonusMat = new THREE.MeshBasicMaterial({ 
@@ -516,15 +440,15 @@ export function useGameLifecycle({
         transparent: true,
         opacity: 0.95
       });
-      ctx.roadMesh.material = bonusMat;
-      ctx.roadMesh.material.needsUpdate = true;
+      store.roadMesh.material = bonusMat;
+      store.roadMesh.material.needsUpdate = true;
     }
     
-    playSound('powerup');
-    createFloatingText('🦄 RAINBOW ZONE!', ctx.player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#ff00ff');
+    store.playSound('powerup');
+    store.createFloatingText('🦄 RAINBOW ZONE!', store.player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#ff00ff');
 
     // Spawn bonus coins at ground level
-    ctx.bonusCoins = [];
+    store.bonusCoins = [];
     const laneWidthVal = 3;
     for (let i = 0; i < 40; i++) {
       const lane = Math.floor(Math.random() * 3) - 1;
@@ -534,10 +458,10 @@ export function useGameLifecycle({
       const coinMesh = new THREE.Mesh(coinGeo, coinMat);
       coinMesh.position.set(lane * laneWidthVal, 0.5, z);
       coinMesh.rotation.x = Math.PI / 2;
-      ctx.scene.add(coinMesh);
-      ctx.bonusCoins.push({ mesh: coinMesh, collected: false, baseX: lane * laneWidthVal });
+      store.scene.add(coinMesh);
+      store.bonusCoins.push({ mesh: coinMesh, collected: false, baseX: lane * laneWidthVal });
     }
-    ctx.scene.userData.bonusEnvActive = true;
+    store.scene.userData.bonusEnvActive = true;
     
     // Spawn Nyan Cat sprite at 60% Y-scale of original (5.5) -> 3.3
     const textureLoader = new THREE.TextureLoader();
@@ -550,41 +474,138 @@ export function useGameLifecycle({
     const nyanCat = new THREE.Sprite(nyanSpriteMat);
     nyanCat.scale.set(5, 3.3, 1);
     nyanCat.position.set(-30, 10, -20);
-    ctx.scene.add(nyanCat);
-    ctx.scene.userData.nyanCat = nyanCat;
-    ctx.scene.userData.nyanCatTime = 0;
+    store.scene.add(nyanCat);
+    store.scene.userData.nyanCat = nyanCat;
+    store.scene.userData.nyanCatTime = 0;
   };
 
   const exitBonusZone = () => {
-    const ctx = getCtx();
-    if (!ctx.inBonusZone) return;
+    if (!store.inBonusZone) return;
     
-    ctx.inBonusZone = false;
-    ctx.inBonusZoneRef = false;
-    ctx.bonusTimer = 0;
-    ctx.bonusTimerRef = 0;
+    store.inBonusZone = false;
+    store.inBonusZoneRef = false;
+    store.bonusTimer = 0;
+    store.bonusTimerRef = 0;
     
     // Restore original road material
-    if (ctx.roadMesh && ctx.roadMesh.material && ctx.originalRoadMaterial) {
-      ctx.roadMesh.material = ctx.originalRoadMaterial;
-      ctx.roadMesh.material.needsUpdate = true;
+    if (store.roadMesh && store.roadMesh.material && store.originalRoadMaterial) {
+      store.roadMesh.material = store.originalRoadMaterial;
+      store.roadMesh.material.needsUpdate = true;
     }
     
-    playSound('powerup_fade');
-    createFloatingText('EXITING BONUS!', ctx.player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#ffff00');
+    store.playSound('powerup_fade');
+    store.createFloatingText('EXITING BONUS!', store.player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#ffff00');
 
     // Clean up bonus coins
-    if (ctx.bonusCoins) {
-      ctx.bonusCoins.forEach(bc => ctx.scene.remove(bc.mesh));
-      ctx.bonusCoins = [];
+    if (store.bonusCoins) {
+      store.bonusCoins.forEach(bc => store.scene.remove(bc.mesh));
+      store.bonusCoins = [];
     }
-    ctx.scene.userData.bonusEnvActive = false;
+    store.scene.userData.bonusEnvActive = false;
 
     // Clean up Nyan Cat
-    if (ctx.scene.userData.nyanCat) {
-      ctx.scene.remove(ctx.scene.userData.nyanCat);
-      ctx.scene.userData.nyanCat = null;
-      ctx.scene.userData.nyanCatTime = 0;
+    if (store.scene.userData.nyanCat) {
+      store.scene.remove(store.scene.userData.nyanCat);
+      store.scene.userData.nyanCat = null;
+      store.scene.userData.nyanCatTime = 0;
+    }
+  };
+
+  /**
+   * Tick the countdown timer — called from the animate loop (requestAnimationFrame).
+   * Replaces setTimeout-based countdown which gets throttled in headless browsers.
+   */
+  const tickCountdown = () => {
+    if (!store.countdownActive || !store.countdownLocked) return;
+
+    const now = Date.now();
+
+    // Handle "GO!" delay for stage countdown (must check even when _countdownNextTick is null)
+    if (store._countdownType === 'stage' && store._countdownGoTime) {
+      if (now - store._countdownGoTime >= STAGE_COUNTDOWN_GO_DELAY) {
+        store.countdownActive = false;
+        store.countdownLocked = false;
+        store.stageTransitioning = false;
+        store.gameDuration = SPAWN_GRACE_PERIOD;
+        store.lastSpawnTime = store.clock.getElapsedTime() - store.spawnInterval;
+        store.bossWarning = false;
+        store.bonusPortalSpawned = false;
+        store._countdownGoTime = null;
+        store._countdownType = null;
+
+        const graceGeo = new THREE.SphereGeometry(1.2, 16, 16);
+        const graceMat = new THREE.MeshToonMaterial({ color: 0x44ff44, transparent: true, opacity: 0.3, side: THREE.DoubleSide });
+        const graceMesh = new THREE.Mesh(graceGeo, graceMat);
+        graceMesh.name = 'shield-aura';
+        store.player.add(graceMesh);
+
+        timer.setTimeout(() => {
+          store.isInvincible = false;
+          const shieldObj = store.player.getObjectByName('shield-aura');
+          if (shieldObj) store.player.remove(shieldObj);
+        }, INVINCIBILITY_GRACE);
+      }
+      // Still waiting for GO delay to expire — return and check again next frame
+      return;
+    }
+
+    // Countdown tick logic
+    if (!store._countdownNextTick) return;
+    if (now < store._countdownNextTick) return;
+
+    const count = (store._countdownCount || 0) - 1;
+
+    if (count > 0) {
+      store._countdownCount = count;
+      store.countdownText = count.toString();
+      store._countdownNextTick = now + COUNTDOWN_TICK_MS;
+    } else if (count === 0) {
+      store.countdownText = 'GO!';
+      store._countdownNextTick = null;
+      store._countdownCount = 0;
+
+      if (store._countdownType === 'stage') {
+        // Stage countdown completion — play sound, set GO time for delay
+        store.playSound('start');
+        store.isInvincible = true;
+        store.gameStartTime = Date.now();
+        store._countdownGoTime = now;
+      } else {
+        // Start countdown completion — immediately unlock
+        store.countdownActive = false;
+        store.countdownLocked = false;
+        store.stageTransitioning = false;
+        store.gameDuration = SPAWN_GRACE_PERIOD;
+        store.lastSpawnTime = store.clock.getElapsedTime() - store.spawnInterval;
+        store.isInvincible = true;
+        store.gameStartTime = Date.now();
+
+        const oldGrace = store.player.getObjectByName('shield-aura');
+        if (!oldGrace) {
+          const graceGeo = new THREE.SphereGeometry(1.2, 16, 16);
+          const graceMat = new THREE.MeshToonMaterial({ color: 0x44ff44, transparent: true, opacity: 0.3, side: THREE.DoubleSide });
+          const graceMesh = new THREE.Mesh(graceGeo, graceMat);
+          graceMesh.name = 'shield-aura';
+          store.player.add(graceMesh);
+        }
+
+        timer.setTimeout(() => {
+          store.isInvincible = false;
+          const shieldObj = store.player.getObjectByName('shield-aura');
+          if (shieldObj) store.player.remove(shieldObj);
+        }, INVINCIBILITY_GRACE);
+
+        try {
+          store.startBGM();
+        } catch (err) {
+          console.error('[COUNTDOWN] startBGM() error:', err);
+        }
+
+        const isMobileLocal = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+        if (isMobileLocal && store.isCalibrating) {
+          store.finishTiltCalibration();
+        }
+      }
     }
   };
 
@@ -596,6 +617,7 @@ export function useGameLifecycle({
     resetStage,
     startCountdown,
     startStageCountdown,
+    tickCountdown,
     pauseGame,
     resumeGame,
     handleVisibilityChange,
