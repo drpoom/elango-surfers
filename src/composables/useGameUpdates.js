@@ -626,12 +626,12 @@ export function useGameUpdates({
     // Road and grass texture rolling visual effect
     const roadMesh = scene.getObjectByName('road') || store.roadMesh;
     if (roadMesh && roadMesh.material && roadMesh.material.map) {
-      roadMesh.material.map.offset.y -= (gameSpeed / 20.0);
+      roadMesh.material.map.offset.y += (gameSpeed / 20.0);
       roadMesh.material.map.offset.y %= 1.0;
     }
     const grassMesh = store.grassMesh;
     if (grassMesh && grassMesh.material && grassMesh.material.map) {
-      grassMesh.material.map.offset.y -= (gameSpeed / 8.0);
+      grassMesh.material.map.offset.y += (gameSpeed / 8.0);
       grassMesh.material.map.offset.y %= 1.0;
     }
 
