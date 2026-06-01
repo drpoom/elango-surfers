@@ -7,7 +7,7 @@
 
 // ==================== PLANET & CYCLE ====================
 export const EARTH_R: number = 350           // planet radius — larger = less curve
-export const DAY_DURATION: number = 120      // 120s per full cycle (4 stages × 30s)
+export const DAY_DURATION: number = 150      // 150s per full cycle (3 stages × 50s)
 
 // ==================== PLAYER PHYSICS ====================
 export const jumpStrength: number = 0.35
