@@ -7,7 +7,7 @@
 
 // ==================== PLANET & CYCLE ====================
 export const EARTH_R = 350           // planet radius — larger = less curve
-export const DAY_DURATION = 120      // 120s per full cycle (4 stages × 30s)
+export const DAY_DURATION = 105      // 105s per full cycle (4 stages × 30s)
 
 // ==================== PLAYER PHYSICS ====================
 export const jumpStrength = 0.35
@@ -77,9 +77,9 @@ export const FLOATING_OBSTACLE_CHANCE = 0.3  // chance obstacle is floating (UFO
 export const COIN_SPAWN_BASE_CHANCE = 0.5   // base chance to spawn coin
 export const COIN_SPAWN_GROWTH = 120         // divisor for coin spawn chance growth over time
 export const POWERUP_SPAWN_CHANCE = 0.05     // chance to spawn powerup
-export const BOSS_BASE_HEALTH = 100
-export const BOSS_MAX_HEALTH = 250
-export const BOSS_HIT_DAMAGE = 25
+export const BOSS_BASE_HEALTH = 60
+export const BOSS_MAX_HEALTH = 100
+export const BOSS_HIT_DAMAGE = 15
 export const BOSS_PROJECTILE_HIT_RADIUS = 0.5
 export const BOSS_BEAM_HIT_RADIUS = 0.8
 export const BOSS_DEFEAT_DELAY = 1500         // ms before stage transition after boss defeat

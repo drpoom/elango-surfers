@@ -169,7 +169,7 @@ import { useAchievements } from './composables/useAchievements.js'
 import { useLoadingProgress } from './composables/useLoadingProgress.js'
 import { reduceMotionRef, initScreenEffects, saveScreenEffects } from './composables/useScreenEffects.js'
 import { loadSettings, saveSettings, getDefaultSettings } from './composables/useGameSettings.js'
-import { EARTH_R, DAY_DURATION, jumpStrength, slideDuration, laneWidth, FLY_LIFT, FLY_GRAVITY, FLY_MAX_HEIGHT, MIC_THRESHOLD, MIC_PEAK_THRESHOLD, minSwipeDistance, TILT_THRESHOLD, TILT_LR_THRESHOLD, TILT_LANE_COOLDOWN, CALIBRATION_MAX_SAMPLES } from './gameConstants.js'
+import { EARTH_R, DAY_DURATION, jumpStrength, slideDuration, laneWidth, FLY_LIFT, FLY_GRAVITY, FLY_MAX_HEIGHT, MIC_THRESHOLD, MIC_PEAK_THRESHOLD, minSwipeDistance, TILT_THRESHOLD, TILT_LR_THRESHOLD, TILT_LANE_COOLDOWN, CALIBRATION_MAX_SAMPLES, BOSS_BASE_HEALTH } from './gameConstants.js'
 import { STAGES } from './data/stages.js'
 import { useCurve } from './composables/useCurve.js'
 import { useMic } from './composables/useMic.js'
@@ -177,7 +177,7 @@ import { useNPCs } from './composables/useNPCs.js'
 import LoadingScreen from './components/LoadingScreen.vue'
 
 // Version - Update this for each release
-const VERSION = 'v5.2.27';
+const VERSION = 'v5.2.28';
 // Extract major.minor for version-aware high score key
 const VERSION_MAJOR_MINOR = VERSION.replace(/^(v\d+\.\d+)\.\d+$/, '$1').replace(/\./g, '_');
 
@@ -2995,7 +2995,7 @@ let bossStateTimer = 0
 let bossVulnerableOrbs = []
 
 // Boss tuning constants - T3-55
-const BOSS_BASE_HEALTH = 100
+// BOSS_BASE_HEALTH is now imported from gameConstants.js
 const BOSS_ORB_DAMAGE = 10
 const BOSS_MIN_ORBS = 4
 const BOSS_MAX_ORBS = 7
@@ -3145,7 +3145,7 @@ function spawnBoss(bossType) {
   if (boss) { scene.remove(boss); boss = null; }
   bossProjectiles = []
   bossAttackTimer = 0
-  bossNextAttack = 2 + Math.random() * 2
+  bossNextAttack = 1.5 + Math.random() * 1.5
   bossCharging = false
   bossChargeTimer = 0
   bossState = 'idle'
@@ -3540,7 +3540,7 @@ const animate = () => {
   if (stageTime.value >= bossSpawnTime && !bossActive.value && !bossDefeated.value && !stageTransitioning.value) {
     bossWarning.value = false
     bossActive.value = true
-    bossHealth.value = 100
+    bossHealth.value = BOSS_BASE_HEALTH
     createFloatingText(`\u26A0\uFE0F ${stage.bossType === 'truck' ? 'ROAD RAGE TRUCK' : 'SKY TERROR DRAGON'} \u26A0\uFE0F`, player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#ff4444')
     playSFX(stage.bossType === 'truck' ? 'truck_honk' : 'dragon_cry', 0.6)
     spawnBoss(stage.bossType)
@@ -3548,7 +3548,7 @@ const animate = () => {
 
   // === BOSS TIMER (decrement health over bossDuration seconds) ===
   if (bossActive.value && !bossDefeated.value) {
-    bossHealth.value -= (100 / stage.bossDuration) * realDelta
+    bossHealth.value -= (BOSS_BASE_HEALTH / stage.bossDuration) * realDelta
     if (bossHealth.value <= 0) {
       bossDefeated.value = true
       bossActive.value = false

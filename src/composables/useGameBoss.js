@@ -23,7 +23,7 @@ export function useGameBoss({
     }
     store.bossProjectiles = [];
     store.bossAttackTimer = 0;
-    store.bossNextAttack = 2 + Math.random() * 2;
+    store.bossNextAttack = 1.5 + Math.random() * 1.5;
     store.bossCharging = false;
     store.bossChargeTimer = 0;
     store.bossState = 'idle';

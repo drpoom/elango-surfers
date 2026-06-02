@@ -28,8 +28,8 @@ export const STAGES = [
       portalShortcuts: false
     },
     bossType: 'truck',
-    bossDuration: 25,
-    stageDuration: 60
+    bossDuration: 15,
+    stageDuration: 35
   },
   {
     id: 2,
@@ -51,8 +51,8 @@ export const STAGES = [
       portalShortcuts: false
     },
     bossType: 'dragon',
-    bossDuration: 25,
-    stageDuration: 60
+    bossDuration: 15,
+    stageDuration: 35
   },
   {
     id: 3,
@@ -74,8 +74,8 @@ export const STAGES = [
       portalShortcuts: false
     },
     bossType: 'giantMeatball',
-    bossDuration: 25,
-    stageDuration: 60
+    bossDuration: 15,
+    stageDuration: 35
   }
 ]
 

@@ -466,7 +466,7 @@ export function useGameUpdates({
       if (store.bossAttackTimer >= store.bossNextAttack) {
         gameBoss.spawnBossProjectile(stage.id === 1 ? 'truck' : (stage.id === 3 ? 'giantMeatball' : 'dragon'));
         store.bossAttackTimer = 0;
-        store.bossNextAttack = 2 + Math.random() * 2;
+        store.bossNextAttack = 1.5 + Math.random() * 1.5;
       }
       
       if (!countdownLocked && !store.stageTransitioning && !store.gameOver) {
@@ -477,7 +477,7 @@ export function useGameUpdates({
           const hasShield = (activePowerup === 'shield' || isInvincible || store.godMode);
           if (hasShield) {
             if (!store.bossDefeated && store.bossHealth > 0) {
-              store.bossHealth -= 25;
+              store.bossHealth -= BOSS_HIT_DAMAGE;
               if (!store.godMode) {
                 store.deactivatePowerup();
               }
