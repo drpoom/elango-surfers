@@ -3578,6 +3578,10 @@ const animate = () => {
       // Reset world + 3-2-1-GO countdown for next stage (keeps score)
       const nextStage = (currentStage.value + 1) % STAGES.length
       resetStage(true, nextStage) // preserveScore=true, target next stage
+      // CRITICAL: resetStage cancels the animation frame, so we must restart the loop
+      if (!animationFrameId) {
+        animate();
+      }
       createFloatingText(`STAGE ${nextStage + 1}: ${STAGES[nextStage].name}`, player.position.clone().add(new THREE.Vector3(0, 3, 0)), '#ffffff')
       stageTransitioning.value = true // keep paused during countdown
       // 3-2-1-GO countdown then resume
@@ -5030,6 +5034,10 @@ const handleKeyDown = (e) => {
       const targetStage = parseInt(e.key, 10) - 1;
       console.log('[DEBUG] Stage jump to', targetStage);
       resetStage(false, targetStage);
+      // CRITICAL: resetStage cancels the animation frame, so we must restart the loop
+      if (!animationFrameId) {
+        animate();
+      }
       // Debug jumps skip countdown - start spawning immediately
       clock.start();
       lastSpawnTime = clock.getElapsedTime() - spawnInterval - 0.1;
@@ -5388,6 +5396,10 @@ const restartGame = () => {
   speedMultiplier = 1.0;
   gameSpeed = 0.25;
   resetStage(false); // full reset, score = 0 (already calls applyStageVisuals and clock.start())
+  // CRITICAL: resetStage cancels the animation frame, so we must restart the loop
+  if (!animationFrameId) {
+    animate();
+  }
   playSound('start');
 };
 
