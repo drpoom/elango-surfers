@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  @page {
+    size: 297mm 210mm;
+    margin: 0;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 297mm;
+    height: 210mm;
+    font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+    background: white;
+    color: #1a1a2e;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .card {
+    width: 297mm;
+    height: 210mm;
+    display: flex;
+  }
+  /* Left page: Instructions + Logo */
+  .left-page {
+    width: 148.5mm;
+    height: 210mm;
+    padding: 20mm 15mm;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+  .logo-frame {
+    width: 80mm;
+    height: 50mm;
+    border-radius: 6mm;
+    overflow: hidden;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+    margin-bottom: 8mm;
+  }
+  .logo-frame img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .title {
+    font-size: 28px;
+    font-weight: 800;
+    color: #2d1b69;
+    letter-spacing: -0.5px;
+    margin-bottom: 2mm;
+  }
+  .subtitle {
+    font-size: 13px;
+    color: #6b5b95;
+    margin-bottom: 10mm;
+    font-weight: 400;
+  }
+  .steps {
+    list-style: none;
+    counter-reset: step;
+    text-align: left;
+    width: 90mm;
+  }
+  .steps li {
+    counter-increment: step;
+    font-size: 12px;
+    color: #333;
+    margin-bottom: 5mm;
+    padding-left: 9mm;
+    position: relative;
+    line-height: 1.5;
+  }
+  .steps li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 6mm;
+    height: 6mm;
+    background: #863bff;
+    color: #fff;
+    border-radius: 50%;
+    font-size: 10px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .controls-hint {
+    margin-top: auto;
+    padding-top: 8mm;
+    border-top: 1px solid #e0d8f0;
+    font-size: 10px;
+    color: #999;
+    line-height: 1.6;
+  }
+  /* Right page: QR Code */
+  .right-page {
+    width: 148.5mm;
+    height: 210mm;
+    padding: 20mm;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #fafafa;
+    border-left: 1px dashed #ccc;
+  }
+  .qr-container {
+    background: #fff;
+    padding: 8mm;
+    border-radius: 6mm;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+  }
+  .qr-container img {
+    width: 70mm;
+    height: 70mm;
+  }
+  .scan-label {
+    margin-top: 8mm;
+    font-size: 14px;
+    font-weight: 700;
+    color: #2d1b69;
+    letter-spacing: 1px;
+  }
+  .scan-sublabel {
+    margin-top: 2mm;
+    font-size: 11px;
+    color: #999;
+  }
+  .fold-line {
+    position: absolute;
+    left: 148.5mm;
+    top: 0;
+    bottom: 0;
+    width: 0;
+    border-left: 1px dashed #ddd;
+  }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="left-page">
+    <div class="logo-frame">
+      <img src="/home/poomk/elango-surfers-start.png">
+    </div>
+    <div class="title">ELANGO SURFERS</div>
+    <div class="subtitle">🎁 A Gift For You — Install & Play Offline</div>
+    <ol class="steps">
+      <li>Scan the QR code with your Android phone camera</li>
+      <li>Tap "Install app" when Chrome prompts you</li>
+      <li>Elango Surfers icon appears on your home screen</li>
+      <li>Tap to play — works offline, no internet needed!</li>
+    </ol>
+    <div class="controls-hint">
+      🎮 Dodge obstacles · Collect coins · Beat bosses<br>
+      📱 Swipe to move, jump & slide · ⌨️ A/D = lanes · W = jump · S = slide
+    </div>
+  </div>
+  <div class="right-page">
+    <div class="qr-container">
+      <img src="elango-surfers-qr-logo.png">
+    </div>
+    <div class="scan-label">SCAN TO INSTALL</div>
+    <div class="scan-sublabel">Point your phone camera here</div>
+  </div>
+</div>
+</body>
+</html>
